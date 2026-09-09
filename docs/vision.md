@@ -35,6 +35,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A interface deve indicar se o preview está a atualizar, atualizado ou com erro.
 - Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
 - O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
+- Links para ficheiros `.md` ou `.tex` dentro da pasta aberta devem abrir ou focar esses ficheiros numa tab.
 
 ### LaTeX
 
@@ -109,6 +110,7 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Algoritmo exato para identificar o ficheiro principal LaTeX e forma de guardar essa escolha.
 - Extensões de ficheiro compatíveis no MVP.
 - Comportamento de links para outros ficheiros compatíveis.
+- Política para links externos e ficheiros que não sejam compatíveis.
 - Política para dependências localizadas fora da pasta-raiz.
 - Metadados adicionais a restaurar nas tabs e comportamento quando um ficheiro já não existe.
 
