@@ -25,6 +25,9 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Um toggle permite alternar entre:
   - mostrar apenas ficheiros compatíveis, ativo por defeito;
   - mostrar todos os ficheiros.
+- Com o filtro ativo, devem ficar ocultas as pastas que não contenham nenhum `.md` ou `.tex` nos seus descendentes.
+- A árvore deve mostrar primeiro as pastas e depois os ficheiros, ambos por ordem alfabética.
+- A pasta-raiz começa expandida; as restantes pastas começam fechadas.
 - O filtro altera a navegação, não a resolução interna de dependências pelos adapters.
 
 ### Preview e atualização
@@ -43,6 +46,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - O utilizador deve poder navegar por um índice/outline do documento quando essa estrutura estiver disponível.
 - O texto do preview deve poder ser selecionado e copiado com `⌘C`.
 - A topbar deve incluir uma ação para forçar a atualização ou recompilação da tab atual.
+- `⌘R` deve forçar a atualização ou recompilação da tab atual.
 
 ### LaTeX
 
@@ -57,6 +61,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - As tabs devem ser restauradas depois de reiniciar a aplicação.
 - A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
 - A aplicação deve restaurar também a posição de leitura de cada tab.
+- `⌘W` deve fechar a tab atual e `⌘1`–`⌘9` devem permitir mudar rapidamente entre tabs.
 - A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
 
 ### Abertura a partir do Finder
@@ -65,11 +70,15 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Ao abrir um ficheiro diretamente, a aplicação deve abrir também a pasta que o contém como raiz.
 - O ficheiro aberto deve ser adicionado ou focado numa tab.
 - No caso de LaTeX, a descoberta do documento principal continua a aplicar-se.
+- `⌘O` deve permitir abrir uma pasta.
+- Uma pasta ou ficheiro pode ser arrastado do Finder para a app.
+- O menu contextual de um ficheiro deve permitir mostrá-lo no Finder, copiar o seu caminho e abri-lo no editor predefinido do sistema.
 
 ### Evolução futura
 
 - Uma versão futura poderá combinar um editor raw à esquerda com o viewer renderizado à direita.
 - A separação entre edição e preview deve ser preservada na arquitetura, apesar de o editor estar fora do MVP.
+- Abrir o ficheiro no editor predefinido é apenas uma ponte no MVP; não substitui o editor integrado previsto para o futuro.
 
 ## Escopo do MVP
 
@@ -82,10 +91,12 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Atualização automática do preview.
 - Apresentação legível de erros de renderização ou compilação.
 - Toggle para filtrar a árvore por ficheiros compatíveis, ativo por defeito.
+- Ordenação previsível da árvore e ocultação de pastas sem ficheiros compatíveis.
 - Várias tabs com restauração após reinício.
 - Restauração da última pasta, posição de leitura, ordem das tabs e tab ativa.
 - Controlos de tema, pesquisa, zoom, outline, cópia e atualização manual.
 - Abertura direta de `.md` e `.tex` a partir do Finder.
+- Abertura de pastas e ficheiros por atalhos, drag & drop e menu contextual.
 - Navegação interna entre ficheiros compatíveis através de links.
 - Funcionamento sem conta, cloud ou base de dados.
 - Aplicação sem edição dos ficheiros-fonte.
