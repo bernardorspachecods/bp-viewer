@@ -25,6 +25,7 @@ Os relatórios completos dos agentes ficam separados dos briefs para preservar a
 - [Relatório: LaTeX → preview](reports/latex-preview.md)
 - [Relatório: desktop e filesystem](reports/desktop-filesystem.md)
 - [Relatório: preview, segurança e distribuição](reports/preview-security-distribution.md)
+- [Síntese técnica para decisão humana](synthesis.md)
 
 Todos os agentes devem ler [a visão e o plano atual](../vision.md) antes de pesquisar e devem tratar as suas decisões técnicas como recomendações condicionais, não como requisitos já aprovados.
 
@@ -113,4 +114,4 @@ Depois dos quatro relatórios, a síntese deve:
 
 Não criar uma recomendação única antes de ler os quatro relatórios.
 
-O estado atual é de quatro relatórios recebidos e ainda não sintetizados. As decisões de produto continuam a ser mantidas em [docs/vision.md](../vision.md).
+O estado atual é de quatro relatórios recebidos e uma síntese técnica preparada para decisão humana. As decisões de produto continuam a ser mantidas em [docs/vision.md](../vision.md).
