@@ -36,11 +36,19 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
 - O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
 - Links para ficheiros `.md` ou `.tex` dentro da pasta aberta devem abrir ou focar esses ficheiros numa tab.
+- Links externos devem abrir no browser normal, mediante uma ação explícita do utilizador.
+- A topbar deve incluir um botão para alternar manualmente entre tema claro e escuro.
+- A pesquisa (`⌘F`) deve atuar apenas sobre o conteúdo renderizado da tab atual.
+- O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
+- O utilizador deve poder navegar por um índice/outline do documento quando essa estrutura estiver disponível.
+- O texto do preview deve poder ser selecionado e copiado com `⌘C`.
+- A topbar deve incluir uma ação para forçar a atualização ou recompilação da tab atual.
 
 ### LaTeX
 
 - Ao abrir um ficheiro `.tex`, a aplicação deve tentar identificar o ficheiro principal do projeto e compilar o documento completo.
 - Se não encontrar um ficheiro principal ou encontrar vários candidatos, a aplicação deve pedir ao utilizador para escolher.
+- Um capítulo LaTeX aberto deve focar a tab do documento principal, em vez de criar uma tab duplicada para o capítulo.
 
 ### Tabs
 
@@ -48,7 +56,15 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Cada ficheiro deve ter no máximo uma tab aberta; ao abrir um ficheiro já aberto, a aplicação foca a tab existente.
 - As tabs devem ser restauradas depois de reiniciar a aplicação.
 - A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
+- A aplicação deve restaurar também a posição de leitura de cada tab.
 - A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
+
+### Abertura a partir do Finder
+
+- O utilizador pode abrir diretamente ficheiros `.md` e `.tex` a partir do Finder.
+- Ao abrir um ficheiro diretamente, a aplicação deve abrir também a pasta que o contém como raiz.
+- O ficheiro aberto deve ser adicionado ou focado numa tab.
+- No caso de LaTeX, a descoberta do documento principal continua a aplicar-se.
 
 ### Evolução futura
 
@@ -65,6 +81,12 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Observação de alterações no sistema de ficheiros.
 - Atualização automática do preview.
 - Apresentação legível de erros de renderização ou compilação.
+- Toggle para filtrar a árvore por ficheiros compatíveis, ativo por defeito.
+- Várias tabs com restauração após reinício.
+- Restauração da última pasta, posição de leitura, ordem das tabs e tab ativa.
+- Controlos de tema, pesquisa, zoom, outline, cópia e atualização manual.
+- Abertura direta de `.md` e `.tex` a partir do Finder.
+- Navegação interna entre ficheiros compatíveis através de links.
 - Funcionamento sem conta, cloud ou base de dados.
 - Aplicação sem edição dos ficheiros-fonte.
 
@@ -108,9 +130,6 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Deteção de alterações e momento adequado para atualizar ou recompilar.
 - Tecnologia da aplicação desktop.
 - Algoritmo exato para identificar o ficheiro principal LaTeX e forma de guardar essa escolha.
-- Extensões de ficheiro compatíveis no MVP.
-- Comportamento de links para outros ficheiros compatíveis.
-- Política para links externos e ficheiros que não sejam compatíveis.
 - Política para dependências localizadas fora da pasta-raiz.
 - Metadados adicionais a restaurar nas tabs e comportamento quando um ficheiro já não existe.
 
@@ -118,7 +137,6 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 
 As seguintes consequências são esperadas pela experiência escolhida, mas não constituem decisões técnicas finais:
 
-- a pasta-raiz poderá precisar de ser restaurada para reabrir as tabs;
 - cada tab deverá manter estado de preview e diagnóstico independente;
 - a resolução de dependências deverá continuar a funcionar mesmo quando ficheiros auxiliares estão ocultos pelo filtro;
 - a fila de renderização poderá limitar compilações simultâneas para proteger o desempenho.
