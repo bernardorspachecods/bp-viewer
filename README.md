@@ -24,3 +24,4 @@ Fase inicial de definição e pesquisa. As decisões técnicas dos adapters de M
 
 - [Visão e plano atual](docs/vision.md)
 - [Índice da documentação](docs/README.md)
+- [Plano de pesquisa técnica](docs/research/README.md)
