@@ -17,6 +17,15 @@ Os agentes de pesquisa não devem implementar código, criar um protótipo ou fe
 3. [Desktop e filesystem](desktop-filesystem.md)
 4. [Preview, segurança e distribuição](preview-security-distribution.md)
 
+## Relatórios recebidos
+
+Os relatórios completos dos agentes ficam separados dos briefs para preservar a distinção entre instruções de pesquisa e resultados. Ainda não representam decisões técnicas aprovadas.
+
+- [Relatório: Markdown → HTML](reports/markdown-html.md)
+- [Relatório: LaTeX → preview](reports/latex-preview.md)
+- [Relatório: desktop e filesystem](reports/desktop-filesystem.md)
+- [Relatório: preview, segurança e distribuição](reports/preview-security-distribution.md)
+
 Todos os agentes devem ler [a visão e o plano atual](../vision.md) antes de pesquisar e devem tratar as suas decisões técnicas como recomendações condicionais, não como requisitos já aprovados.
 
 ## Método comum
@@ -103,3 +112,5 @@ Depois dos quatro relatórios, a síntese deve:
 - atualizar a [visão e plano atual](../vision.md) somente depois de as decisões serem confirmadas.
 
 Não criar uma recomendação única antes de ler os quatro relatórios.
+
+O estado atual é de quatro relatórios recebidos e ainda não sintetizados. As decisões de produto continuam a ser mantidas em [docs/vision.md](../vision.md).
