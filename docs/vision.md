@@ -36,6 +36,11 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
 - O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
 
+### LaTeX
+
+- Ao abrir um ficheiro `.tex`, a aplicação deve tentar identificar o ficheiro principal do projeto e compilar o documento completo.
+- Se não encontrar um ficheiro principal ou encontrar vários candidatos, a aplicação deve pedir ao utilizador para escolher.
+
 ### Tabs
 
 - O MVP suporta várias tabs.
@@ -101,7 +106,7 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Dependências locais necessárias para LaTeX.
 - Deteção de alterações e momento adequado para atualizar ou recompilar.
 - Tecnologia da aplicação desktop.
-- Comportamento quando o utilizador abre um ficheiro `.tex` que não é o root do documento.
+- Algoritmo exato para identificar o ficheiro principal LaTeX e forma de guardar essa escolha.
 - Extensões de ficheiro compatíveis no MVP.
 - Comportamento de links para outros ficheiros compatíveis.
 - Política para dependências localizadas fora da pasta-raiz.
