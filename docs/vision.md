@@ -16,6 +16,39 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 4. A aplicação apresenta o resultado renderizado.
 5. Se o ficheiro ou uma dependência mudar externamente, a aplicação atualiza o preview automaticamente.
 
+## Decisões de UX confirmadas
+
+### Navegação
+
+- O utilizador pode abrir qualquer pasta como raiz.
+- A árvore apresenta essa pasta e os seus descendentes.
+- Um toggle permite alternar entre:
+  - mostrar apenas ficheiros compatíveis, ativo por defeito;
+  - mostrar todos os ficheiros.
+- O filtro altera a navegação, não a resolução interna de dependências pelos adapters.
+
+### Preview e atualização
+
+- O MVP apresenta apenas o preview renderizado; não inclui editor.
+- Alterações externas devem atualizar automaticamente o preview.
+- A atualização deve usar debounce para evitar renders excessivos ou estados incompletos.
+- A interface deve indicar se o preview está a atualizar, atualizado ou com erro.
+- Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
+- O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
+
+### Tabs
+
+- O MVP suporta várias tabs.
+- Cada ficheiro deve ter no máximo uma tab aberta; ao abrir um ficheiro já aberto, a aplicação foca a tab existente.
+- As tabs devem ser restauradas depois de reiniciar a aplicação.
+- A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
+- A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
+
+### Evolução futura
+
+- Uma versão futura poderá combinar um editor raw à esquerda com o viewer renderizado à direita.
+- A separação entre edição e preview deve ser preservada na arquitetura, apesar de o editor estar fora do MVP.
+
 ## Escopo do MVP
 
 - Aplicação local para macOS.
@@ -68,6 +101,20 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Dependências locais necessárias para LaTeX.
 - Deteção de alterações e momento adequado para atualizar ou recompilar.
 - Tecnologia da aplicação desktop.
+- Comportamento quando o utilizador abre um ficheiro `.tex` que não é o root do documento.
+- Extensões de ficheiro compatíveis no MVP.
+- Comportamento de links para outros ficheiros compatíveis.
+- Política para dependências localizadas fora da pasta-raiz.
+- Metadados adicionais a restaurar nas tabs e comportamento quando um ficheiro já não existe.
+
+## Implicações ainda não decididas
+
+As seguintes consequências são esperadas pela experiência escolhida, mas não constituem decisões técnicas finais:
+
+- a pasta-raiz poderá precisar de ser restaurada para reabrir as tabs;
+- cada tab deverá manter estado de preview e diagnóstico independente;
+- a resolução de dependências deverá continuar a funcionar mesmo quando ficheiros auxiliares estão ocultos pelo filtro;
+- a fila de renderização poderá limitar compilações simultâneas para proteger o desempenho.
 
 Estas hipóteses não devem ser tratadas como decisões finais sem pesquisa ou validação através de um protótipo.
 
