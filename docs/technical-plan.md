@@ -56,6 +56,59 @@ começando por UI manual contigo; os casos determinísticos de watchers e
 gerações devem ser extraídos para seams testáveis antes de fechar a fase de
 Markdown.
 
+### Backlog de testes automáticos após a ronda de UI
+
+Esta é a lista explícita de cobertura que ainda falta automatizar. Não é um
+bloqueio para começar a validar a UI manualmente, mas deve ser tratada antes de
+considerar o shell e o Markdown suficientemente estabilizados:
+
+- eventos SwiftUI/AppKit, incluindo cliques, foco, seleção e redimensionamento;
+- carregamento e navegação do `WKWebView`;
+- atalhos de teclado, incluindo tabs, pesquisa, zoom, refresh e fecho;
+- watchers perante alterações, renames, remoções e substituições atómicas;
+- tarefas assíncronas, debounce, cancelamento e `generation guards`;
+- persistência real com `UserDefaults` isolado e restauração após reinício;
+- comportamento e responsividade em árvores grandes.
+
+Cada item deve ter pelo menos um teste de regressão reproduzível. Onde a
+framework de UI não permitir um teste unitário simples, usar um teste de
+integração ou um seam/fake determinístico; não transformar um teste manual
+único numa garantia automática.
+
+### O que Bernardo deve validar manualmente antes de LaTeX
+
+Na próxima ronda, a validação deve usar pastas e ficheiros reais e concentrar-se
+no comportamento que os runners não conseguem provar:
+
+1. Abrir a pasta da tese ou uma cópia controlada e confirmar que a árvore fica
+   utilizável, sem bloqueios ou atrasos anormais.
+2. Pesquisar nomes e caminhos em árvores pequenas e grandes; confirmar que o
+   indicador de pesquisa aparece, que os resultados não ficam obsoletos e que a
+   árvore mantém os ancestrais corretos.
+3. Expandir e fechar muitas pastas, alternar o filtro de compatíveis e confirmar
+   que não desaparecem ficheiros `.md` ou `.tex` válidos.
+4. Abrir várias tabs, trocar entre elas, fechar a ativa, fechar as restantes e
+   reabrir a app; confirmar ordem, tab ativa e ausência de duplicados.
+5. Testar tema, sidebar, largura da sidebar, zoom, pesquisa `⌘F`, seleção/cópia
+   e os atalhos atualmente implementados.
+6. Alterar externamente um Markdown enquanto está aberto, incluindo alterações
+   rápidas sucessivas; confirmar atualização, debounce e ausência de preview
+   antigo a substituir o novo.
+7. Introduzir temporariamente um erro Markdown e confirmar que aparece o erro,
+   que o último preview válido pode ser identificado como desatualizado e que a
+   recuperação funciona depois de corrigir o ficheiro.
+8. Alterar, remover e restaurar uma imagem local referenciada pelo Markdown;
+   confirmar que o preview acompanha a dependência.
+9. Testar links internos Markdown, links externos e links para ficheiros não
+   suportados, verificando que cada ação abre o destino esperado.
+10. Confirmar que a app continua estável ao alternar rapidamente entre tabs,
+    atualizar, pesquisar e alterar ficheiros externamente ao mesmo tempo.
+
+Deve ser registado para cada ponto: `passou`, `falhou` ou `não aplicável`, com
+uma nota curta e, quando houver falha, os passos para reproduzir. Só depois
+desta ronda devemos decidir se há correções de Markdown/UI suficientes para
+implementar o adapter LaTeX.
+
 ## 1. Requisitos e decisões de produto já confirmados
 
 Esta secção não propõe tecnologia. Regista o que a implementação deve respeitar.
