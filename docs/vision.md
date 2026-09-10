@@ -28,6 +28,9 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Com o filtro ativo, devem ficar ocultas as pastas que não contenham nenhum `.md` ou `.tex` nos seus descendentes.
 - A árvore deve mostrar primeiro as pastas e depois os ficheiros, ambos por ordem alfabética.
 - A pasta-raiz começa expandida; as restantes pastas começam fechadas.
+- A árvore deve suportar navegação por teclado, incluindo seleção, abertura e expansão/fecho.
+- O estado expandido/fechado das pastas deve ser restaurado ao reabrir o projeto.
+- O menu para abrir pastas deve apresentar pastas recentes, mantendo essa informação local.
 - O filtro altera a navegação, não a resolução interna de dependências pelos adapters.
 
 ### Preview e atualização
@@ -38,8 +41,15 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A interface deve indicar se o preview está a atualizar, atualizado ou com erro.
 - Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
 - O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
+- Markdown deve suportar matemática delimitada, como `$x^2$` e `$$...$$`.
+- A tab ou topbar deve mostrar contexto suficiente do caminho relativo do ficheiro ativo para distinguir ficheiros com o mesmo nome.
 - Links para ficheiros `.md` ou `.tex` dentro da pasta aberta devem abrir ou focar esses ficheiros numa tab.
 - Links externos devem abrir no browser normal, mediante uma ação explícita do utilizador.
+- Imagens locais referenciadas por Markdown devem aparecer no preview.
+- Imagens remotas referenciadas por URL também devem aparecer no preview; a aplicação pode fazer pedidos à internet e esses recursos podem não estar disponíveis offline.
+- HTML raw em Markdown deve ser aceite apenas depois de sanitizado.
+- Links locais para ficheiros não suportados devem abrir o programa predefinido do macOS mediante uma ação explícita.
+- O preview LaTeX/PDF deve usar scroll contínuo por defeito, com paginação visual normal.
 - A topbar deve incluir um botão para alternar manualmente entre tema claro e escuro.
 - A pesquisa (`⌘F`) deve atuar apenas sobre o conteúdo renderizado da tab atual.
 - O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
@@ -52,12 +62,20 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 
 - Ao abrir um ficheiro `.tex`, a aplicação deve tentar identificar o ficheiro principal do projeto e compilar o documento completo.
 - Se não encontrar um ficheiro principal ou encontrar vários candidatos, a aplicação deve pedir ao utilizador para escolher.
+- A escolha manual do documento principal deve ser memorizada por projeto.
+- O utilizador deve poder alterar posteriormente o documento principal escolhido.
+- A abertura de um `.tex` deve iniciar automaticamente a compilação.
+- Se o LaTeX não estiver disponível, a tab deve mostrar um erro específico com instruções de configuração, ação para voltar a tentar e opção para copiar o diagnóstico; isto não deve impedir o uso do Markdown.
+- Os erros de compilação devem permitir expandir o log completo e copiá-lo.
+- Dependências LaTeX fora da pasta-raiz exigem confirmação explícita.
+- Alterações num capítulo ou noutra dependência devem recompilar automaticamente o documento principal.
 - Um capítulo LaTeX aberto deve focar a tab do documento principal, em vez de criar uma tab duplicada para o capítulo.
 
 ### Tabs
 
 - O MVP suporta várias tabs.
 - Cada ficheiro deve ter no máximo uma tab aberta; ao abrir um ficheiro já aberto, a aplicação foca a tab existente.
+- Quando tabs tiverem o mesmo nome de ficheiro, devem mostrar também contexto da pasta-pai.
 - As tabs devem ser restauradas depois de reiniciar a aplicação.
 - A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
 - A aplicação deve restaurar também a posição de leitura de cada tab.
@@ -71,6 +89,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - O ficheiro aberto deve ser adicionado ou focado numa tab.
 - No caso de LaTeX, a descoberta do documento principal continua a aplicar-se.
 - `⌘O` deve permitir abrir uma pasta.
+- Ao abrir outra pasta com tabs existentes, a aplicação deve pedir confirmação antes de substituir o projeto atual.
 - Uma pasta ou ficheiro pode ser arrastado do Finder para a app.
 - O menu contextual de um ficheiro deve permitir mostrá-lo no Finder, copiar o seu caminho e abri-lo no editor predefinido do sistema.
 
@@ -114,7 +133,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 
 ### Markdown
 
-Hipótese inicial: converter Markdown para HTML através de um adapter e apresentar o resultado numa WebView estilizada. O suporte concreto para matemática, imagens, links e variantes de Markdown será definido na pesquisa técnica.
+Hipótese inicial: converter Markdown para HTML através de um adapter e apresentar o resultado numa WebView estilizada. A implementação concreta do suporte já confirmado para matemática, imagens, links e HTML sanitizado será definida na pesquisa técnica.
 
 ### LaTeX
 
@@ -135,14 +154,13 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 ## Hipóteses ainda abertas
 
 - Adapter e parser de Markdown.
-- Suporte de matemática, imagens, links e ficheiros relacionados em Markdown.
+- Implementação concreta do suporte já definido para matemática, imagens, links, HTML sanitizado e imagens remotas em Markdown.
 - Estratégia de renderização de LaTeX.
 - Dependências locais necessárias para LaTeX.
-- Deteção de alterações e momento adequado para atualizar ou recompilar.
+- Semântica exata da deteção de alterações, debounce e coordenação de renders.
 - Tecnologia da aplicação desktop.
-- Algoritmo exato para identificar o ficheiro principal LaTeX e forma de guardar essa escolha.
-- Política para dependências localizadas fora da pasta-raiz.
-- Metadados adicionais a restaurar nas tabs e comportamento quando um ficheiro já não existe.
+- Algoritmo exato para identificar o ficheiro principal LaTeX.
+- Metadados adicionais a restaurar nas tabs.
 
 ## Implicações ainda não decididas
 
