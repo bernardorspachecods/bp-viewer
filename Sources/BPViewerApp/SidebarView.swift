@@ -104,6 +104,9 @@ struct FileTreeRow: View {
                         }
                         .padding(.leading, BPTokens.Spacing.sm + CGFloat(level + 1) * BPTokens.Spacing.md)
                         .frame(minHeight: BPTokens.Size.row)
+                        .overlay(alignment: .leading) {
+                            TreeGuides(level: level + 1)
+                        }
                     }
                 }
             }
@@ -131,6 +134,9 @@ struct FileTreeRow: View {
         .padding(.trailing, BPTokens.Spacing.sm)
         .frame(minHeight: BPTokens.Size.row)
         .contentShape(Rectangle())
+        .overlay(alignment: .leading) {
+            TreeGuides(level: level)
+        }
     }
 
     private var iconName: String {
@@ -150,5 +156,35 @@ struct FileTreeRow: View {
         case .latex: .orange
         case .other: BPTokens.Color.muted
         }
+    }
+}
+
+struct TreeGuides: View {
+    let level: Int
+
+    var body: some View {
+        Canvas { context, size in
+            guard level > 0 else { return }
+
+            var path = Path()
+            let baseX = BPTokens.Spacing.sm + BPTokens.Spacing.md / 2
+
+            for depth in 0..<level {
+                let x = baseX + CGFloat(depth) * BPTokens.Spacing.md
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+            }
+
+            let connectorX = baseX + CGFloat(level - 1) * BPTokens.Spacing.md
+            path.move(to: CGPoint(x: connectorX, y: size.height / 2))
+            path.addLine(to: CGPoint(x: connectorX + BPTokens.Spacing.md / 2, y: size.height / 2))
+
+            context.stroke(
+                path,
+                with: .color(BPTokens.Color.separator.opacity(0.8)),
+                style: StrokeStyle(lineWidth: 1, lineCap: .square)
+            )
+        }
+        .allowsHitTesting(false)
     }
 }
