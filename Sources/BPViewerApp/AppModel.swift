@@ -37,9 +37,13 @@ final class AppModel: ObservableObject {
     private var treeFilterTask: Task<Void, Never>?
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
+    private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
+    private var watchedDirectoryURLs: Set<URL> = []
+    private var treeRefreshGeneration = 0
     private var activeFileWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedFileURLs: Set<URL> = []
     private var fileRefreshGeneration = 0
+    private var localKeyMonitor: Any?
 
     private enum Keys {
         static let theme = "bp-viewer.theme"
@@ -59,6 +63,27 @@ final class AppModel: ObservableObject {
         sidebarWidth = defaults.object(forKey: Keys.sidebarWidth) as? Double ?? 280
         previewZoom = defaults.object(forKey: Keys.previewZoom) as? Double ?? 1.0
         compatibleOnly = defaults.object(forKey: Keys.compatibleOnly) as? Bool ?? true
+
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+            if flags == [.command],
+               event.charactersIgnoringModifiers?.lowercased() == "w" {
+                Task { @MainActor [weak self] in
+                    self?.closeActiveTab()
+                }
+                return nil
+            }
+
+            if flags == [.control], event.keyCode == 48 {
+                Task { @MainActor [weak self] in
+                    self?.selectNextTab()
+                }
+                return nil
+            }
+
+            return event
+        }
 
         if let path = defaults.string(forKey: Keys.lastRoot) {
             let url = URL(fileURLWithPath: path)
@@ -114,15 +139,18 @@ final class AppModel: ObservableObject {
     }
 
     func openRoot(_ url: URL) {
+        stopWatchingDirectories()
         stopWatchingActiveFiles()
         treeFilterTask?.cancel()
         fullIndexTask?.cancel()
         fullIndexTask = nil
         fullyIndexedNodes = nil
-        rootURL = url.standardizedFileURL
+        let standardizedRoot = url.standardizedFileURL
+        rootURL = standardizedRoot
         tabs = []
         activeTabID = nil
         expandedPaths = []
+        startWatchingDirectories(rootURL: standardizedRoot, nodes: [])
         defaults.set(rootURL?.path, forKey: Keys.lastRoot)
         reloadTree()
         persistState()
@@ -138,6 +166,7 @@ final class AppModel: ObservableObject {
         treeScanGeneration += 1
         let generation = treeScanGeneration
         let scanner = scanner
+        childLoadGenerations.removeAll()
         isScanningTree = true
 
         Task { [weak self] in
@@ -151,7 +180,9 @@ final class AppModel: ObservableObject {
 
             self.completeNodes = scannedNodes
             self.isScanningTree = false
+            self.startWatchingDirectories(rootURL: rootURL, nodes: scannedNodes)
             self.applyTreeFilter()
+            self.loadExpandedChildrenIfNeeded()
         }
     }
 
@@ -414,7 +445,9 @@ final class AppModel: ObservableObject {
                 node.children = children
                 node.childrenLoaded = true
             }
+            self.startWatchingDirectories(rootURL: rootURL, nodes: self.completeNodes)
             self.applyTreeFilter()
+            self.loadExpandedChildrenIfNeeded()
         }
     }
 
@@ -511,6 +544,13 @@ final class AppModel: ObservableObject {
         activeTabID = session.activePath?.path
         expandedPaths = Set(defaults.stringArray(forKey: "bp-viewer.expandedPaths") ?? [])
         renderActiveTabIfNeeded()
+        loadExpandedChildrenIfNeeded()
+    }
+
+    private func loadExpandedChildrenIfNeeded() {
+        for path in expandedPaths.sorted(by: { $0.count < $1.count }) {
+            loadChildrenIfNeeded(for: path)
+        }
     }
 
     private func renderActiveTabIfNeeded() {
@@ -550,6 +590,60 @@ final class AppModel: ObservableObject {
             activeFileWatchers[url] = source
             watchedFileURLs.insert(url)
             source.resume()
+        }
+    }
+
+    private func startWatchingDirectories(rootURL: URL, nodes: [FileNode]) {
+        var directories = Set([rootURL.standardizedFileURL])
+        collectDirectories(from: nodes, into: &directories)
+
+        guard directories != watchedDirectoryURLs else { return }
+
+        stopWatchingDirectories()
+        for url in directories {
+            let descriptor = Darwin.open(url.path, O_EVTONLY)
+            guard descriptor >= 0 else { continue }
+
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: descriptor,
+                eventMask: [.write, .rename, .delete, .link],
+                queue: .main
+            )
+            source.setEventHandler { [weak self] in
+                self?.scheduleTreeRefresh(for: url)
+            }
+            source.setCancelHandler {
+                Darwin.close(descriptor)
+            }
+            activeDirectoryWatchers[url] = source
+            watchedDirectoryURLs.insert(url)
+            source.resume()
+        }
+    }
+
+    private func collectDirectories(from nodes: [FileNode], into directories: inout Set<URL>) {
+        for node in nodes where node.isDirectory {
+            directories.insert(node.url.standardizedFileURL)
+            collectDirectories(from: node.children, into: &directories)
+        }
+    }
+
+    private func stopWatchingDirectories() {
+        activeDirectoryWatchers.values.forEach { $0.cancel() }
+        activeDirectoryWatchers.removeAll()
+        watchedDirectoryURLs.removeAll()
+        treeRefreshGeneration += 1
+    }
+
+    private func scheduleTreeRefresh(for directoryURL: URL) {
+        guard watchedDirectoryURLs.contains(directoryURL.standardizedFileURL) else { return }
+
+        treeRefreshGeneration += 1
+        let generation = treeRefreshGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self, self.treeRefreshGeneration == generation else { return }
+            self.reloadTree()
         }
     }
 
@@ -629,4 +723,5 @@ final class AppModel: ObservableObject {
     private func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
     }
+
 }

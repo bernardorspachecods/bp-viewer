@@ -21,7 +21,8 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - o adapter gera HTML próprio, com escaping de texto/atributos e rejeição de esquemas de URL perigosos;
 - raw HTML é omitido nesta primeira versão até existir uma política de sanitização testada;
 - o HTML é apresentado num `WKWebView` com JavaScript de conteúdo desligado;
-- a tab Markdown lê o ficheiro fora da UI, publica apenas a geração mais recente e observa alterações do ficheiro ativo;
+- a tab Markdown lê o ficheiro fora da UI, publica apenas a geração mais recente e observa alterações do ficheiro ativo e das suas dependências;
+- a árvore observa a raiz e os diretórios conhecidos para detetar alterações externas e recarrega o snapshot; expansões persistidas voltam a carregar automaticamente depois do arranque;
 - erros mantêm o último preview disponível e mostram o diagnóstico;
 - a árvore indexa inicialmente apenas o primeiro nível, carrega pastas sob pedido e mostra progresso durante indexação/pesquisa;
 - links Markdown internos para `.md`/`.tex` focam ou abrem tabs, enquanto links externos passam para o browser do macOS;
