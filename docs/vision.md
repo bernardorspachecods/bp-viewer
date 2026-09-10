@@ -166,6 +166,15 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Repository GitHub privada.
 - A implementação do MVP deve privilegiar uma app nativa de macOS, sem compromisso com Windows ou Linux.
 - A distribuição inicial destina-se apenas ao uso pessoal fora da App Store, por build local ou pacote direto.
+- O alvo inicial é a versão atual do macOS; versões futuras devem ser acompanhadas, sem compromisso com versões antigas.
+- O MVP deve ser otimizado primeiro para a tese atual de Bernardo, não para suportar genericamente todos os projetos LaTeX.
+- A tese pode usar `biber`, TikZ/PGFPlots, fontes especiais, `shell escape` e ferramentas externas; a compatibilidade deve ser validada com ficheiros reais.
+- Recursos fora da pasta-raiz são permitidos mediante confirmação explícita.
+- A utilização normal pressupõe ligação à internet; imagens remotas em Markdown são permitidas e podem falhar quando não houver rede.
+- A recompilação deve ser otimizada através de agrupamento de alterações, análise de dependências, cancelamento de trabalhos obsoletos e reutilização de cache, sem assumir que é seguro compilar apenas páginas isoladas de um documento LaTeX.
+- As configurações avançadas de LaTeX devem existir no MVP numa área discreta, mantendo o fluxo normal simples.
+- Funcionalidades académicas avançadas, como bookmarks, notas e ferramentas adicionais de referências, ficam para o futuro.
+- A interface deve seguir um sistema visual documentado e reutilizável, com primitivas e tokens consistentes em vez de estilos locais hardcoded.
 - Os ficheiros raw permanecem fora do controlo de edição da aplicação.
 - A app deve ser independente do LLM que altera os ficheiros.
 - A app não deve impor restrições artificiais ao acesso dos ficheiros pessoais; as permissões efetivas continuam a ser controladas pelo macOS.
