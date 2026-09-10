@@ -75,6 +75,11 @@ final class AppModel: ObservableObject {
         return tabs.first { $0.id == activeTabID }
     }
 
+    private var tabSessionState: TabSessionState {
+        let activeURL = activeTabID.map { URL(fileURLWithPath: $0) }
+        return TabSessionState(paths: tabs.map(\.url), activePath: activeURL)
+    }
+
     func openFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -214,8 +219,12 @@ final class AppModel: ObservableObject {
         }
 
         let id = standardizedURL.path
-        if let index = tabs.firstIndex(where: { $0.id == id }) {
-            selectTab(id: tabs[index].id)
+        var session = tabSessionState
+        let inserted = session.open(standardizedURL)
+        if !inserted {
+            activeTabID = session.activePath?.path
+            renderActiveTabIfNeeded()
+            persistState()
             return
         }
 
@@ -226,31 +235,40 @@ final class AppModel: ObservableObject {
             status: kind == .markdown ? .updating : .unavailable
         )
         tabs.append(tab)
-        selectTab(id: tab.id)
+        activeTabID = session.activePath?.path
+        renderActiveTabIfNeeded()
+        persistState()
     }
 
     func closeTab(_ tab: DocumentTab) {
-        guard let index = tabs.firstIndex(of: tab) else { return }
-        tabs.remove(at: index)
-        if activeTabID == tab.id {
-            activeTabID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+        guard tabs.contains(tab) else { return }
+        let wasActive = activeTabID == tab.id
+        var session = tabSessionState
+        guard session.close(tab.url) else { return }
+        tabs.removeAll { $0.id == tab.id }
+        activeTabID = session.activePath?.path
+        if wasActive {
             renderActiveTabIfNeeded()
         }
         persistState()
     }
 
     func closeOtherTabs(keeping tab: DocumentTab) {
+        var session = tabSessionState
+        guard session.closeOthers(keeping: tab.url) else { return }
         tabs = [tab]
-        activeTabID = tab.id
+        activeTabID = session.activePath?.path
         renderActiveTabIfNeeded()
         persistState()
     }
 
     func closeTabsToRight(of tab: DocumentTab) {
-        guard let index = tabs.firstIndex(of: tab) else { return }
-        tabs = Array(tabs.prefix(through: index))
-        if let activeTabID, !tabs.contains(where: { $0.id == activeTabID }) {
-            self.activeTabID = tabs.last?.id
+        var session = tabSessionState
+        guard session.closeToRight(of: tab.url) else { return }
+        let allowed = Set(session.paths.map(\.path))
+        tabs = tabs.filter { allowed.contains($0.id) }
+        if let activeTabID, !allowed.contains(activeTabID) {
+            self.activeTabID = session.activePath?.path
             renderActiveTabIfNeeded()
         }
         persistState()
@@ -449,30 +467,35 @@ final class AppModel: ObservableObject {
     }
 
     func selectTab(id: String) {
-        guard tabs.contains(where: { $0.id == id }) else { return }
-        activeTabID = id
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        var session = tabSessionState
+        guard session.select(tab.url) else { return }
+        activeTabID = session.activePath?.path
         renderActiveTabIfNeeded()
         persistState()
     }
 
     func persistState() {
-        defaults.set(tabs.map(\.url.path), forKey: Keys.lastTabs)
-        defaults.set(activeTabID, forKey: Keys.activeTab)
+        let session = tabSessionState
+        defaults.set(session.persistedPaths, forKey: Keys.lastTabs)
+        defaults.set(session.activePath?.path, forKey: Keys.activeTab)
         defaults.set(Array(expandedPaths), forKey: "bp-viewer.expandedPaths")
     }
 
     private func restoreTabs() {
         let savedPaths = defaults.stringArray(forKey: Keys.lastTabs) ?? []
-        let available = savedPaths.compactMap { path -> DocumentTab? in
-            let url = URL(fileURLWithPath: path)
-            guard FileManager.default.fileExists(atPath: path) else { return nil }
+        let savedActivePath = defaults.string(forKey: Keys.activeTab)
+        let session = TabSessionState.restored(
+            paths: savedPaths,
+            activePath: savedActivePath,
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
+        let available = session.paths.compactMap { url -> DocumentTab? in
             let kind = DocumentKind(url: url)
-            return DocumentTab(id: path, url: url, kind: kind, status: kind == .markdown ? .idle : .unavailable)
+            return DocumentTab(id: url.path, url: url, kind: kind, status: kind == .markdown ? .idle : .unavailable)
         }
         tabs = available
-        activeTabID = defaults.string(forKey: Keys.activeTab).flatMap { saved in
-            available.contains(where: { $0.id == saved }) ? saved : available.first?.id
-        }
+        activeTabID = session.activePath?.path
         expandedPaths = Set(defaults.stringArray(forKey: "bp-viewer.expandedPaths") ?? [])
         renderActiveTabIfNeeded()
     }

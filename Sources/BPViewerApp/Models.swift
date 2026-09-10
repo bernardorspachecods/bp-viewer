@@ -1,3 +1,4 @@
+import BPViewerCore
 import SwiftUI
 
 enum AppThemePreference: String, CaseIterable, Identifiable {
@@ -17,28 +18,6 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
         switch self {
         case .light: .light
         case .dark: .dark
-        }
-    }
-}
-
-enum DocumentKind: String, Hashable {
-    case markdown
-    case latex
-    case other
-
-    init(url: URL) {
-        switch url.pathExtension.lowercased() {
-        case "md", "markdown": self = .markdown
-        case "tex", "latex": self = .latex
-        default: self = .other
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .markdown: "Markdown"
-        case .latex: "LaTeX"
-        case .other: "Não suportado"
         }
     }
 }
@@ -89,18 +68,6 @@ enum PreviewStatus: Hashable {
         case .cancelled: BPTokens.Color.muted
         }
     }
-}
-
-struct FileNode: Identifiable, Hashable, Sendable {
-    let id: String
-    let url: URL
-    let relativePath: String
-    let isDirectory: Bool
-    let kind: DocumentKind
-    var children: [FileNode]
-    var childrenLoaded: Bool
-
-    var title: String { url.lastPathComponent }
 }
 
 struct DocumentTab: Identifiable, Hashable {

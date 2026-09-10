@@ -32,6 +32,10 @@ let package = Package(
         .executableTarget(
             name: "BPViewerContractRunner",
             dependencies: ["BPViewerCore"]
+        ),
+        .executableTarget(
+            name: "BPViewerFoundationRunner",
+            dependencies: ["BPViewerCore"]
         )
     ]
 )

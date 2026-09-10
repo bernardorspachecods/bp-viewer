@@ -1,3 +1,4 @@
+import BPViewerCore
 import SwiftUI
 
 struct SidebarView: View {
