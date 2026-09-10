@@ -6,6 +6,10 @@ Definir a estrutura visual, o modelo de estado e as fronteiras entre a UI e os m
 
 Esta arquitetura deve suportar o MVP viewer-only e permitir acrescentar, no futuro, um editor raw à esquerda do preview sem reconstruir o workspace.
 
+O shell atual já usa SwiftUI com pontes AppKit onde necessário. As interfaces
+abaixo descrevem a arquitetura-alvo e os contratos de UI; não obrigam os nomes
+dos tipos a coincidirem com a implementação atual.
+
 ## Princípios
 
 - A UI apresenta estado; não lê ficheiros diretamente nem inicia compiladores.
@@ -14,7 +18,7 @@ Esta arquitetura deve suportar o MVP viewer-only e permitir acrescentar, no futu
 - A complexidade de permissões, watchers, dependências e processos fica atrás de módulos com interfaces pequenas.
 - O layout atual deve preencher o espaço disponível sem criar uma dependência estrutural do editor futuro.
 - O sistema visual usa tokens e primitivas reutilizáveis; estilos locais hardcoded não são a fonte normal de UI.
-- A arquitetura é nativa de macOS, mantendo SwiftUI/AppKit como decisão de implementação a validar no vertical slice.
+- A arquitetura é nativa de macOS e a implementação atual usa SwiftUI/AppKit; detalhes de integração continuam sujeitos a validação local.
 
 ## Estrutura da janela
 
@@ -292,26 +296,13 @@ Conteúdo raw, HTML, PDF e logs não devem ser tratados como estado persistido d
 
 Esta especificação fecha a forma da UI, mas não escolhe ainda:
 
-- divisão final entre SwiftUI e AppKit;
+- detalhes da fronteira entre SwiftUI e AppKit e dos serviços nativos;
 - mecanismo concreto de persistência de bookmarks;
 - arquitetura exata do store/coordenador;
 - biblioteca de WebView/PDF além das superfícies nativas a validar;
-- detalhes do design system depois do primeiro protótipo visual.
+- refinamentos do design system depois da próxima ronda visual, sem quebrar os tokens e primitivas existentes.
 
-Essas decisões devem ser fechadas pelo vertical slice nativo e pelos testes descritos em [`technical-plan.md`](technical-plan.md), não por preferência abstrata.
-
-## Critério do primeiro protótipo visual
-
-O primeiro protótipo deve conseguir:
-
-1. abrir uma pasta real;
-2. mostrar a sidebar com árvore e filtro;
-3. abrir/focar tabs;
-4. mostrar um preview placeholder;
-5. alternar tema;
-6. redimensionar/esconder sidebar;
-7. restaurar janela, sidebar, pasta e tabs;
-8. simular estados `updating`, `ready`, `failed` e `stale`;
-9. demonstrar que o `DocumentSurface` pode receber um editor futuro sem reestruturar a janela.
-
-O protótipo não deve incluir ainda um adapter Markdown ou um compilador LaTeX apenas para validar o layout.
+As lacunas restantes devem ser fechadas por testes locais e pelo plano técnico,
+não por preferência abstrata. O primeiro protótipo visual já foi ultrapassado:
+o estado implementado e a validação atual vivem em
+[`technical-plan.md`](technical-plan.md).

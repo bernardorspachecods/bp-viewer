@@ -2,6 +2,10 @@
 
 Este documento transforma a [visão atual](vision.md) e a [síntese da pesquisa](research/synthesis.md) num plano de prototipagem e implementação. Não altera decisões de produto, não escolhe definitivamente uma stack que a pesquisa deixou aberta e não substitui validação no Mac com a tese de Bernardo.
 
+`vision.md` é a autoridade para produto e UX. Este documento é a autoridade
+para o estado técnico, a sequência de implementação e as lacunas de validação;
+se houver conflito, a visão e as decisões mais recentes do utilizador vencem.
+
 ## Como ler este plano
 
 Cada afirmação usa uma destas categorias:
@@ -34,6 +38,14 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
 
+### Fase atual
+
+O shell nativo e o vertical slice Markdown foram validados manualmente no Mac
+atual, incluindo navegação, filtro, tabs, atualização externa, links, imagens
+locais e matemática comum. A próxima fase de implementação é o adapter LaTeX;
+as lacunas automáticas abaixo continuam a ser dívida de testes e não devem ser
+confundidas com decisões de produto em aberto.
+
 ### Estado de validação automática
 
 Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
@@ -52,16 +64,15 @@ de depender da suite standard como gate de CI.
 Continuam sem cobertura automática de integração: SwiftUI/AppKit, entrega de
 eventos de UI, WKWebView, atalhos, ciclo de vida assíncrono da `AppModel`,
 `UserDefaults` real, callbacks dos watchers, renames concorrentes e performance
-em árvores grandes. Esses pontos passam para a ronda de teste real da app,
-começando por UI manual contigo; os casos determinísticos de watchers e
-gerações devem ser extraídos para seams testáveis antes de fechar a fase de
-Markdown.
+em árvores grandes. Alguns foram exercitados manualmente, mas isso não
+substitui testes reproduzíveis; os casos determinísticos de watchers e gerações
+devem ser extraídos para seams testáveis antes de considerar o shell fechado.
 
-### Backlog de testes automáticos após a ronda de UI
+### Cobertura automática que permanece
 
-Esta é a lista explícita de cobertura que ainda falta automatizar. Não é um
-bloqueio para começar a validar a UI manualmente, mas deve ser tratada antes de
-considerar o shell e o Markdown suficientemente estabilizados:
+Esta é a lista explícita de cobertura que ainda falta automatizar. Não bloqueia
+a passagem para LaTeX, mas deve ser tratada antes de considerar o shell e o
+Markdown suficientemente protegidos contra regressões:
 
 - eventos SwiftUI/AppKit, incluindo cliques, foco, seleção e redimensionamento;
 - carregamento e navegação do `WKWebView`;
@@ -76,10 +87,11 @@ framework de UI não permitir um teste unitário simples, usar um teste de
 integração ou um seam/fake determinístico; não transformar um teste manual
 único numa garantia automática.
 
-### O que Bernardo deve validar manualmente antes de LaTeX
+### Registo da validação manual Markdown/UI
 
-Na próxima ronda, a validação deve usar pastas e ficheiros reais e concentrar-se
-no comportamento que os runners não conseguem provar:
+Esta ronda foi feita com pastas e ficheiros reais. Os runners não conseguem
+provar o comportamento abaixo, por isso a lista continua como checklist de
+regressão:
 
 1. Abrir a pasta da tese ou uma cópia controlada e confirmar que a árvore fica
    utilizável, sem bloqueios ou atrasos anormais.
@@ -105,70 +117,18 @@ no comportamento que os runners não conseguem provar:
 10. Confirmar que a app continua estável ao alternar rapidamente entre tabs,
     atualizar, pesquisar e alterar ficheiros externamente ao mesmo tempo.
 
-Deve ser registado para cada ponto: `passou`, `falhou` ou `não aplicável`, com
-uma nota curta e, quando houver falha, os passos para reproduzir. Só depois
-desta ronda devemos decidir se há correções de Markdown/UI suficientes para
-implementar o adapter LaTeX.
+Em futuras execuções, registar para cada ponto `passou`, `falhou` ou `não
+aplicável`, com uma nota curta e, quando houver falha, os passos para
+reproduzir. A ronda Markdown/UI atual não revelou bloqueios; a implementação
+do adapter LaTeX pode começar, mantendo esta checklist como regressão.
 
-## 1. Requisitos e decisões de produto já confirmados
+## 1. Requisitos e implicações que o plano deve respeitar
 
-Esta secção não propõe tecnologia. Regista o que a implementação deve respeitar.
+Os requisitos de produto e UX vivem apenas na [visão atual](vision.md). Esta
+secção mantém somente as implicações técnicas que o plano precisa de recordar;
+não duplica a lista de decisões nem cria uma segunda fonte de verdade.
 
-### 1.1 Produto e fronteiras
-
-- O produto é uma aplicação desktop pessoal para macOS.
-- O MVP é macOS-first, sem compromisso com Windows ou Linux.
-- A app navega numa pasta local, mostra uma árvore e apresenta previews renderizados de Markdown e LaTeX.
-- O MVP não edita os ficheiros raw, não depende de um LLM, não usa cloud, contas ou base de dados.
-- Os ficheiros raw continuam fora do controlo de edição da aplicação.
-- O primeiro alvo é a tese atual de Bernardo, não compatibilidade genérica com qualquer projeto LaTeX.
-- A distribuição inicial é para uso pessoal fora da App Store, por build local ou pacote direto.
-- O alvo inicial é a versão atual do macOS; não há compromisso com versões antigas.
-
-Fontes: [vision.md — Objetivo, Escopo do MVP, Fora do escopo inicial e Decisões confirmadas](vision.md); [synthesis — Estado atual](research/synthesis.md).
-
-### 1.2 Navegação, raiz e árvore
-
-- O utilizador pode abrir qualquer pasta como raiz.
-- A árvore mostra a raiz e descendentes, com toggle para ficheiros compatíveis — `.md` e `.tex` — ou todos os ficheiros.
-- Com o filtro ativo, pastas sem descendentes compatíveis ficam ocultas; a resolução interna de dependências não fica limitada pelo filtro.
-- Pastas aparecem antes de ficheiros e ambos são ordenados alfabeticamente.
-- A raiz começa expandida; as restantes pastas começam fechadas, e o estado expandido/fechado é restaurado.
-- A árvore suporta teclado, pesquisa por nome/caminho, drag & drop, abertura a partir do Finder e menu contextual.
-- Ficheiros/pastas sem acesso continuam visíveis com indicação de acesso bloqueado.
-- Ficheiros ocultos ficam escondidos por defeito.
-- Clicar numa pasta apenas expande/fecha; não muda o preview ativo.
-- Ativar uma tab torna o ficheiro correspondente visível na árvore.
-
-### 1.3 Preview e atualização
-
-- O MVP apresenta apenas preview; não inclui editor.
-- Alterações externas atualizam automaticamente com debounce.
-- A UI mostra estados de atualização, atualizado e erro.
-- Em erro, mostra os detalhes por defeito; o utilizador pode pedir o último preview válido, claramente marcado como desatualizado.
-- Deve tentar preservar a posição de leitura e mostrar quando o preview foi atualizado.
-- Markdown suporta matemática delimitada, imagens locais e imagens remotas. Imagens remotas podem falhar offline; a utilização normal pressupõe ligação à internet.
-- HTML raw é permitido somente depois de sanitizado.
-- Links `.md`/`.tex` dentro da pasta aberta focam ou abrem tabs; links locais para ficheiros não suportados e links externos abrem o programa/browser normal apenas por ação explícita.
-- LaTeX aparece como PDF compilado dentro da app, em scroll contínuo por defeito.
-- O preview oferece tema claro/escuro, pesquisa apenas na tab ativa, zoom, outline quando disponível, seleção/cópia e atualização manual (`⌘R` incluído).
-- `⌘W` fecha a tab ativa sem fechar a janela e `Control-Tab` avança pelas tabs com wrap-around.
-
-### 1.4 LaTeX e tabs
-
-- Ao abrir `.tex`, a app tenta identificar o root e compilar o documento completo.
-- Zero ou múltiplos candidatos exigem escolha do utilizador; a escolha é memorizada por projeto e pode ser alterada.
-- A abertura de `.tex` inicia compilação automaticamente.
-- O MVP usa instalação local de LaTeX; a app não inclui o compilador.
-- `biber`, TikZ/PGFPlots, fontes especiais, `shell escape` e ferramentas externas podem existir na tese e precisam de validação com ficheiros reais.
-- Dependências LaTeX fora da raiz exigem confirmação explícita.
-- Alterações em capítulos/dependências recompilam o root; não se assume compilação segura de páginas isoladas.
-- Abrir um capítulo LaTeX foca a tab do documento principal, sem tab duplicada do capítulo.
-- Há várias tabs; cada ficheiro tem no máximo uma tab aberta. A restauração preserva referências, ordem, tab ativa, posição de leitura, tema, janela e largura da sidebar.
-- A ordem das tabs pode ser alterada por drag-and-drop e é persistida com a sessão.
-- O estado persistido guarda referências, não cópias de conteúdo.
-
-### 1.5 Implicações de arquitetura que já são requisitos
+### 1.1 Implicações de arquitetura já confirmadas
 
 - A UI deve separar visualização de edição futura.
 - Alterar outra pasta com tabs abertas exige confirmação.
@@ -196,17 +156,21 @@ App shell macOS
 
 O shell não deve permitir que a UI leia paths livremente ou lance compiladores. O watcher não deve transportar “conteúdo final”; apenas invalida snapshots. O adapter não deve assumir que o artefacto é sempre HTML ou PDF.
 
-### 2.2 Shell nativo macOS e divisão SwiftUI/AppKit
+### 2.2 Shell nativo macOS e fronteira SwiftUI/AppKit
 
 **Requisito confirmado:** `vision.md` privilegia uma app nativa macOS.
 
-**Recomendação técnica — confiança média:** usar uma divisão híbrida, caso o protótipo confirme que SwiftUI cobre a composição normal da interface:
+**Implementação atual:** a app usa uma divisão híbrida, com SwiftUI na composição
+normal da interface e AppKit/Foundation nas integrações nativas:
 
 - **SwiftUI:** cena/janela, sidebar, árvore, tabs, topbar, estados de loading/erro, comandos (`⌘O`, `⌘W`, `⌘R`, `⌘1–⌘9`, `⌘F`) e bindings de estado.
 - **AppKit/Foundation:** `NSOpenPanel`, eventos de abertura do Finder, bookmarks/security scope, FSEvents ou ponte para o watcher, `Process`, permissões, integração de `WKWebView`/`PDFView`, menus e detalhes de ciclo de vida que exijam APIs macOS.
 - **Fronteira:** serviços AppKit/Foundation expõem contratos orientados a sessão, paths relativos, batches, artefactos e diagnósticos; a UI não conhece detalhes de permissões nem comandos externos.
 
-Isto não significa que SwiftUI ou AppKit esteja escolhido isoladamente. O report desktop favorece shell nativo quando a prioridade é integração macOS e permissões persistentes, mas não fornece benchmark comparativo nem prova que a divisão proposta seja a mais produtiva. A decisão deve ser testada com uma janela que abra uma pasta, restaure estado, mostre uma WebView/PDFView e execute um processo controlado ([synthesis — Matriz de decisões](research/synthesis.md); [desktop — Alternativas e recomendação condicional](research/reports/desktop-filesystem.md)).
+O vertical slice confirmou esta divisão como adequada para o uso pessoal atual:
+janela, pasta, estado, tabs e preview Markdown funcionam no Mac atual. A
+pesquisa não prova superioridade universal desta opção; detalhes de permissões,
+PDF e processos continuam a exigir validação local ([synthesis — Matriz de decisões](research/synthesis.md); [desktop — Alternativas e recomendação condicional](research/reports/desktop-filesystem.md)).
 
 **Trade-offs:** SwiftUI simplifica estado e composição moderna; AppKit oferece controlo mais direto das APIs legadas/nativas. Uma ponte excessiva pode tornar o estado difícil de seguir; APIs nativas diretamente espalhadas na UI anulam a separação.
 
@@ -585,7 +549,7 @@ Para um burst de N alterações, é aceitável iniciar vários trabalhos se nece
 
 | Decisão | Estado atual | Opções a manter | Teste/critério para fechar |
 |---|---|---|---|
-| SwiftUI, AppKit ou divisão híbrida | Requisito de app nativa; divisão não fechada | SwiftUI para UI + AppKit para serviços; AppKit mais amplo | vertical slice com janela, Finder, WebView/PDFView, permissões e tabs |
+| Fronteira SwiftUI/AppKit | Shell nativo escolhido e vertical slice funcional; detalhes de serviços nativos continuam abertos | SwiftUI para UI + AppKit para serviços; AppKit mais amplo apenas onde necessário | testes locais de janela, Finder, WebView/PDFView, permissões e tabs |
 | Mecanismo exato de bookmarks/scopes | Modelo de sessão necessário; entitlement final aberto | security-scoped bookmark; abstração equivalente no build pessoal | reinício, stale, rename da raiz, dependência externa e build assinada |
 | Backend do watcher | Semântica fechada; backend aberto | FSEvents direto, camada Rust/Node se aplicável, Watchman só se necessário | fixture de snapshots, dropped/coalesced, rename atómico e volume real |
 | Parser Markdown | Aberto | `remark`/`unified`; `cmark-gfm`/`swift-markdown`; outros só com razão | corpus real e custo de renderer/diagnósticos/sanitização |
@@ -756,7 +720,7 @@ As fases não significam que todas as features abaixo devam ser implementadas an
 - app nativa como prioridade;
 - preview Markdown e PDF LaTeX dentro da app;
 - instalação LaTeX externa;
-- raiz, tabs, Finder, links internos, imagens locais/remotas, atualização automática e restauração conforme a secção 1;
+- raiz, tabs, Finder, links internos, imagens locais/remotas, atualização automática e restauração conforme `vision.md`;
 - distribuição inicial fora da App Store;
 - tese real como primeiro corpus;
 - confirmação explícita para dependências fora da raiz;
@@ -775,7 +739,7 @@ As fases não significam que todas as features abaixo devam ser implementadas an
 
 ### Ainda depende de decisão/teste
 
-- divisão final SwiftUI/AppKit e detalhes do shell;
+- detalhes restantes da fronteira SwiftUI/AppKit e dos serviços nativos;
 - parser Markdown e renderer matemático;
 - estratégia de carregamento HTML e política de CSS;
 - backend do watcher e valores de debounce;
@@ -784,7 +748,3 @@ As fases não significam que todas as features abaixo devam ser implementadas an
 - política final de shell escape e cache;
 - PDF actions;
 - forma de assinatura/notarização e qualquer distribuição além do uso pessoal.
-
-## Ficheiros alterados
-
-- Criado: `docs/technical-plan.md`

@@ -114,4 +114,7 @@ Depois dos quatro relatórios, a síntese deve:
 
 Não criar uma recomendação única antes de ler os quatro relatórios.
 
-O estado atual é de quatro relatórios recebidos e uma síntese técnica preparada para decisão humana. As decisões de produto continuam a ser mantidas em [docs/vision.md](../vision.md).
+O estado atual é de quatro relatórios recebidos e uma síntese técnica usada
+como evidência. As decisões de produto confirmadas, incluindo a prioridade por
+uma app nativa macOS para o MVP pessoal, são mantidas em
+[docs/vision.md](../vision.md); os reports não reabrem essas decisões.

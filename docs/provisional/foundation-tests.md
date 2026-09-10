@@ -1,6 +1,11 @@
 # PROVISIONAL — Foundation test coverage
 
-Status: `reviewed_integrated`
+Status: `historical_record`
+
+Este ficheiro preserva o registo da primeira integração dos testes de
+fundação. Os números e commits abaixo são evidência histórica dessa ronda; a
+cobertura atual está em [`technical-plan.md`](../technical-plan.md) e no
+[`README.md` da raiz](../../README.md).
 
 ## Objective
 
@@ -135,7 +140,7 @@ toolchain limitation, not a failure of the executable runners.
 > PROVISIONAL — reviewed by the primary agent; retained as an evidence record,
 > not as a product decision document.
 
-## Primary review after integration
+## Historical primary review after initial integration
 
 The primary agent reviewed the isolated diff before integration and found no
 critical issue. The commit was integrated into `main` as `1932d32`.

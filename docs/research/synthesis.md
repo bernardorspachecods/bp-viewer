@@ -2,6 +2,11 @@
 
 Esta síntese reúne os quatro relatórios de investigação recebidos para o `bp-viewer`. Não revalida independentemente as fontes primárias citadas nos reports nem substitui testes no Mac e com os documentos reais de Bernardo. Quando uma conclusão depende de detalhe, a secção do report original é indicada.
 
+**Estado de uso:** este é um registo de evidência e comparação, não a fonte de
+verdade do produto. O MVP atual já adotou SwiftUI/AppKit nativo para uso pessoal
+no macOS; as alternativas abaixo permanecem úteis para contexto e para decisões
+técnicas ainda abertas, mas não devem substituir `docs/vision.md`.
+
 ## 1. Resumo executivo
 
 Os quatro reports permitem definir uma base segura para um protótipo, mas não permitem escolher automaticamente uma stack final. A decisão mais sólida neste momento é sobre os contratos e invariantes da aplicação, não sobre SwiftUI, Tauri, Electron, PDF, HTML, MacTeX, Tectonic, `remark` ou outro candidato.
@@ -20,7 +25,7 @@ Os quatro reports permitem definir uma base segura para um protótipo, mas não 
 
 - Se o preview de LaTeX deve privilegiar fidelidade visual do PDF compilado ou navegação/semântica de HTML.
 - Se o primeiro alvo é um protótipo pessoal dependente de ferramentas instaladas no Mac ou uma aplicação distribuível e sandboxed.
-- Qual shell desktop e linguagem são aceitáveis: nativo SwiftUI/AppKit, Tauri, Electron ou Flutter.
+- A comparação de shells continua como contexto; para o MVP atual, a escolha de produto já é nativo SwiftUI/AppKit. Uma reconsideração só faria sentido se o modo de distribuição ou os testes locais mudassem.
 - Que dialecto Markdown, matemática, links fora da raiz, links externos e engines LaTeX fazem parte do uso real.
 
 **Estado global:** há recomendações condicionais com confiança variável; não há decisão técnica final aprovada.
@@ -142,6 +147,8 @@ O MVP só deve considerar um fluxo validado quando conseguir demonstrar, para um
 ## 4. Matriz de decisões técnicas
 
 “Estado” descreve o que os reports permitem fazer agora; não significa decisão aprovada.
+Na linha do shell, “aberta” descreve apenas a comparação dos reports; o plano
+atual já regista SwiftUI/AppKit como escolha do MVP pessoal.
 
 | Decisão | Alternativas reais | Evidência dos reports | Trade-offs | Impacto | Estado |
 |---|---|---|---|---|---|
@@ -419,7 +426,3 @@ Os quatro reports originais são as fontes de síntese e contêm os links para a
 - [Relatório: preview, segurança e distribuição](reports/preview-security-distribution.md) — WebKit, PDFKit, sandbox, bookmarks, helpers/XPC, shell escape, distribuição e modelo de ameaça.
 
 **Nota de procedência:** as referências a claims nesta síntese apontam para secções dos reports originais. A data, versão e força da evidência devem ser consultadas nesses documentos; não devem ser inferidas apenas a partir desta síntese.
-
-## Ficheiros alterados
-
-- Criado: `docs/research/synthesis.md`

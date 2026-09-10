@@ -2,7 +2,9 @@
 
 Status: `validated_by_manual_test`
 
-> PROVISIONAL — requires review by the primary agent and the user.
+> This is a validation record, not a product decision. The current automated
+> contract count and remaining gaps are maintained in
+> [`technical-plan.md`](../technical-plan.md).
 
 ## Objective
 
@@ -80,5 +82,6 @@ the app. The formulas in the same fixture also render correctly.
 ## Evidence
 
 - `git diff --check`: passed.
-- No build or production test was required because the task only adds static
-  fixtures and documentation.
+- The fixtures were opened in the app and the local SVG and common formulas
+  were confirmed visually; the remote-image result remains dependent on the
+  network.
