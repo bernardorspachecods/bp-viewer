@@ -229,6 +229,10 @@ final class AppModel: ObservableObject {
         defaults.set(sidebarWidth, forKey: Keys.sidebarWidth)
     }
 
+    func resizeSidebar(to width: Double) {
+        sidebarWidth = min(max(width, BPTokens.Size.sidebarMin), BPTokens.Size.sidebarMax)
+    }
+
     func selectTab(number: Int) {
         guard tabs.indices.contains(number) else { return }
         activeTabID = tabs[number].id

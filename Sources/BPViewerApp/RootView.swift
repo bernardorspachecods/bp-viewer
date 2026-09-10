@@ -11,7 +11,7 @@ struct RootView: View {
                 if model.sidebarVisible {
                     SidebarView()
                         .frame(width: model.sidebarWidth)
-                    Divider()
+                    SidebarResizeHandle()
                 }
 
                 DocumentWorkspaceView()
@@ -26,6 +26,42 @@ struct RootView: View {
         } message: {
             Text("As tabs atuais serão fechadas e a nova pasta passará a ser a raiz do projeto.")
         }
+    }
+}
+
+struct SidebarResizeHandle: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var initialWidth: Double?
+    @State private var isHovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isHovering ? Color.accentColor.opacity(0.45) : BPTokens.Color.separator)
+            .frame(width: 5)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovering = hovering
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if initialWidth == nil {
+                            initialWidth = model.sidebarWidth
+                        }
+                        guard let initialWidth else { return }
+                        model.resizeSidebar(to: initialWidth + value.translation.width)
+                    }
+                    .onEnded { _ in
+                        model.setSidebarWidth(model.sidebarWidth)
+                        initialWidth = nil
+                    }
+            )
+            .help("Redimensionar sidebar")
     }
 }
 
