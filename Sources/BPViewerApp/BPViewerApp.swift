@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 @main
 struct BPViewerApp: App {
+    @NSApplicationDelegateAdaptor(BPViewerAppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 
     var body: some Scene {
@@ -41,6 +43,16 @@ struct BPViewerApp: App {
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command])
                 }
             }
+        }
+    }
+}
+
+final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
     }
 }
