@@ -18,6 +18,16 @@ O shell nativo e o vertical slice Markdown estão implementados. O adapter LaTeX
 swift run BPViewer
 ```
 
+Para desenvolvimento, o launcher observa `Sources/` e recompila/reinicia a
+app automaticamente quando o código muda:
+
+```bash
+./scripts/dev-run.sh
+```
+
+O launcher é apenas uma ferramenta local de desenvolvimento; a app normal não
+fica dependente dele.
+
 ## Validação automática
 
 O contract runner valida o adapter Markdown sem precisar de uma janela gráfica:
