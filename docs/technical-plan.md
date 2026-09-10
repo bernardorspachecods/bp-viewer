@@ -39,10 +39,10 @@ Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
 
 - `BPViewerContractRunner`: 11 contratos do adapter Markdown, incluindo links,
   imagens, dependências, CSP, HTML raw e matemática TeX comum;
-- `BPViewerFoundationRunner`: 31 contratos de scanner, árvore lazy, filtro,
+- `BPViewerFoundationRunner`: 36 contratos de scanner, árvore lazy, filtro,
   pesquisa, tabs e restauração/persistência em formato puro.
 
-Os 42 contratos passam após a integração do commit `1932d32`. A suite
+Os 47 contratos passam após a implementação dos atalhos de tabs. A suite
 `swift test` ainda não corre no CommandLineTools atual porque o target existente
 usa o módulo `Testing`, que não está disponível nesse toolchain. Esta limitação
 não invalida os runners, mas deve ser resolvida ou aceite explicitamente antes

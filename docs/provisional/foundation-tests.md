@@ -144,7 +144,7 @@ The following commands were re-run after integration:
 
 ```text
 swift build                                      PASS
-swift run BPViewerFoundationRunner               31 passed, 0 failed
+swift run BPViewerFoundationRunner               36 passed, 0 failed
 swift run BPViewerContractRunner                 11 passed
 git diff --check HEAD^ HEAD                      PASS
 swift test                                       BLOCKED: no such module 'Testing'
