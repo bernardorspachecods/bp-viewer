@@ -10,7 +10,23 @@ O projeto é pessoal e começa focado em macOS.
 
 ## Estado
 
-Fase inicial de definição e pesquisa. As decisões técnicas dos adapters de Markdown e LaTeX ainda não estão fechadas.
+O shell nativo e o vertical slice Markdown estão implementados. O adapter LaTeX ainda está pendente.
+
+## Executar
+
+```bash
+swift run BPViewer
+```
+
+## Validação automática
+
+O contract runner valida o adapter Markdown sem precisar de uma janela gráfica:
+
+```bash
+swift run BPViewerContractRunner
+```
+
+O runner cobre headings/âncoras, links, imagens/dependências, CSP, remoção de HTML raw e matemática TeX comum.
 
 ## Princípios
 

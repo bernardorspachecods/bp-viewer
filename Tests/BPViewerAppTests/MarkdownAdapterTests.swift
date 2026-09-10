@@ -1,5 +1,5 @@
 import Testing
-@testable import BPViewerApp
+@testable import BPViewerCore
 
 @Test("renders core Markdown and keeps resource URLs relative")
 func rendersCoreMarkdownAndKeepsResourceURLsRelative() throws {

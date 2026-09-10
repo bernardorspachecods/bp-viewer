@@ -1,4 +1,5 @@
 import AppKit
+import BPViewerCore
 import Combine
 import Darwin
 import Foundation
