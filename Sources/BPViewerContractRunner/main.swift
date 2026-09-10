@@ -35,6 +35,24 @@ struct BPViewerContractRunner {
         expect(result.html.contains("<math"), "math")
         expect(result.html.contains("<msup>"), "superscript")
         expect(result.html.contains("<mfrac>"), "fraction")
+
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bp-viewer-local-image-" + UUID().uuidString, isDirectory: true)
+        let imageDirectory = fixtureRoot.appendingPathComponent("images", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let pixelData = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
+        try pixelData.write(to: imageDirectory.appendingPathComponent("pixel.png"))
+
+        let localImageResult = try SwiftMarkdownAdapter().render(
+            source: "![Pixel](images/pixel.png)",
+            baseURL: fixtureRoot
+        )
+        expect(localImageResult.html.contains("src=\"data:image/png;base64,"), "local image is embedded")
+        expect(
+            localImageResult.dependencies.contains(imageDirectory.appendingPathComponent("pixel.png")),
+            "embedded local image remains a dependency"
+        )
     }
 
     private static func expect(_ condition: Bool, _ name: String) {

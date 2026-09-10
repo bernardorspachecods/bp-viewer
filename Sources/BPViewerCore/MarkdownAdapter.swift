@@ -45,7 +45,7 @@ private struct MarkdownHTMLDocument {
         <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: file: http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
           <style>
             :root { color-scheme: light dark; }
             body {
@@ -203,11 +203,15 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
             html += "<span class=\"missing-image\">\(escapeText(image.plainText))</span>"
             return
         }
+        var renderedSource = source
         if let resourceURL = localResourceURL(for: source) {
             dependencies.insert(resourceURL)
+            if let embeddedSource = embeddedImageSource(for: resourceURL) {
+                renderedSource = embeddedSource
+            }
         }
         let alt = escapeAttribute(image.plainText)
-        html += "<img src=\"\(escapeAttribute(source))\" alt=\"\(alt)\""
+        html += "<img src=\"\(escapeAttribute(renderedSource))\" alt=\"\(alt)\""
         if let title = image.title, !title.isEmpty {
             html += " title=\"\(escapeAttribute(title))\""
         }
@@ -259,6 +263,32 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
     private func localResourceURL(for source: String) -> URL? {
         guard URL(string: source)?.scheme == nil else { return nil }
         return baseURL.appendingPathComponent(source).standardizedFileURL
+    }
+
+    private func embeddedImageSource(for url: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              !data.isEmpty,
+              let mimeType = imageMIMEType(for: url.pathExtension) else {
+            return nil
+        }
+
+        return "data:\(mimeType);base64,\(data.base64EncodedString())"
+    }
+
+    private func imageMIMEType(for pathExtension: String) -> String? {
+        switch pathExtension.lowercased() {
+        case "avif": return "image/avif"
+        case "bmp": return "image/bmp"
+        case "gif": return "image/gif"
+        case "ico": return "image/x-icon"
+        case "jpeg", "jpg": return "image/jpeg"
+        case "png": return "image/png"
+        case "svg": return "image/svg+xml"
+        case "tif", "tiff": return "image/tiff"
+        case "webp": return "image/webp"
+        default: return nil
+        }
     }
 
     private func escapeText(_ value: String) -> String {

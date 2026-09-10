@@ -66,14 +66,14 @@ the LaTeX phase.
 ## Primary validation outcome
 
 The first manual preview showed the WebKit broken-image placeholder for the
-local SVG, while the formulas and remote image rendered correctly. The cause
-was a directory base URL without a trailing slash: WebKit resolved
-`images/local-diagram.svg` against the parent directory. The adapter now
-normalizes directory base URLs and the Markdown contract runner includes a
-regression check for that invariant.
+local SVG, while the formulas and remote image rendered correctly. Normalizing
+the directory base URL with a trailing slash did not fix the problem: the
+remaining issue is that `WKWebView.loadHTMLString` does not reliably read local
+relative resources from an in-memory document.
 
-After the code fix, the contract runner, foundation runner and full build pass;
-the local SVG should be re-opened in the app to confirm the visual result.
+The adapter now embeds existing local images as `data:` URLs while retaining
+their filesystem paths as dependencies for the watcher. The local SVG should
+be re-opened in the app to confirm the visual result after this fix.
 
 ## Evidence
 
