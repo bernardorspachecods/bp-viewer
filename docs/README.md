@@ -5,6 +5,7 @@ Este diretório contém a documentação durável do projeto. O `README.md` na r
 ## Documentos
 
 - [Visão e plano atual](vision.md)
+- [Plano técnico inicial](technical-plan.md)
 - [Plano de pesquisa técnica](research/README.md)
 
 Novos documentos só devem ser adicionados quando tiverem uma responsabilidade própria, como uma decisão arquitetural, uma especificação de comportamento ou uma investigação técnica.
