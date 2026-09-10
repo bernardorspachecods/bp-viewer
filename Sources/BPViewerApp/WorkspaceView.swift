@@ -132,13 +132,21 @@ struct PreviewPane: View {
             Group {
                 if tab.kind == .markdown, let html = tab.previewHTML {
                     VStack(spacing: 0) {
+                        if model.isFindBarVisible {
+                            MarkdownFindBar()
+                        }
                         if let errorMessage = tab.errorMessage {
                             PreviewErrorBanner(message: errorMessage, showingStalePreview: tab.isStale)
                         }
                     MarkdownPreviewView(
                         html: html,
                         baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
-                        onNavigate: model.openPreviewURL
+                        documentID: tab.id,
+                        onNavigate: model.openPreviewURL,
+                        zoom: model.previewZoom,
+                        findQuery: model.findQuery,
+                        findRequestID: model.findRequestID,
+                        findBackwards: model.findBackwards
                     )
                     }
                 } else {
@@ -154,6 +162,38 @@ struct PreviewPane: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(BPTokens.Color.canvas)
+    }
+}
+
+struct MarkdownFindBar: View {
+    @EnvironmentObject private var model: AppModel
+    @FocusState private var isSearchFocused: Bool
+
+    var body: some View {
+        HStack(spacing: BPTokens.Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(BPTokens.Color.muted)
+
+            TextField("Pesquisar no preview", text: $model.findQuery)
+                .textFieldStyle(.roundedBorder)
+                .focused($isSearchFocused)
+                .onSubmit { model.findNext() }
+
+            ToolbarIconButton(systemName: "chevron.up", help: "Resultado anterior") {
+                model.findPrevious()
+            }
+            ToolbarIconButton(systemName: "chevron.down", help: "Resultado seguinte") {
+                model.findNext()
+            }
+            ToolbarIconButton(systemName: "xmark", help: "Fechar pesquisa") {
+                model.hideFindBar()
+            }
+        }
+        .padding(.horizontal, BPTokens.Spacing.md)
+        .padding(.vertical, BPTokens.Spacing.xs)
+        .background(BPTokens.Color.surface)
+        .onAppear { isSearchFocused = true }
+        .onExitCommand { model.hideFindBar() }
     }
 }
 

@@ -21,6 +21,18 @@ struct BPViewerApp: App {
                 Button("Atualizar preview", action: model.refreshActiveTab)
                     .keyboardShortcut("r", modifiers: [.command])
 
+                Button("Pesquisar no preview", action: model.showFindBar)
+                    .keyboardShortcut("f", modifiers: [.command])
+
+                Button("Aumentar zoom", action: model.zoomIn)
+                    .keyboardShortcut("+", modifiers: [.command])
+
+                Button("Diminuir zoom", action: model.zoomOut)
+                    .keyboardShortcut("-", modifiers: [.command])
+
+                Button("Repor zoom", action: model.resetPreviewZoom)
+                    .keyboardShortcut("0", modifiers: [.command])
+
                 Button("Alternar sidebar", action: { model.setSidebarVisible(!model.sidebarVisible) })
                     .keyboardShortcut("b", modifiers: [.command, .option])
 

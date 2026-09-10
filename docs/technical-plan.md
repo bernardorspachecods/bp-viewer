@@ -25,7 +25,9 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - erros mantêm o último preview disponível e mostram o diagnóstico;
 - a árvore indexa inicialmente apenas o primeiro nível, carrega pastas sob pedido e mostra progresso durante indexação/pesquisa;
 - links Markdown internos para `.md`/`.tex` focam ou abrem tabs, enquanto links externos passam para o browser do macOS;
-- matemática, links internos controlados, dependências transclusivas e LaTeX continuam fases seguintes.
+- o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
+- imagens locais do Markdown entram nas dependências observadas para atualização automática;
+- matemática TeX avançada, links internos fora da raiz, dependências transclusivas e LaTeX continuam fases seguintes.
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
 

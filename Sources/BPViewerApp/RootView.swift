@@ -89,6 +89,23 @@ struct TopBarView: View {
                 StatusBadge(status: activeTab.status)
             }
 
+            if model.activeTab?.kind == .markdown {
+                ToolbarIconButton(systemName: "magnifyingglass", help: "Pesquisar no preview") {
+                    model.showFindBar()
+                }
+                ToolbarIconButton(systemName: "minus.magnifyingglass", help: "Diminuir zoom") {
+                    model.zoomOut()
+                }
+                Button("\(Int(model.previewZoom * 100))%", action: model.resetPreviewZoom)
+                    .buttonStyle(.plain)
+                    .font(BPTokens.Typography.caption)
+                    .frame(minWidth: 42)
+                    .help("Repor zoom")
+                ToolbarIconButton(systemName: "plus.magnifyingglass", help: "Aumentar zoom") {
+                    model.zoomIn()
+                }
+            }
+
             ToolbarIconButton(systemName: "arrow.clockwise", help: "Atualizar preview") {
                 model.refreshActiveTab()
             }

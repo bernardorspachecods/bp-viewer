@@ -15,6 +15,11 @@ final class AppModel: ObservableObject {
     @Published var expandedPaths: Set<String> = []
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
+    @Published var previewZoom: Double = 1.0
+    @Published var isFindBarVisible = false
+    @Published var findQuery = ""
+    @Published var findRequestID = 0
+    @Published var findBackwards = false
     @Published private(set) var isScanningTree = false
     @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
@@ -31,8 +36,8 @@ final class AppModel: ObservableObject {
     private var treeFilterTask: Task<Void, Never>?
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
-    private var activeFileWatcher: DispatchSourceFileSystemObject?
-    private var watchedFileURL: URL?
+    private var activeFileWatchers: [URL: DispatchSourceFileSystemObject] = [:]
+    private var watchedFileURLs: Set<URL> = []
     private var fileRefreshGeneration = 0
 
     private enum Keys {
@@ -42,6 +47,7 @@ final class AppModel: ObservableObject {
         static let activeTab = "bp-viewer.activeTab"
         static let sidebarVisible = "bp-viewer.sidebarVisible"
         static let sidebarWidth = "bp-viewer.sidebarWidth"
+        static let previewZoom = "bp-viewer.previewZoom"
         static let compatibleOnly = "bp-viewer.compatibleOnly"
     }
 
@@ -50,6 +56,7 @@ final class AppModel: ObservableObject {
         theme = AppThemePreference(rawValue: savedTheme ?? "") ?? .dark
         sidebarVisible = defaults.object(forKey: Keys.sidebarVisible) as? Bool ?? true
         sidebarWidth = defaults.object(forKey: Keys.sidebarWidth) as? Double ?? 280
+        previewZoom = defaults.object(forKey: Keys.previewZoom) as? Double ?? 1.0
         compatibleOnly = defaults.object(forKey: Keys.compatibleOnly) as? Bool ?? true
 
         if let path = defaults.string(forKey: Keys.lastRoot) {
@@ -101,7 +108,7 @@ final class AppModel: ObservableObject {
     }
 
     func openRoot(_ url: URL) {
-        stopWatchingActiveFile()
+        stopWatchingActiveFiles()
         treeFilterTask?.cancel()
         fullIndexTask?.cancel()
         fullIndexTask = nil
@@ -258,6 +265,44 @@ final class AppModel: ObservableObject {
             tabs[index].errorMessage = nil
         }
         persistState()
+    }
+
+    func showFindBar() {
+        guard activeTab?.kind == .markdown else { return }
+        isFindBarVisible = true
+    }
+
+    func hideFindBar() {
+        isFindBarVisible = false
+        findQuery = ""
+        findRequestID += 1
+    }
+
+    func findNext() {
+        findBackwards = false
+        findRequestID += 1
+    }
+
+    func findPrevious() {
+        findBackwards = true
+        findRequestID += 1
+    }
+
+    func zoomIn() {
+        setPreviewZoom(previewZoom + 0.1)
+    }
+
+    func zoomOut() {
+        setPreviewZoom(previewZoom - 0.1)
+    }
+
+    func resetPreviewZoom() {
+        setPreviewZoom(1.0)
+    }
+
+    private func setPreviewZoom(_ value: Double) {
+        previewZoom = min(max(value, 0.7), 2.0)
+        defaults.set(previewZoom, forKey: Keys.previewZoom)
     }
 
     private func applyTreeFilter() {
@@ -435,60 +480,64 @@ final class AppModel: ObservableObject {
         guard let activeTabID,
               let tab = tabs.first(where: { $0.id == activeTabID }),
               tab.kind == .markdown else {
-            stopWatchingActiveFile()
+            stopWatchingActiveFiles()
             return
         }
 
-        startWatchingActiveFile(tab.url)
+        startWatchingActiveFiles([tab.url] + tab.previewDependencies)
         if tab.previewHTML == nil || tab.status != .ready {
             renderMarkdown(tabID: activeTabID)
         }
     }
 
-    private func startWatchingActiveFile(_ url: URL) {
-        let standardizedURL = url.standardizedFileURL
-        guard watchedFileURL != standardizedURL else { return }
+    private func startWatchingActiveFiles(_ urls: [URL]) {
+        let standardizedURLs = Set(urls.map(\.standardizedFileURL))
+        guard watchedFileURLs != standardizedURLs else { return }
 
-        stopWatchingActiveFile()
-        let descriptor = Darwin.open(standardizedURL.path, O_EVTONLY)
-        guard descriptor >= 0 else { return }
+        stopWatchingActiveFiles()
+        for url in standardizedURLs {
+            let descriptor = Darwin.open(url.path, O_EVTONLY)
+            guard descriptor >= 0 else { continue }
 
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: descriptor,
-            eventMask: [.write, .rename, .delete],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in
-            self?.scheduleActiveFileRefresh(for: standardizedURL)
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: descriptor,
+                eventMask: [.write, .rename, .delete],
+                queue: .main
+            )
+            source.setEventHandler { [weak self] in
+                self?.scheduleActiveFileRefresh(for: url)
+            }
+            source.setCancelHandler {
+                Darwin.close(descriptor)
+            }
+            activeFileWatchers[url] = source
+            watchedFileURLs.insert(url)
+            source.resume()
         }
-        source.setCancelHandler {
-            Darwin.close(descriptor)
-        }
-        watchedFileURL = standardizedURL
-        activeFileWatcher = source
-        source.resume()
     }
 
-    private func stopWatchingActiveFile() {
-        activeFileWatcher?.cancel()
-        activeFileWatcher = nil
-        watchedFileURL = nil
+    private func stopWatchingActiveFiles() {
+        activeFileWatchers.values.forEach { $0.cancel() }
+        activeFileWatchers.removeAll()
+        watchedFileURLs.removeAll()
         fileRefreshGeneration += 1
     }
 
     private func scheduleActiveFileRefresh(for url: URL) {
-        guard watchedFileURL == url,
+        guard watchedFileURLs.contains(url),
               let activeTabID,
-              tabs.contains(where: { $0.id == activeTabID && $0.url.standardizedFileURL == url }) else { return }
+              tabs.contains(where: { tab in
+                  tab.id == activeTabID
+                    && ([tab.url] + tab.previewDependencies).map(\.standardizedFileURL).contains(url)
+              }) else { return }
 
         fileRefreshGeneration += 1
         let generation = fileRefreshGeneration
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
             guard let self, self.fileRefreshGeneration == generation else { return }
+            self.stopWatchingActiveFiles()
             self.renderMarkdown(tabID: activeTabID)
-            self.stopWatchingActiveFile()
-            self.startWatchingActiveFile(url)
         }
     }
 
@@ -518,9 +567,13 @@ final class AppModel: ObservableObject {
 
                 self.tabs[index].previewHTML = result.html
                 self.tabs[index].previewBaseURL = result.baseURL
+                self.tabs[index].previewDependencies = result.dependencies
                 self.tabs[index].status = .ready
                 self.tabs[index].isStale = false
                 self.tabs[index].errorMessage = nil
+                if self.activeTabID == tabID {
+                    self.startWatchingActiveFiles([tabURL] + result.dependencies)
+                }
             } catch {
                 guard let self,
                       self.previewGenerations[tabID] == generation,
@@ -529,6 +582,9 @@ final class AppModel: ObservableObject {
                 self.tabs[index].status = .failed
                 self.tabs[index].isStale = self.tabs[index].previewHTML != nil
                 self.tabs[index].errorMessage = error.localizedDescription
+                if self.activeTabID == tabID {
+                    self.startWatchingActiveFiles([tabURL] + self.tabs[index].previewDependencies)
+                }
             }
         }
     }

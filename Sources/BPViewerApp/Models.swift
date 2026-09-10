@@ -111,6 +111,7 @@ struct DocumentTab: Identifiable, Hashable {
     var isStale: Bool = false
     var previewHTML: String?
     var previewBaseURL: URL?
+    var previewDependencies: [URL] = []
     var errorMessage: String?
 
     var title: String { url.deletingPathExtension().lastPathComponent }
