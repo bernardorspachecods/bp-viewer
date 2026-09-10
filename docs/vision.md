@@ -31,6 +31,13 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A árvore deve suportar navegação por teclado, incluindo seleção, abertura e expansão/fecho.
 - O estado expandido/fechado das pastas deve ser restaurado ao reabrir o projeto.
 - O menu para abrir pastas deve apresentar pastas recentes, mantendo essa informação local.
+- Uma pasta sem ficheiros compatíveis deve apresentar uma mensagem explicativa, sem esconder a própria árvore.
+- Ficheiros ou pastas sem acesso devem continuar visíveis com um indicador de acesso bloqueado.
+- Ficheiros ocultos do macOS ficam escondidos por defeito.
+- A árvore deve ter pesquisa própria por nome ou caminho, separada da pesquisa do preview.
+- A pesquisa da árvore deve mostrar também pastas que contenham resultados nos descendentes.
+- Clicar numa pasta deve apenas expandi-la ou fechá-la, sem alterar o preview ativo.
+- Ao ativar uma tab, o ficheiro correspondente deve ficar visível na árvore.
 - O filtro altera a navegação, não a resolução interna de dependências pelos adapters.
 
 ### Preview e atualização
@@ -41,6 +48,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A interface deve indicar se o preview está a atualizar, atualizado ou com erro.
 - Quando uma alteração causa um erro, a área principal mostra os detalhes do erro por defeito.
 - O utilizador pode pedir para ver o último preview válido, que deve ser identificado claramente como desatualizado.
+- Depois de uma atualização automática, a app deve tentar preservar a posição de leitura.
 - Markdown deve suportar matemática delimitada, como `$x^2$` e `$$...$$`.
 - A tab ou topbar deve mostrar contexto suficiente do caminho relativo do ficheiro ativo para distinguir ficheiros com o mesmo nome.
 - Links para ficheiros `.md` ou `.tex` dentro da pasta aberta devem abrir ou focar esses ficheiros numa tab.
@@ -50,6 +58,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - HTML raw em Markdown deve ser aceite apenas depois de sanitizado.
 - Links locais para ficheiros não suportados devem abrir o programa predefinido do macOS mediante uma ação explícita.
 - O preview LaTeX/PDF deve usar scroll contínuo por defeito, com paginação visual normal.
+- O preview deve mostrar quando foi atualizado pela última vez.
 - A topbar deve incluir um botão para alternar manualmente entre tema claro e escuro.
 - A pesquisa (`⌘F`) deve atuar apenas sobre o conteúdo renderizado da tab atual.
 - O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
@@ -65,6 +74,8 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A escolha manual do documento principal deve ser memorizada por projeto.
 - O utilizador deve poder alterar posteriormente o documento principal escolhido.
 - A abertura de um `.tex` deve iniciar automaticamente a compilação.
+- O MVP deve usar uma instalação local de LaTeX; a app não precisa de incluir o compilador.
+- O resultado LaTeX deve ser apresentado como PDF compilado dentro da app.
 - Se o LaTeX não estiver disponível, a tab deve mostrar um erro específico com instruções de configuração, ação para voltar a tentar e opção para copiar o diagnóstico; isto não deve impedir o uso do Markdown.
 - Os erros de compilação devem permitir expandir o log completo e copiá-lo.
 - Dependências LaTeX fora da pasta-raiz exigem confirmação explícita.
@@ -79,6 +90,10 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - As tabs devem ser restauradas depois de reiniciar a aplicação.
 - A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
 - A aplicação deve restaurar também a posição de leitura de cada tab.
+- A escolha entre tema claro e escuro deve ser restaurada ao reiniciar.
+- O tamanho da janela e a largura da sidebar devem ser restaurados ao reiniciar.
+- A escolha da tab não deve impedir o fecho da app durante uma compilação ativa.
+- O menu contextual das tabs deve permitir fechar as outras tabs e as tabs à direita.
 - `⌘W` deve fechar a tab atual e `⌘1`–`⌘9` devem permitir mudar rapidamente entre tabs.
 - A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
 
@@ -92,6 +107,8 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Ao abrir outra pasta com tabs existentes, a aplicação deve pedir confirmação antes de substituir o projeto atual.
 - Uma pasta ou ficheiro pode ser arrastado do Finder para a app.
 - O menu contextual de um ficheiro deve permitir mostrá-lo no Finder, copiar o seu caminho e abri-lo no editor predefinido do sistema.
+- O menu contextual deve permitir copiar também o caminho relativo à pasta-raiz.
+- Deve existir uma ação para revelar na árvore o ficheiro correspondente à tab ativa.
 
 ### Evolução futura
 
@@ -137,7 +154,7 @@ Hipótese inicial: converter Markdown para HTML através de um adapter e apresen
 
 ### LaTeX
 
-Hipótese inicial: usar uma instalação local de LaTeX e apresentar o resultado compilado. A escolha entre PDF, HTML ou outra estratégia permanece aberta até à pesquisa dos adapters e das necessidades reais dos documentos.
+Hipótese inicial: usar uma instalação local de LaTeX e apresentar o resultado compilado como PDF dentro da app. A distribuição concreta, deteção da instalação e integração do processo permanecem dependentes da pesquisa e dos testes locais.
 
 Os artefactos temporários de compilação não devem poluir a pasta do projeto do utilizador.
 
@@ -147,18 +164,20 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Uso pessoal.
 - Primeira plataforma: macOS.
 - Repository GitHub privada.
+- A implementação do MVP deve privilegiar uma app nativa de macOS, sem compromisso com Windows ou Linux.
+- A distribuição inicial destina-se apenas ao uso pessoal fora da App Store, por build local ou pacote direto.
 - Os ficheiros raw permanecem fora do controlo de edição da aplicação.
 - A app deve ser independente do LLM que altera os ficheiros.
+- A app não deve impor restrições artificiais ao acesso dos ficheiros pessoais; as permissões efetivas continuam a ser controladas pelo macOS.
 - A estrutura documental começa com um `README.md` na raiz e documentos relacionados em `docs/`.
 
 ## Hipóteses ainda abertas
 
 - Adapter e parser de Markdown.
 - Implementação concreta do suporte já definido para matemática, imagens, links, HTML sanitizado e imagens remotas em Markdown.
-- Estratégia de renderização de LaTeX.
+- Integração concreta da compilação e apresentação do PDF LaTeX.
 - Dependências locais necessárias para LaTeX.
 - Semântica exata da deteção de alterações, debounce e coordenação de renders.
-- Tecnologia da aplicação desktop.
 - Algoritmo exato para identificar o ficheiro principal LaTeX.
 - Metadados adicionais a restaurar nas tabs.
 
