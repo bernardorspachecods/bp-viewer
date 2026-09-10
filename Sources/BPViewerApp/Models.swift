@@ -1,7 +1,6 @@
 import SwiftUI
 
 enum AppThemePreference: String, CaseIterable, Identifiable {
-    case system
     case light
     case dark
 
@@ -9,7 +8,6 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: "Sistema"
         case .light: "Claro"
         case .dark: "Escuro"
         }
@@ -17,7 +15,6 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
 
     var colorScheme: ColorScheme? {
         switch self {
-        case .system: nil
         case .light: .light
         case .dark: .dark
         }

@@ -34,7 +34,8 @@ final class AppModel: ObservableObject {
     }
 
     init() {
-        theme = AppThemePreference(rawValue: defaults.string(forKey: Keys.theme) ?? "system") ?? .system
+        let savedTheme = defaults.string(forKey: Keys.theme)
+        theme = AppThemePreference(rawValue: savedTheme ?? "") ?? .dark
         sidebarVisible = defaults.object(forKey: Keys.sidebarVisible) as? Bool ?? true
         sidebarWidth = defaults.object(forKey: Keys.sidebarWidth) as? Double ?? 280
         compatibleOnly = defaults.object(forKey: Keys.compatibleOnly) as? Bool ?? true
@@ -212,9 +213,8 @@ final class AppModel: ObservableObject {
 
     func cycleTheme() {
         switch theme {
-        case .system: theme = .light
         case .light: theme = .dark
-        case .dark: theme = .system
+        case .dark: theme = .light
         }
         defaults.set(theme.rawValue, forKey: Keys.theme)
     }
