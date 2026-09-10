@@ -306,12 +306,10 @@ final class AppModel: ObservableObject {
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
             eventMask: [.write, .rename, .delete],
-            queue: DispatchQueue.global(qos: .utility)
+            queue: .main
         )
         source.setEventHandler { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.scheduleActiveFileRefresh(for: standardizedURL)
-            }
+            self?.scheduleActiveFileRefresh(for: standardizedURL)
         }
         source.setCancelHandler {
             Darwin.close(descriptor)
