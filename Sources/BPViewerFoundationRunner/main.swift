@@ -95,6 +95,11 @@ private struct Runner {
         expect(state.activePath == first.standardizedFileURL, "duplicate open focuses existing tab")
         expect(state.select(second), "selecting an existing tab succeeds")
         expect(!state.select(missing), "selecting an unknown tab is ignored")
+        expect(state.select(first), "selecting the first tab succeeds")
+        expect(state.selectNext(), "control-tab advances to the next tab")
+        expect(state.activePath == second.standardizedFileURL, "control-tab selects the next tab")
+        expect(state.selectNext(), "control-tab wraps after the last tab")
+        expect(state.activePath == first.standardizedFileURL, "control-tab cycles to the first tab")
         expect(state.close(second), "closing an existing tab succeeds")
         expect(state.activePath == first.standardizedFileURL, "closing active tab selects adjacent remaining tab")
 

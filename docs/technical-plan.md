@@ -151,6 +151,7 @@ Fontes: [vision.md — Objetivo, Escopo do MVP, Fora do escopo inicial e Decisõ
 - Links `.md`/`.tex` dentro da pasta aberta focam ou abrem tabs; links locais para ficheiros não suportados e links externos abrem o programa/browser normal apenas por ação explícita.
 - LaTeX aparece como PDF compilado dentro da app, em scroll contínuo por defeito.
 - O preview oferece tema claro/escuro, pesquisa apenas na tab ativa, zoom, outline quando disponível, seleção/cópia e atualização manual (`⌘R` incluído).
+- `⌘W` fecha a tab ativa sem fechar a janela e `Control-Tab` avança pelas tabs com wrap-around.
 
 ### 1.4 LaTeX e tabs
 

@@ -211,6 +211,19 @@ public struct TabSessionState: Equatable, Sendable {
     }
 
     @discardableResult
+    public mutating func selectNext() -> Bool {
+        guard !paths.isEmpty else { return false }
+        guard let activePath,
+              let index = paths.firstIndex(of: activePath) else {
+            self.activePath = paths[0]
+            return true
+        }
+
+        self.activePath = paths[(index + 1) % paths.count]
+        return true
+    }
+
+    @discardableResult
     public mutating func close(_ path: URL) -> Bool {
         let normalized = path.standardizedFileURL
         guard let index = paths.firstIndex(of: normalized) else { return false }

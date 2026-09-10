@@ -253,6 +253,11 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
+    func closeActiveTab() {
+        guard let activeTab else { return }
+        closeTab(activeTab)
+    }
+
     func closeOtherTabs(keeping tab: DocumentTab) {
         var session = tabSessionState
         guard session.closeOthers(keeping: tab.url) else { return }
@@ -464,6 +469,14 @@ final class AppModel: ObservableObject {
     func selectTab(number: Int) {
         guard tabs.indices.contains(number) else { return }
         selectTab(id: tabs[number].id)
+    }
+
+    func selectNextTab() {
+        var session = tabSessionState
+        guard session.selectNext() else { return }
+        activeTabID = session.activePath?.path
+        renderActiveTabIfNeeded()
+        persistState()
     }
 
     func selectTab(id: String) {

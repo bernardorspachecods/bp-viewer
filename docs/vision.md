@@ -95,6 +95,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A escolha da tab não deve impedir o fecho da app durante uma compilação ativa.
 - O menu contextual das tabs deve permitir fechar as outras tabs e as tabs à direita.
 - `⌘W` deve fechar a tab atual e `⌘1`–`⌘9` devem permitir mudar rapidamente entre tabs.
+- `Control-Tab` deve avançar para a tab seguinte e voltar à primeira depois da última.
 - A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
 
 ### Abertura a partir do Finder

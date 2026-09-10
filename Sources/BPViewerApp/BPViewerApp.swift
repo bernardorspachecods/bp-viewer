@@ -40,14 +40,15 @@ struct BPViewerApp: App {
                     .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
-            CommandGroup(after: .windowArrangement) {
-                Button("Fechar tab", action: {
-                    if let activeTab = model.activeTab { model.closeTab(activeTab) }
-                })
+            CommandGroup(replacing: .windowArrangement) {
+                Button("Fechar tab", action: model.closeActiveTab)
                 .keyboardShortcut("w", modifiers: [.command])
             }
 
             CommandMenu("Tabs") {
+                Button("Próxima tab", action: model.selectNextTab)
+                    .keyboardShortcut(.tab, modifiers: [.control])
+
                 ForEach(Array(model.tabs.prefix(9).enumerated()), id: \.element.id) { index, tab in
                     Button("\(index + 1): \(tab.title)") {
                         model.selectTab(number: index)
