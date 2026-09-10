@@ -2,7 +2,15 @@ import Foundation
 
 struct FileSystemScanner: Sendable {
     func scan(root: URL) -> [FileNode] {
-        makeChildren(of: root, root: root)
+        makeChildren(of: root, root: root, recursive: true)
+    }
+
+    func scanTopLevel(root: URL) -> [FileNode] {
+        makeChildren(of: root, root: root, recursive: false)
+    }
+
+    func scanChildren(of directory: URL, root: URL) -> [FileNode] {
+        makeChildren(of: directory, root: root, recursive: false)
     }
 
     func filter(_ nodes: [FileNode], compatibleOnly: Bool, query: String) -> [FileNode] {
@@ -14,7 +22,8 @@ struct FileSystemScanner: Sendable {
 
     private func makeChildren(
         of directory: URL,
-        root: URL
+        root: URL,
+        recursive: Bool
     ) -> [FileNode] {
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -24,7 +33,7 @@ struct FileSystemScanner: Sendable {
 
         return urls
             .filter { !$0.lastPathComponent.hasPrefix(".") }
-            .compactMap { makeNode(at: $0, root: root) }
+            .compactMap { makeNode(at: $0, root: root, recursive: recursive) }
             .sorted { lhs, rhs in
                 if lhs.isDirectory != rhs.isDirectory {
                     return lhs.isDirectory && !rhs.isDirectory
@@ -35,7 +44,8 @@ struct FileSystemScanner: Sendable {
 
     private func makeNode(
         at url: URL,
-        root: URL
+        root: URL,
+        recursive: Bool
     ) -> FileNode? {
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
         let isDirectory = values?.isDirectory == true
@@ -43,14 +53,15 @@ struct FileSystemScanner: Sendable {
         let kind = DocumentKind(url: url)
 
         if isDirectory {
-            let children = makeChildren(of: url, root: root)
+            let children = recursive ? makeChildren(of: url, root: root, recursive: true) : []
             return FileNode(
                 id: relativePath,
                 url: url,
                 relativePath: relativePath,
                 isDirectory: true,
                 kind: .other,
-                children: children
+                children: children,
+                childrenLoaded: recursive
             )
         }
 
@@ -60,7 +71,8 @@ struct FileSystemScanner: Sendable {
             relativePath: relativePath,
             isDirectory: false,
             kind: kind,
-            children: []
+            children: [],
+            childrenLoaded: true
         )
     }
 
@@ -77,8 +89,9 @@ struct FileSystemScanner: Sendable {
             let children = node.children.compactMap {
                 filterNode($0, compatibleOnly: compatibleOnly, normalizedQuery: normalizedQuery)
             }
-            let keepForSearch = normalizedQuery.isEmpty || matchesQuery || !children.isEmpty
-            let keepForCompatibility = !compatibleOnly || !children.isEmpty
+            let hasUnknownChildren = !node.childrenLoaded
+            let keepForSearch = normalizedQuery.isEmpty || matchesQuery || !children.isEmpty || hasUnknownChildren
+            let keepForCompatibility = !compatibleOnly || hasUnknownChildren || !children.isEmpty
 
             guard keepForSearch && keepForCompatibility else { return nil }
             return FileNode(
@@ -87,7 +100,8 @@ struct FileSystemScanner: Sendable {
                 relativePath: node.relativePath,
                 isDirectory: true,
                 kind: .other,
-                children: children
+                children: children,
+                childrenLoaded: node.childrenLoaded
             )
         }
 

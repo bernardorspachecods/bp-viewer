@@ -24,9 +24,12 @@ final class AppModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
+    private var fullyIndexedNodes: [FileNode]?
+    private var fullIndexTask: Task<[FileNode], Never>?
     private var treeScanGeneration = 0
     private var treeFilterGeneration = 0
     private var treeFilterTask: Task<Void, Never>?
+    private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
     private var activeFileWatcher: DispatchSourceFileSystemObject?
     private var watchedFileURL: URL?
@@ -100,6 +103,9 @@ final class AppModel: ObservableObject {
     func openRoot(_ url: URL) {
         stopWatchingActiveFile()
         treeFilterTask?.cancel()
+        fullIndexTask?.cancel()
+        fullIndexTask = nil
+        fullyIndexedNodes = nil
         rootURL = url.standardizedFileURL
         tabs = []
         activeTabID = nil
@@ -123,7 +129,7 @@ final class AppModel: ObservableObject {
 
         Task { [weak self] in
             let scannedNodes = await Task.detached(priority: .userInitiated) {
-                scanner.scan(root: rootURL)
+                scanner.scanTopLevel(root: rootURL)
             }.value
 
             guard let self,
@@ -152,6 +158,7 @@ final class AppModel: ObservableObject {
             expandedPaths.remove(path)
         } else {
             expandedPaths.insert(path)
+            loadChildrenIfNeeded(for: path)
         }
         persistState()
     }
@@ -224,6 +231,7 @@ final class AppModel: ObservableObject {
         let completeNodes = completeNodes
         let compatibleOnly = compatibleOnly
         let query = treeQuery
+        let rootURL = rootURL
 
         treeFilterTask?.cancel()
         isFilteringTree = true
@@ -231,9 +239,16 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(90))
             guard !Task.isCancelled else { return }
 
+            var sourceNodes = completeNodes
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let rootURL {
+                let fullIndexTask = self?.fullIndexTaskForSearch(rootURL: rootURL, scanner: scanner)
+                sourceNodes = await fullIndexTask?.value ?? completeNodes
+            }
+
             let filteredNodes = await Task.detached(priority: .userInitiated) {
                 scanner.filter(
-                    completeNodes,
+                    sourceNodes,
                     compatibleOnly: compatibleOnly,
                     query: query
                 )
@@ -243,9 +258,85 @@ final class AppModel: ObservableObject {
                   self.treeFilterGeneration == generation,
                   self.rootURL != nil else { return }
 
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.fullyIndexedNodes = sourceNodes
+                self.completeNodes = sourceNodes
+            }
             self.nodes = filteredNodes
             self.isFilteringTree = false
         }
+    }
+
+    private func fullIndexTaskForSearch(
+        rootURL: URL,
+        scanner: FileSystemScanner
+    ) -> Task<[FileNode], Never> {
+        if let fullyIndexedNodes {
+            return Task { fullyIndexedNodes }
+        }
+        if let fullIndexTask {
+            return fullIndexTask
+        }
+
+        let task = Task.detached(priority: .userInitiated) {
+            scanner.scan(root: rootURL)
+        }
+        fullIndexTask = task
+        return task
+    }
+
+    private func loadChildrenIfNeeded(for path: String) {
+        guard let directory = findNode(in: completeNodes, id: path),
+              directory.isDirectory,
+              !directory.childrenLoaded,
+              let rootURL else { return }
+
+        let generation = (childLoadGenerations[path] ?? 0) + 1
+        childLoadGenerations[path] = generation
+        let scanner = scanner
+        let directoryURL = directory.url
+
+        Task { [weak self] in
+            let children = await Task.detached(priority: .userInitiated) {
+                scanner.scanChildren(of: directoryURL, root: rootURL)
+            }.value
+
+            guard let self,
+                  self.childLoadGenerations[path] == generation,
+                  self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
+
+            self.updateNode(in: &self.completeNodes, id: path) { node in
+                node.children = children
+                node.childrenLoaded = true
+            }
+            self.applyTreeFilter()
+        }
+    }
+
+    private func findNode(in nodes: [FileNode], id: String) -> FileNode? {
+        for node in nodes {
+            if node.id == id { return node }
+            if let match = findNode(in: node.children, id: id) { return match }
+        }
+        return nil
+    }
+
+    @discardableResult
+    private func updateNode(
+        in nodes: inout [FileNode],
+        id: String,
+        update: (inout FileNode) -> Void
+    ) -> Bool {
+        for index in nodes.indices {
+            if nodes[index].id == id {
+                update(&nodes[index])
+                return true
+            }
+            if updateNode(in: &nodes[index].children, id: id, update: update) {
+                return true
+            }
+        }
+        return false
     }
 
     func cycleTheme() {

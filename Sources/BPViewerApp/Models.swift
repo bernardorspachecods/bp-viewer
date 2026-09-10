@@ -98,6 +98,7 @@ struct FileNode: Identifiable, Hashable, Sendable {
     let isDirectory: Bool
     let kind: DocumentKind
     var children: [FileNode]
+    var childrenLoaded: Bool
 
     var title: String { url.lastPathComponent }
 }

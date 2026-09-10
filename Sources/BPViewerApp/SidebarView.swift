@@ -9,6 +9,11 @@ struct SidebarView: View {
                 Label("Ficheiros", systemImage: "folder.fill")
                     .font(BPTokens.Typography.title)
                 Spacer()
+                if model.isScanningTree || model.isFilteringTree {
+                    ProgressView()
+                        .controlSize(.small)
+                        .help(model.isScanningTree ? "A indexar a pasta…" : "A pesquisar ficheiros…")
+                }
                 Text(model.nodes.count, format: .number)
                     .font(BPTokens.Typography.caption)
                     .foregroundStyle(BPTokens.Color.muted)
@@ -84,8 +89,20 @@ struct FileTreeRow: View {
                 .buttonStyle(.plain)
 
                 if model.expandedPaths.contains(node.id) {
-                    ForEach(node.children) { child in
-                        FileTreeRow(node: child, level: level + 1)
+                    if node.childrenLoaded {
+                        ForEach(node.children) { child in
+                            FileTreeRow(node: child, level: level + 1)
+                        }
+                    } else {
+                        HStack(spacing: BPTokens.Spacing.xs) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("A carregar…")
+                                .font(BPTokens.Typography.caption)
+                                .foregroundStyle(BPTokens.Color.muted)
+                        }
+                        .padding(.leading, BPTokens.Spacing.sm + CGFloat(level + 1) * BPTokens.Spacing.md)
+                        .frame(minHeight: BPTokens.Size.row)
                     }
                 }
             }
