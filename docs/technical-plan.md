@@ -692,7 +692,10 @@ As fases não significam que todas as features abaixo devam ser implementadas an
 
 **Objetivo:** integrar sessões, tabs e previews independentes.
 
-**Trabalho:** tabs únicas, root/contexto LaTeX, ordem/ativa, posição, expansão, tema, janela/sidebar, links internos, Finder, comandos e fechamento durante compilação.
+**Trabalho:** integrar o contexto/root LaTeX e os previews independentes na
+sessão de tabs já existente; reutilizar tabs únicas, ordem/ativa, posição,
+expansão, tema, janela/sidebar, links internos, Finder, comandos e fechamento
+durante compilação.
 
 **Critério de saída:** restart e mudanças de projeto não corrompem estado; tabs inválidas tornam-se recuperáveis; escolher capítulo não cria duplicate root; cada tab mostra diagnóstico/preview próprio conforme requerido.
 
