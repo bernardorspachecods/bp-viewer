@@ -6,8 +6,9 @@ struct FileSystemScanner: Sendable {
     }
 
     func filter(_ nodes: [FileNode], compatibleOnly: Bool, query: String) -> [FileNode] {
-        nodes.compactMap {
-            filterNode($0, compatibleOnly: compatibleOnly, query: query)
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return nodes.compactMap {
+            filterNode($0, compatibleOnly: compatibleOnly, normalizedQuery: normalizedQuery)
         }
     }
 
@@ -66,16 +67,15 @@ struct FileSystemScanner: Sendable {
     private func filterNode(
         _ node: FileNode,
         compatibleOnly: Bool,
-        query: String
+        normalizedQuery: String
     ) -> FileNode? {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let matchesQuery = normalizedQuery.isEmpty
             || node.title.lowercased().contains(normalizedQuery)
             || node.relativePath.lowercased().contains(normalizedQuery)
 
         if node.isDirectory {
             let children = node.children.compactMap {
-                filterNode($0, compatibleOnly: compatibleOnly, query: query)
+                filterNode($0, compatibleOnly: compatibleOnly, normalizedQuery: normalizedQuery)
             }
             let keepForSearch = normalizedQuery.isEmpty || matchesQuery || !children.isEmpty
             let keepForCompatibility = !compatibleOnly || !children.isEmpty

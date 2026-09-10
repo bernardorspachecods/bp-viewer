@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
     @Published private(set) var isScanningTree = false
+    @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
     @Published var showingRootChangeConfirmation = false
 
@@ -24,6 +25,8 @@ final class AppModel: ObservableObject {
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
     private var treeScanGeneration = 0
+    private var treeFilterGeneration = 0
+    private var treeFilterTask: Task<Void, Never>?
     private var previewGenerations: [String: Int] = [:]
     private var activeFileWatcher: DispatchSourceFileSystemObject?
     private var watchedFileURL: URL?
@@ -96,6 +99,7 @@ final class AppModel: ObservableObject {
 
     func openRoot(_ url: URL) {
         stopWatchingActiveFile()
+        treeFilterTask?.cancel()
         rootURL = url.standardizedFileURL
         tabs = []
         activeTabID = nil
@@ -127,12 +131,8 @@ final class AppModel: ObservableObject {
                   self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
 
             self.completeNodes = scannedNodes
-            self.nodes = scanner.filter(
-                scannedNodes,
-                compatibleOnly: self.compatibleOnly,
-                query: self.treeQuery
-            )
             self.isScanningTree = false
+            self.applyTreeFilter()
         }
     }
 
@@ -218,11 +218,34 @@ final class AppModel: ObservableObject {
     }
 
     private func applyTreeFilter() {
-        nodes = scanner.filter(
-            completeNodes,
-            compatibleOnly: compatibleOnly,
-            query: treeQuery
-        )
+        treeFilterGeneration += 1
+        let generation = treeFilterGeneration
+        let scanner = scanner
+        let completeNodes = completeNodes
+        let compatibleOnly = compatibleOnly
+        let query = treeQuery
+
+        treeFilterTask?.cancel()
+        isFilteringTree = true
+        treeFilterTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(90))
+            guard !Task.isCancelled else { return }
+
+            let filteredNodes = await Task.detached(priority: .userInitiated) {
+                scanner.filter(
+                    completeNodes,
+                    compatibleOnly: compatibleOnly,
+                    query: query
+                )
+            }.value
+
+            guard let self,
+                  self.treeFilterGeneration == generation,
+                  self.rootURL != nil else { return }
+
+            self.nodes = filteredNodes
+            self.isFilteringTree = false
+        }
     }
 
     func cycleTheme() {
