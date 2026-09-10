@@ -39,8 +39,7 @@ struct TabItemView: View {
     var body: some View {
         HStack(spacing: BPTokens.Spacing.xs) {
             Button {
-                model.activeTabID = tab.id
-                model.persistState()
+                model.selectTab(id: tab.id)
             } label: {
                 HStack(spacing: BPTokens.Spacing.xs) {
                     Image(systemName: tab.kind == .latex ? "doc.text" : "doc.richtext")
@@ -110,7 +109,7 @@ struct PreviewPane: View {
     let tab: DocumentTab
 
     var body: some View {
-        VStack(spacing: BPTokens.Spacing.lg) {
+        VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
                     Text(tab.title)
@@ -123,22 +122,58 @@ struct PreviewPane: View {
                 Spacer()
                 StatusBadge(status: tab.status)
             }
+            .padding(.horizontal, BPTokens.Spacing.lg)
+            .padding(.vertical, BPTokens.Spacing.md)
 
-            VStack(spacing: BPTokens.Spacing.md) {
-                Image(systemName: tab.kind == .latex ? "doc.text.image" : "doc.richtext")
-                    .font(.system(size: 48))
-                    .foregroundStyle(Color.accentColor)
-                Text("Preview placeholder")
-                    .font(BPTokens.Typography.title)
-                Text("A superfície está pronta para receber o adapter de \(tab.kind.label), sem alterar a arquitetura da janela.")
-                    .font(BPTokens.Typography.body)
-                    .foregroundStyle(BPTokens.Color.muted)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 480)
+            Divider()
+
+            Group {
+                if tab.kind == .markdown, let html = tab.previewHTML {
+                    VStack(spacing: 0) {
+                        if let errorMessage = tab.errorMessage {
+                            PreviewErrorBanner(message: errorMessage, showingStalePreview: tab.isStale)
+                        }
+                        MarkdownPreviewView(
+                            html: html,
+                            baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent()
+                        )
+                    }
+                } else {
+                    EmptyStateView(
+                        systemImage: tab.kind == .latex ? "doc.text.image" : "doc.richtext",
+                        title: tab.kind == .latex ? "Adapter LaTeX pendente" : tab.status == .failed ? "Não foi possível gerar o preview" : "A preparar preview…",
+                        message: tab.errorMessage ?? (tab.kind == .latex
+                            ? "O shell está pronto. A compilação LaTeX será ligada no próximo vertical slice."
+                            : "A ler o ficheiro Markdown e a gerar HTML.")
+                    )
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(BPTokens.Spacing.lg)
         .background(BPTokens.Color.canvas)
+    }
+}
+
+struct PreviewErrorBanner: View {
+    let message: String
+    let showingStalePreview: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: BPTokens.Spacing.xs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(BPTokens.Color.warning)
+            VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
+                Text(showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview")
+                    .font(BPTokens.Typography.caption.weight(.semibold))
+                Text(message)
+                    .font(BPTokens.Typography.caption)
+                    .foregroundStyle(BPTokens.Color.muted)
+                    .lineLimit(2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, BPTokens.Spacing.lg)
+        .padding(.vertical, BPTokens.Spacing.sm)
+        .background(BPTokens.Color.warning.opacity(0.10))
     }
 }

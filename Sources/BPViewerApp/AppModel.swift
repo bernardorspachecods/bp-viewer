@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Darwin
 import Foundation
 
 @MainActor
@@ -20,8 +21,13 @@ final class AppModel: ObservableObject {
 
     private let scanner = FileSystemScanner()
     private let defaults = UserDefaults.standard
+    private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
     private var treeScanGeneration = 0
+    private var previewGenerations: [String: Int] = [:]
+    private var activeFileWatcher: DispatchSourceFileSystemObject?
+    private var watchedFileURL: URL?
+    private var fileRefreshGeneration = 0
 
     private enum Keys {
         static let theme = "bp-viewer.theme"
@@ -89,6 +95,7 @@ final class AppModel: ObservableObject {
     }
 
     func openRoot(_ url: URL) {
+        stopWatchingActiveFile()
         rootURL = url.standardizedFileURL
         tabs = []
         activeTabID = nil
@@ -157,15 +164,18 @@ final class AppModel: ObservableObject {
 
         let id = node.url.standardizedFileURL.path
         if let index = tabs.firstIndex(where: { $0.id == id }) {
-            activeTabID = tabs[index].id
-            persistState()
+            selectTab(id: tabs[index].id)
             return
         }
 
-        let tab = DocumentTab(id: id, url: node.url, kind: node.kind, status: node.kind == .other ? .unavailable : .ready)
+        let tab = DocumentTab(
+            id: id,
+            url: node.url,
+            kind: node.kind,
+            status: node.kind == .markdown ? .updating : .unavailable
+        )
         tabs.append(tab)
-        activeTabID = tab.id
-        persistState()
+        selectTab(id: tab.id)
     }
 
     func closeTab(_ tab: DocumentTab) {
@@ -173,6 +183,7 @@ final class AppModel: ObservableObject {
         tabs.remove(at: index)
         if activeTabID == tab.id {
             activeTabID = tabs.indices.contains(index) ? tabs[index].id : tabs.last?.id
+            renderActiveTabIfNeeded()
         }
         persistState()
     }
@@ -180,6 +191,7 @@ final class AppModel: ObservableObject {
     func closeOtherTabs(keeping tab: DocumentTab) {
         tabs = [tab]
         activeTabID = tab.id
+        renderActiveTabIfNeeded()
         persistState()
     }
 
@@ -188,19 +200,21 @@ final class AppModel: ObservableObject {
         tabs = Array(tabs.prefix(through: index))
         if let activeTabID, !tabs.contains(where: { $0.id == activeTabID }) {
             self.activeTabID = tabs.last?.id
+            renderActiveTabIfNeeded()
         }
         persistState()
     }
 
     func refreshActiveTab() {
         reloadTree()
-        guard let activeTabID, let index = tabs.firstIndex(where: { $0.id == activeTabID }) else { return }
-        tabs[index].status = tabs[index].kind == .other ? .unavailable : .updating
-        persistState()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, let index = self.tabs.firstIndex(where: { $0.id == activeTabID }) else { return }
-            self.tabs[index].status = self.tabs[index].kind == .other ? .unavailable : .ready
+        guard let activeTabID else { return }
+        if tabs.first(where: { $0.id == activeTabID })?.kind == .markdown {
+            renderMarkdown(tabID: activeTabID)
+        } else if let index = tabs.firstIndex(where: { $0.id == activeTabID }) {
+            tabs[index].status = .unavailable
+            tabs[index].errorMessage = nil
         }
+        persistState()
     }
 
     private func applyTreeFilter() {
@@ -235,7 +249,13 @@ final class AppModel: ObservableObject {
 
     func selectTab(number: Int) {
         guard tabs.indices.contains(number) else { return }
-        activeTabID = tabs[number].id
+        selectTab(id: tabs[number].id)
+    }
+
+    func selectTab(id: String) {
+        guard tabs.contains(where: { $0.id == id }) else { return }
+        activeTabID = id
+        renderActiveTabIfNeeded()
         persistState()
     }
 
@@ -250,13 +270,119 @@ final class AppModel: ObservableObject {
         let available = savedPaths.compactMap { path -> DocumentTab? in
             let url = URL(fileURLWithPath: path)
             guard FileManager.default.fileExists(atPath: path) else { return nil }
-            return DocumentTab(id: path, url: url, kind: DocumentKind(url: url), status: .ready)
+            let kind = DocumentKind(url: url)
+            return DocumentTab(id: path, url: url, kind: kind, status: kind == .markdown ? .idle : .unavailable)
         }
         tabs = available
         activeTabID = defaults.string(forKey: Keys.activeTab).flatMap { saved in
             available.contains(where: { $0.id == saved }) ? saved : available.first?.id
         }
         expandedPaths = Set(defaults.stringArray(forKey: "bp-viewer.expandedPaths") ?? [])
+        renderActiveTabIfNeeded()
+    }
+
+    private func renderActiveTabIfNeeded() {
+        guard let activeTabID,
+              let tab = tabs.first(where: { $0.id == activeTabID }),
+              tab.kind == .markdown else {
+            stopWatchingActiveFile()
+            return
+        }
+
+        startWatchingActiveFile(tab.url)
+        if tab.previewHTML == nil || tab.status != .ready {
+            renderMarkdown(tabID: activeTabID)
+        }
+    }
+
+    private func startWatchingActiveFile(_ url: URL) {
+        let standardizedURL = url.standardizedFileURL
+        guard watchedFileURL != standardizedURL else { return }
+
+        stopWatchingActiveFile()
+        let descriptor = Darwin.open(standardizedURL.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .rename, .delete],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.scheduleActiveFileRefresh(for: standardizedURL)
+            }
+        }
+        source.setCancelHandler {
+            Darwin.close(descriptor)
+        }
+        watchedFileURL = standardizedURL
+        activeFileWatcher = source
+        source.resume()
+    }
+
+    private func stopWatchingActiveFile() {
+        activeFileWatcher?.cancel()
+        activeFileWatcher = nil
+        watchedFileURL = nil
+        fileRefreshGeneration += 1
+    }
+
+    private func scheduleActiveFileRefresh(for url: URL) {
+        guard watchedFileURL == url,
+              let activeTabID,
+              tabs.contains(where: { $0.id == activeTabID && $0.url.standardizedFileURL == url }) else { return }
+
+        fileRefreshGeneration += 1
+        let generation = fileRefreshGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self, self.fileRefreshGeneration == generation else { return }
+            self.renderMarkdown(tabID: activeTabID)
+            self.stopWatchingActiveFile()
+            self.startWatchingActiveFile(url)
+        }
+    }
+
+    private func renderMarkdown(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }), tabs[index].kind == .markdown else { return }
+
+        let tabURL = tabs[index].url
+        let generation = (previewGenerations[tabID] ?? 0) + 1
+        previewGenerations[tabID] = generation
+        tabs[index].status = .updating
+        tabs[index].errorMessage = nil
+
+        let adapter = markdownAdapter
+        Task { [weak self] in
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    let source = try String(contentsOf: tabURL, encoding: .utf8)
+                    return try adapter.render(
+                        source: source,
+                        baseURL: tabURL.deletingLastPathComponent()
+                    )
+                }.value
+
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].previewHTML = result.html
+                self.tabs[index].previewBaseURL = result.baseURL
+                self.tabs[index].status = .ready
+                self.tabs[index].isStale = false
+                self.tabs[index].errorMessage = nil
+            } catch {
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].status = .failed
+                self.tabs[index].isStale = self.tabs[index].previewHTML != nil
+                self.tabs[index].errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func isDirectory(_ url: URL) -> Bool {

@@ -108,6 +108,9 @@ struct DocumentTab: Identifiable, Hashable {
     let kind: DocumentKind
     var status: PreviewStatus = .idle
     var isStale: Bool = false
+    var previewHTML: String?
+    var previewBaseURL: URL?
+    var errorMessage: String?
 
     var title: String { url.deletingPathExtension().lastPathComponent }
     var subtitle: String { url.deletingLastPathComponent().lastPathComponent }

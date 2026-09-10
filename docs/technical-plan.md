@@ -13,6 +13,20 @@ Cada afirmação usa uma destas categorias:
 
 As referências apontam primeiro para a síntese. Os reports individuais são citados apenas onde suportam um detalhe material: [desktop e filesystem](research/reports/desktop-filesystem.md), [Markdown → HTML](research/reports/markdown-html.md), [LaTeX → preview](research/reports/latex-preview.md) e [preview, segurança e distribuição](research/reports/preview-security-distribution.md).
 
+## Estado de implementação — 2026-09-10
+
+O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
+
+- `swift-markdown` é o parser provisório;
+- o adapter gera HTML próprio, com escaping de texto/atributos e rejeição de esquemas de URL perigosos;
+- raw HTML é omitido nesta primeira versão até existir uma política de sanitização testada;
+- o HTML é apresentado num `WKWebView` com JavaScript de conteúdo desligado;
+- a tab Markdown lê o ficheiro fora da UI, publica apenas a geração mais recente e observa alterações do ficheiro ativo;
+- erros mantêm o último preview disponível e mostram o diagnóstico;
+- matemática, links internos controlados, dependências transclusivas e LaTeX continuam fases seguintes.
+
+Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
+
 ## 1. Requisitos e decisões de produto já confirmados
 
 Esta secção não propõe tecnologia. Regista o que a implementação deve respeitar.
