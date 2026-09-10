@@ -28,9 +28,33 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
 - imagens locais do Markdown entram nas dependências observadas para atualização automática;
 - o adapter Markdown vive num módulo core partilhado com um contract runner executável;
+- as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs e restauração vivem num módulo core partilhado com um foundation runner executável;
 - matemática TeX avançada, links internos fora da raiz, dependências transclusivas e LaTeX continuam fases seguintes.
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
+
+### Estado de validação automática
+
+Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
+
+- `BPViewerContractRunner`: 11 contratos do adapter Markdown, incluindo links,
+  imagens, dependências, CSP, HTML raw e matemática TeX comum;
+- `BPViewerFoundationRunner`: 31 contratos de scanner, árvore lazy, filtro,
+  pesquisa, tabs e restauração/persistência em formato puro.
+
+Os 42 contratos passam após a integração do commit `1932d32`. A suite
+`swift test` ainda não corre no CommandLineTools atual porque o target existente
+usa o módulo `Testing`, que não está disponível nesse toolchain. Esta limitação
+não invalida os runners, mas deve ser resolvida ou aceite explicitamente antes
+de depender da suite standard como gate de CI.
+
+Continuam sem cobertura automática de integração: SwiftUI/AppKit, entrega de
+eventos de UI, WKWebView, atalhos, ciclo de vida assíncrono da `AppModel`,
+`UserDefaults` real, callbacks dos watchers, renames concorrentes e performance
+em árvores grandes. Esses pontos passam para a ronda de teste real da app,
+começando por UI manual contigo; os casos determinísticos de watchers e
+gerações devem ser extraídos para seams testáveis antes de fechar a fase de
+Markdown.
 
 ## 1. Requisitos e decisões de produto já confirmados
 

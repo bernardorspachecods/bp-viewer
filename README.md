@@ -28,6 +28,18 @@ swift run BPViewerContractRunner
 
 O runner cobre headings/âncoras, links, imagens/dependências, CSP, remoção de HTML raw e matemática TeX comum.
 
+O foundation runner valida as regras puras de filesystem, árvore lazy, filtros,
+pesquisa, tabs e restauração:
+
+```bash
+swift run BPViewerFoundationRunner
+```
+
+Neste momento existem 42 verificações executáveis: 11 do Markdown e 31 das
+fundações da app. O target `swift test` continua dependente de um toolchain que
+disponha do módulo `Testing`; no CommandLineTools atual esse módulo não está
+disponível.
+
 ## Princípios
 
 - Os ficheiros raw do utilizador são a fonte única da verdade.

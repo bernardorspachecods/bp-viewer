@@ -1,6 +1,6 @@
 # PROVISIONAL — Foundation test coverage
 
-Status: `complete_pending_review`
+Status: `reviewed_integrated`
 
 ## Objective
 
@@ -132,4 +132,25 @@ toolchain limitation, not a failure of the executable runners.
 4. Re-run both executable runners and the standard test target in the full
    Xcode environment.
 
-> PROVISIONAL — requires review by the primary agent and the user.
+> PROVISIONAL — reviewed by the primary agent; retained as an evidence record,
+> not as a product decision document.
+
+## Primary review after integration
+
+The primary agent reviewed the isolated diff before integration and found no
+critical issue. The commit was integrated into `main` as `1932d32`.
+
+The following commands were re-run after integration:
+
+```text
+swift build                                      PASS
+swift run BPViewerFoundationRunner               31 passed, 0 failed
+swift run BPViewerContractRunner                 11 passed
+git diff --check HEAD^ HEAD                      PASS
+swift test                                       BLOCKED: no such module 'Testing'
+```
+
+The executable runners are sufficient to proceed to the real UI test round,
+with the integration gaps listed above remaining explicit. The standard test
+target is still a follow-up toolchain/framework task rather than evidence that
+the production build is failing.
