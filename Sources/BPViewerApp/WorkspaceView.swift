@@ -52,14 +52,15 @@ struct TabItemView: View {
                                 .foregroundStyle(BPTokens.Color.muted)
                         }
                     }
+                    Spacer(minLength: BPTokens.Spacing.xs)
+                    StatusBadge(status: tab.status)
                 }
                 .font(BPTokens.Typography.caption)
                 .padding(.leading, BPTokens.Spacing.xs)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-
-            StatusBadge(status: tab.status)
-                .scaleEffect(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             ToolbarIconButton(systemName: "xmark", help: "Fechar tab") {
                 model.closeTab(tab)
