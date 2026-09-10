@@ -94,7 +94,7 @@ enum PreviewStatus: Hashable {
     }
 }
 
-struct FileNode: Identifiable, Hashable {
+struct FileNode: Identifiable, Hashable, Sendable {
     let id: String
     let url: URL
     let relativePath: String

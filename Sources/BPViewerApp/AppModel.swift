@@ -14,11 +14,14 @@ final class AppModel: ObservableObject {
     @Published var expandedPaths: Set<String> = []
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
+    @Published private(set) var isScanningTree = false
     @Published var pendingRootURL: URL?
     @Published var showingRootChangeConfirmation = false
 
     private let scanner = FileSystemScanner()
     private let defaults = UserDefaults.standard
+    private var completeNodes: [FileNode] = []
+    private var treeScanGeneration = 0
 
     private enum Keys {
         static let theme = "bp-viewer.theme"
@@ -96,21 +99,44 @@ final class AppModel: ObservableObject {
 
     func reloadTree() {
         guard let rootURL else {
+            completeNodes = []
             nodes = []
             return
         }
-        nodes = scanner.scan(root: rootURL, compatibleOnly: compatibleOnly, query: treeQuery)
+
+        treeScanGeneration += 1
+        let generation = treeScanGeneration
+        let scanner = scanner
+        isScanningTree = true
+
+        Task { [weak self] in
+            let scannedNodes = await Task.detached(priority: .userInitiated) {
+                scanner.scan(root: rootURL)
+            }.value
+
+            guard let self,
+                  self.treeScanGeneration == generation,
+                  self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
+
+            self.completeNodes = scannedNodes
+            self.nodes = scanner.filter(
+                scannedNodes,
+                compatibleOnly: self.compatibleOnly,
+                query: self.treeQuery
+            )
+            self.isScanningTree = false
+        }
     }
 
     func updateTreeQuery(_ query: String) {
         treeQuery = query
-        reloadTree()
+        applyTreeFilter()
     }
 
     func updateCompatibleOnly(_ value: Bool) {
         compatibleOnly = value
         defaults.set(value, forKey: Keys.compatibleOnly)
-        reloadTree()
+        applyTreeFilter()
     }
 
     func toggleExpanded(_ path: String) {
@@ -174,6 +200,14 @@ final class AppModel: ObservableObject {
             guard let self, let index = self.tabs.firstIndex(where: { $0.id == activeTabID }) else { return }
             self.tabs[index].status = self.tabs[index].kind == .other ? .unavailable : .ready
         }
+    }
+
+    private func applyTreeFilter() {
+        nodes = scanner.filter(
+            completeNodes,
+            compatibleOnly: compatibleOnly,
+            query: treeQuery
+        )
     }
 
     func cycleTheme() {

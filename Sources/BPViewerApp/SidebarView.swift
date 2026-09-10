@@ -45,6 +45,14 @@ struct SidebarView: View {
                     action: model.openFolder
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if model.isScanningTree && model.nodes.isEmpty {
+                VStack(spacing: BPTokens.Spacing.sm) {
+                    ProgressView()
+                    Text("A indexar a pasta…")
+                        .font(BPTokens.Typography.caption)
+                        .foregroundStyle(BPTokens.Color.muted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
