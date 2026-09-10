@@ -1,6 +1,6 @@
 # PROVISIONAL — Markdown fixtures for images and formulas
 
-Status: `complete_pending_review`
+Status: `validated_by_manual_test`
 
 > PROVISIONAL — requires review by the primary agent and the user.
 
@@ -72,8 +72,10 @@ remaining issue is that `WKWebView.loadHTMLString` does not reliably read local
 relative resources from an in-memory document.
 
 The adapter now embeds existing local images as `data:` URLs while retaining
-their filesystem paths as dependencies for the watcher. The local SVG should
-be re-opened in the app to confirm the visual result after this fix.
+their filesystem paths as dependencies for the watcher.
+
+Bernardo confirmed visually that `local-diagram.svg` now renders correctly in
+the app. The formulas in the same fixture also render correctly.
 
 ## Evidence
 
