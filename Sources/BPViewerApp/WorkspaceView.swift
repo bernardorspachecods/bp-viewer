@@ -107,6 +107,7 @@ struct DocumentSurfaceView: View {
 }
 
 struct PreviewPane: View {
+    @EnvironmentObject private var model: AppModel
     let tab: DocumentTab
 
     var body: some View {
@@ -134,10 +135,11 @@ struct PreviewPane: View {
                         if let errorMessage = tab.errorMessage {
                             PreviewErrorBanner(message: errorMessage, showingStalePreview: tab.isStale)
                         }
-                        MarkdownPreviewView(
-                            html: html,
-                            baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent()
-                        )
+                    MarkdownPreviewView(
+                        html: html,
+                        baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
+                        onNavigate: model.openPreviewURL
+                    )
                     }
                 } else {
                     EmptyStateView(

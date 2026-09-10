@@ -169,7 +169,43 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let id = node.url.standardizedFileURL.path
+        openDocument(url: node.url)
+    }
+
+    func openPreviewURL(_ url: URL) {
+        if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
+        guard url.isFileURL else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+
+        let standardizedURL = url.standardizedFileURL
+        guard let rootURL,
+              standardizedURL.path == rootURL.standardizedFileURL.path
+                || standardizedURL.path.hasPrefix(rootURL.standardizedFileURL.path + "/") else { return }
+
+        if DocumentKind(url: standardizedURL) == .other {
+            NSWorkspace.shared.open(standardizedURL)
+        } else {
+            openDocument(url: standardizedURL)
+        }
+    }
+
+    private func openDocument(url: URL) {
+        let standardizedURL = url.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: standardizedURL.path) else { return }
+
+        let kind = DocumentKind(url: standardizedURL)
+        guard kind != .other else {
+            NSWorkspace.shared.open(standardizedURL)
+            return
+        }
+
+        let id = standardizedURL.path
         if let index = tabs.firstIndex(where: { $0.id == id }) {
             selectTab(id: tabs[index].id)
             return
@@ -177,9 +213,9 @@ final class AppModel: ObservableObject {
 
         let tab = DocumentTab(
             id: id,
-            url: node.url,
-            kind: node.kind,
-            status: node.kind == .markdown ? .updating : .unavailable
+            url: standardizedURL,
+            kind: kind,
+            status: kind == .markdown ? .updating : .unavailable
         )
         tabs.append(tab)
         selectTab(id: tab.id)

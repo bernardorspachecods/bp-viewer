@@ -24,6 +24,7 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - a tab Markdown lê o ficheiro fora da UI, publica apenas a geração mais recente e observa alterações do ficheiro ativo;
 - erros mantêm o último preview disponível e mostram o diagnóstico;
 - a árvore indexa inicialmente apenas o primeiro nível, carrega pastas sob pedido e mostra progresso durante indexação/pesquisa;
+- links Markdown internos para `.md`/`.tex` focam ou abrem tabs, enquanto links externos passam para o browser do macOS;
 - matemática, links internos controlados, dependências transclusivas e LaTeX continuam fases seguintes.
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
