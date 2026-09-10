@@ -85,12 +85,13 @@ struct TabBarView: View {
 
 struct TabItemView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isHovered = false
     let tab: DocumentTab
     let isActive: Bool
     let isDropTarget: Bool
 
     var body: some View {
-        HStack(spacing: BPTokens.Spacing.xs) {
+        ZStack(alignment: .trailing) {
             Button {
                 model.selectTab(id: tab.id)
             } label: {
@@ -110,19 +111,28 @@ struct TabItemView: View {
                 }
                 .font(BPTokens.Typography.caption)
                 .padding(.leading, BPTokens.Spacing.xs)
+                .padding(.trailing, 26)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            ToolbarIconButton(systemName: "xmark", help: "Fechar tab") {
+            Button {
                 model.closeTab(tab)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .medium))
+                    .frame(width: 16, height: 16)
             }
-            .frame(width: 20)
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .opacity(isHovered ? 1 : 0)
+            .zIndex(1)
+            .animation(.easeInOut(duration: 0.12), value: isHovered)
         }
         .padding(.horizontal, BPTokens.Spacing.xs)
         .frame(minWidth: 150, minHeight: 36)
-        .background(isActive ? BPTokens.Color.selection : .clear)
+        .onHover { isHovered = $0 }
         .overlay(alignment: .bottom) {
             if isActive {
                 Rectangle()
