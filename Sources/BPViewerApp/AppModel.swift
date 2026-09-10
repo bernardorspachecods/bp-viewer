@@ -289,6 +289,29 @@ final class AppModel: ObservableObject {
         closeTab(activeTab)
     }
 
+    func moveTab(id: String, before targetID: String) {
+        guard let source = tabs.first(where: { $0.id == id }),
+              let target = tabs.first(where: { $0.id == targetID }) else { return }
+
+        var session = tabSessionState
+        guard session.move(source.url, before: target.url) else { return }
+        reorderTabs(using: session)
+    }
+
+    func moveTabToEnd(id: String) {
+        guard let source = tabs.first(where: { $0.id == id }) else { return }
+
+        var session = tabSessionState
+        guard session.moveToEnd(source.url) else { return }
+        reorderTabs(using: session)
+    }
+
+    private func reorderTabs(using session: TabSessionState) {
+        let tabsByID = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0) })
+        tabs = session.paths.compactMap { tabsByID[$0.path] }
+        persistState()
+    }
+
     func closeOtherTabs(keeping tab: DocumentTab) {
         var session = tabSessionState
         guard session.closeOthers(keeping: tab.url) else { return }

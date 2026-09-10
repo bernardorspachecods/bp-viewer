@@ -29,7 +29,7 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
 - imagens locais do Markdown são embutidas no HTML quando existem, mas continuam nas dependências observadas para atualização automática;
 - o adapter Markdown vive num módulo core partilhado com um contract runner executável;
-- as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs e restauração vivem num módulo core partilhado com um foundation runner executável;
+- as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs, reordenação por drag-and-drop e restauração vivem num módulo core partilhado com um foundation runner executável;
 - matemática TeX avançada, links internos fora da raiz, dependências transclusivas e LaTeX continuam fases seguintes.
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
@@ -40,10 +40,10 @@ Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
 
 - `BPViewerContractRunner`: 14 contratos do adapter Markdown, incluindo links,
   imagens, dependências, CSP, HTML raw e matemática TeX comum;
-- `BPViewerFoundationRunner`: 36 contratos de scanner, árvore lazy, filtro,
-  pesquisa, tabs e restauração/persistência em formato puro.
+- `BPViewerFoundationRunner`: 41 contratos de scanner, árvore lazy, filtro,
+  pesquisa, tabs, reordenação e restauração/persistência em formato puro.
 
-Os 50 contratos passam após a correção da resolução de recursos locais. A suite
+Os 55 contratos passam após a correção da resolução de recursos locais. A suite
 `swift test` ainda não corre no CommandLineTools atual porque o target existente
 usa o módulo `Testing`, que não está disponível nesse toolchain. Esta limitação
 não invalida os runners, mas deve ser resolvida ou aceite explicitamente antes
@@ -165,6 +165,7 @@ Fontes: [vision.md — Objetivo, Escopo do MVP, Fora do escopo inicial e Decisõ
 - Alterações em capítulos/dependências recompilam o root; não se assume compilação segura de páginas isoladas.
 - Abrir um capítulo LaTeX foca a tab do documento principal, sem tab duplicada do capítulo.
 - Há várias tabs; cada ficheiro tem no máximo uma tab aberta. A restauração preserva referências, ordem, tab ativa, posição de leitura, tema, janela e largura da sidebar.
+- A ordem das tabs pode ser alterada por drag-and-drop e é persistida com a sessão.
 - O estado persistido guarda referências, não cópias de conteúdo.
 
 ### 1.5 Implicações de arquitetura que já são requisitos

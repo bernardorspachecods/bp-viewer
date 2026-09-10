@@ -224,6 +224,37 @@ public struct TabSessionState: Equatable, Sendable {
     }
 
     @discardableResult
+    public mutating func move(_ path: URL, before target: URL) -> Bool {
+        let normalizedPath = path.standardizedFileURL
+        let normalizedTarget = target.standardizedFileURL
+        guard normalizedPath != normalizedTarget,
+              let sourceIndex = paths.firstIndex(of: normalizedPath),
+              paths.contains(normalizedTarget) else {
+            return false
+        }
+
+        paths.remove(at: sourceIndex)
+        guard let targetIndex = paths.firstIndex(of: normalizedTarget) else {
+            paths.insert(normalizedPath, at: sourceIndex)
+            return false
+        }
+        paths.insert(normalizedPath, at: targetIndex)
+        return true
+    }
+
+    @discardableResult
+    public mutating func moveToEnd(_ path: URL) -> Bool {
+        let normalized = path.standardizedFileURL
+        guard let sourceIndex = paths.firstIndex(of: normalized), sourceIndex != paths.index(before: paths.endIndex) else {
+            return false
+        }
+
+        paths.remove(at: sourceIndex)
+        paths.append(normalized)
+        return true
+    }
+
+    @discardableResult
     public mutating func close(_ path: URL) -> Bool {
         let normalized = path.standardizedFileURL
         guard let index = paths.firstIndex(of: normalized) else { return false }

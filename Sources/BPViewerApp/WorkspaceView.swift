@@ -15,19 +15,71 @@ struct DocumentWorkspaceView: View {
 
 struct TabBarView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var dropTargetID: String?
+
+    private let endDropTargetID = "__tab_end__"
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 ForEach(model.tabs) { tab in
-                    TabItemView(tab: tab, isActive: model.activeTabID == tab.id)
+                    TabItemView(
+                        tab: tab,
+                        isActive: model.activeTabID == tab.id,
+                        isDropTarget: dropTargetID == tab.id
+                    )
+                    .draggable(tab.id) {
+                        Text(tab.title)
+                            .padding(.horizontal, BPTokens.Spacing.sm)
+                            .padding(.vertical, BPTokens.Spacing.xs)
+                            .background(BPTokens.Color.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let sourceID = items.first, sourceID != tab.id else { return false }
+                        model.moveTab(id: sourceID, before: tab.id)
+                        dropTargetID = nil
+                        return true
+                    } isTargeted: { isTargeted in
+                        if isTargeted {
+                            updateDropTarget(tab.id)
+                        } else if dropTargetID == tab.id {
+                            updateDropTarget(nil)
+                        }
+                    }
                 }
-                Spacer(minLength: 0)
+
+                Rectangle()
+                    .fill(.clear)
+                    .frame(minWidth: 36, maxWidth: .infinity, minHeight: 36)
+                    .contentShape(Rectangle())
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let sourceID = items.first else { return false }
+                        model.moveTabToEnd(id: sourceID)
+                        dropTargetID = nil
+                        return true
+                    } isTargeted: { isTargeted in
+                        updateDropTarget(isTargeted ? endDropTargetID : nil)
+                    }
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.accentColor)
+                            .frame(width: 3, height: 28)
+                            .opacity(dropTargetID == endDropTargetID ? 1 : 0)
+                            .scaleEffect(x: dropTargetID == endDropTargetID ? 1 : 0.35, anchor: .leading)
+                            .animation(.easeInOut(duration: 0.14), value: dropTargetID == endDropTargetID)
+                    }
             }
             .padding(.horizontal, BPTokens.Spacing.xs)
         }
         .frame(height: 38)
         .background(BPTokens.Color.surface)
+    }
+
+    private func updateDropTarget(_ targetID: String?) {
+        withAnimation(.easeInOut(duration: 0.14)) {
+            dropTargetID = targetID
+        }
     }
 }
 
@@ -35,6 +87,7 @@ struct TabItemView: View {
     @EnvironmentObject private var model: AppModel
     let tab: DocumentTab
     let isActive: Bool
+    let isDropTarget: Bool
 
     var body: some View {
         HStack(spacing: BPTokens.Spacing.xs) {
@@ -75,6 +128,14 @@ struct TabItemView: View {
                 Rectangle()
                     .fill(Color.accentColor)
                     .frame(height: 2)
+            }
+        }
+        .overlay(alignment: .leading) {
+            if isDropTarget {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                    .transition(.opacity.combined(with: .scale(scale: 0.35, anchor: .leading)))
             }
         }
         .contextMenu {

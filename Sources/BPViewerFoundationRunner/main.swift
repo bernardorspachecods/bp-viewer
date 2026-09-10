@@ -122,6 +122,13 @@ private struct Runner {
         var keepState = TabSessionState(paths: [first, second, third], activePath: third)
         expect(keepState.closeOthers(keeping: second), "close others keeps requested tab")
         expect(keepState.paths == [second.standardizedFileURL] && keepState.activePath == second.standardizedFileURL, "close others selects kept tab")
+
+        var reorderState = TabSessionState(paths: [first, second, third], activePath: second)
+        expect(reorderState.move(third, before: first), "moving a tab before another tab succeeds")
+        expect(reorderState.paths == [third.standardizedFileURL, first.standardizedFileURL, second.standardizedFileURL], "tab order changes after drag and drop")
+        expect(reorderState.activePath == second.standardizedFileURL, "reordering keeps the active tab")
+        expect(reorderState.moveToEnd(third), "moving a tab to the end succeeds")
+        expect(reorderState.paths == [first.standardizedFileURL, second.standardizedFileURL, third.standardizedFileURL], "tab can be dropped after the last tab")
     }
 
     private mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
