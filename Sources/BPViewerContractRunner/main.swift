@@ -28,6 +28,7 @@ struct BPViewerContractRunner {
         expect(result.html.contains("<strong>important</strong>"), "strong text")
         expect(result.html.contains("href=\"chapter-2.md\""), "relative link")
         expect(result.html.contains("src=\"images/figure.png\""), "relative image")
+        expect(result.baseURL.absoluteString.hasSuffix("/"), "directory base URL")
         expect(result.dependencies.contains(URL(fileURLWithPath: "/tmp/project/chapter-1/images/figure.png")), "image dependency")
         expect(result.html.contains("Content-Security-Policy"), "content security policy")
         expect(!result.html.contains("<script"), "raw html removed")

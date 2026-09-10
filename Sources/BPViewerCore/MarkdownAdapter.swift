@@ -21,13 +21,16 @@ public struct SwiftMarkdownAdapter: MarkdownAdapter {
     public init() {}
 
     public func render(source: String, baseURL: URL) throws -> MarkdownRenderResult {
+        let directoryBaseURL = baseURL.hasDirectoryPath
+            ? baseURL
+            : baseURL.appendingPathComponent("", isDirectory: true)
         let document = Document(parsing: source)
-        var renderer = SafeMarkdownHTMLRenderer(baseURL: baseURL)
+        var renderer = SafeMarkdownHTMLRenderer(baseURL: directoryBaseURL)
         renderer.visit(document)
 
         return MarkdownRenderResult(
             html: MarkdownHTMLDocument(body: renderer.html).rendered,
-            baseURL: baseURL,
+            baseURL: directoryBaseURL,
             dependencies: Array(renderer.dependencies)
         )
     }

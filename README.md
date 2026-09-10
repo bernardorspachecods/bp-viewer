@@ -35,7 +35,7 @@ pesquisa, tabs e restauração:
 swift run BPViewerFoundationRunner
 ```
 
-Neste momento existem 47 verificações executáveis: 11 do Markdown e 36 das
+Neste momento existem 48 verificações executáveis: 12 do Markdown e 36 das
 fundações da app. O target `swift test` continua dependente de um toolchain que
 disponha do módulo `Testing`; no CommandLineTools atual esse módulo não está
 disponível.
