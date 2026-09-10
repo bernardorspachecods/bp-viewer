@@ -103,7 +103,7 @@ A sidebar pode ser redimensionada ou escondida. A seleção de um ficheiro pede 
 
 ### `TabBar`
 
-Apresenta documentos abertos, tab ativa, estado resumido e ações de fecho/reordenação.
+Apresenta documentos abertos, tab ativa, estado resumido e ações de fecho.
 
 Cada tab referencia um documento; não contém uma cópia do conteúdo raw.
 
@@ -165,7 +165,7 @@ O estado deve ser separado por responsabilidade, mesmo que a implementação ini
 - identidade do documento;
 - referência do ficheiro;
 - root e contexto LaTeX, quando aplicável;
-- ordem e estado ativo;
+- sequência da sessão e documento ativo;
 - posição de leitura;
 - zoom;
 - estado de preview;
@@ -208,7 +208,7 @@ WorkspaceCoordinator
 
 É o módulo profundo que traduz ações de UI em transições de workspace:
 
-- abrir/focar/fechar/reordenar tabs;
+- abrir/focar/fechar tabs e atualizar a sessão;
 - selecionar ficheiros;
 - abrir ou trocar a pasta-raiz;
 - encaminhar refresh/recompile;

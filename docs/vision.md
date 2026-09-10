@@ -87,14 +87,14 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - O MVP suporta várias tabs.
 - Cada ficheiro deve ter no máximo uma tab aberta; ao abrir um ficheiro já aberto, a aplicação foca a tab existente.
 - Quando tabs tiverem o mesmo nome de ficheiro, devem mostrar também contexto da pasta-pai.
-- As tabs devem ser restauradas depois de reiniciar a aplicação.
-- A restauração deve preservar, pelo menos, as referências aos ficheiros, a ordem e a tab ativa.
+- As tabs devem ser restauradas depois de reiniciar a aplicação, preservando pelo
+  menos as referências aos ficheiros, a ordem e a tab ativa; o utilizador pode
+  alterar essa ordem por drag-and-drop.
 - A aplicação deve restaurar também a posição de leitura de cada tab.
 - A escolha entre tema claro e escuro deve ser restaurada ao reiniciar.
 - O tamanho da janela e a largura da sidebar devem ser restaurados ao reiniciar.
 - A escolha da tab não deve impedir o fecho da app durante uma compilação ativa.
 - O menu contextual das tabs deve permitir fechar as outras tabs e as tabs à direita.
-- As tabs devem poder ser reordenadas por drag-and-drop; a ordem deve ser restaurada ao reiniciar.
 - `⌘W` deve fechar a tab atual e `⌘1`–`⌘9` devem permitir mudar rapidamente entre tabs.
 - `Control-Tab` deve avançar para a tab seguinte e voltar à primeira depois da última.
 - A aplicação guarda referências aos ficheiros, não cópias do seu conteúdo.
@@ -131,7 +131,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - Toggle para filtrar a árvore por ficheiros compatíveis, ativo por defeito.
 - Ordenação previsível da árvore e ocultação de pastas sem ficheiros compatíveis.
 - Várias tabs com restauração após reinício.
-- Restauração da última pasta, posição de leitura, ordem das tabs e tab ativa.
+- Restauração da última pasta, posição de leitura e tab ativa.
 - Controlos de tema, pesquisa, zoom, outline, cópia e atualização manual.
 - Abertura direta de `.md` e `.tex` a partir do Finder.
 - Abertura de pastas e ficheiros por atalhos, drag & drop e menu contextual.

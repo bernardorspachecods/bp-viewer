@@ -33,7 +33,7 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
 - imagens locais do Markdown são embutidas no HTML quando existem, mas continuam nas dependências observadas para atualização automática;
 - o adapter Markdown vive num módulo core partilhado com um contract runner executável;
-- as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs, reordenação por drag-and-drop e restauração vivem num módulo core partilhado com um foundation runner executável;
+- as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs e restauração vivem num módulo core partilhado com um foundation runner executável;
 - matemática TeX avançada, links internos fora da raiz, dependências transclusivas e LaTeX continuam fases seguintes.
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
@@ -53,7 +53,7 @@ Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
 - `BPViewerContractRunner`: 14 contratos do adapter Markdown, incluindo links,
   imagens, dependências, CSP, HTML raw e matemática TeX comum;
 - `BPViewerFoundationRunner`: 41 contratos de scanner, árvore lazy, filtro,
-  pesquisa, tabs, reordenação e restauração/persistência em formato puro.
+  pesquisa, tabs e restauração/persistência em formato puro.
 
 Os 55 contratos passam após a correção da resolução de recursos locais. A suite
 `swift test` ainda não corre no CommandLineTools atual porque o target existente
@@ -693,9 +693,9 @@ As fases não significam que todas as features abaixo devam ser implementadas an
 **Objetivo:** integrar sessões, tabs e previews independentes.
 
 **Trabalho:** integrar o contexto/root LaTeX e os previews independentes na
-sessão de tabs já existente; reutilizar tabs únicas, ordem/ativa, posição,
-expansão, tema, janela/sidebar, links internos, Finder, comandos e fechamento
-durante compilação.
+sessão de tabs já existente; reutilizar a sessão, a posição, expansão, tema,
+janela/sidebar, links internos, Finder, comandos e fechamento durante
+compilação.
 
 **Critério de saída:** restart e mudanças de projeto não corrompem estado; tabs inválidas tornam-se recuperáveis; escolher capítulo não cria duplicate root; cada tab mostra diagnóstico/preview próprio conforme requerido.
 
