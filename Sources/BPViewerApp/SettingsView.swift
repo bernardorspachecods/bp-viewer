@@ -1,6 +1,35 @@
+import BPViewerCore
 import SwiftUI
 
 struct SettingsView: View {
+    var body: some View {
+        TabView {
+            ZoomSettingsView()
+                .tabItem {
+                    Label("Zoom", systemImage: "textformat.size")
+                }
+
+            ShortcutsSettingsView()
+                .tabItem {
+                    Label("Shortcuts", systemImage: "keyboard")
+                }
+
+            AppearanceSettingsView()
+                .tabItem {
+                    Label("Aparência", systemImage: "paintbrush")
+                }
+
+            LatexSettingsView()
+                .tabItem {
+                    Label("LaTeX", systemImage: "doc.text")
+                }
+        }
+        .frame(width: 460)
+        .frame(minHeight: 340)
+    }
+}
+
+private struct ZoomSettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -28,8 +57,119 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 460)
-        .frame(minHeight: 180)
+    }
+}
+
+private struct ShortcutsSettingsView: View {
+    var body: some View {
+        Form {
+            Section("Geral") {
+                ShortcutRow(title: "Abrir pasta", shortcut: "⌘O")
+                ShortcutRow(title: "Abrir definições", shortcut: "⌘,")
+            }
+
+            Section("Visualização") {
+                ShortcutRow(title: "Atualizar preview", shortcut: "⌘R")
+                ShortcutRow(title: "Pesquisar no preview", shortcut: "⌘F")
+                ShortcutRow(title: "Aumentar zoom", shortcut: "⌘+")
+                ShortcutRow(title: "Diminuir zoom", shortcut: "⌘−")
+                ShortcutRow(title: "Repor zoom", shortcut: "⌘0")
+                ShortcutRow(title: "Alternar sidebar", shortcut: "⌥⌘B")
+                ShortcutRow(title: "Alternar tema", shortcut: "⌥⌘T")
+            }
+
+            Section("Tabs") {
+                ShortcutRow(title: "Fechar tab", shortcut: "⌘W")
+                ShortcutRow(title: "Próxima tab", shortcut: "⌃Tab")
+                ShortcutRow(title: "Selecionar tab", shortcut: "⌘1–⌘9")
+            }
+
+            Section("Snapshots") {
+                ShortcutRow(title: "Fechar janela flutuante", shortcut: "⌘W")
+                ShortcutRow(title: "Cancelar seleção", shortcut: "Esc")
+            }
+
+            Text("Os shortcuts são definidos pela app e não são editáveis nesta versão.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+private struct AppearanceSettingsView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Form {
+            Section("Tema") {
+                Picker(
+                    "Tema",
+                    selection: Binding(
+                        get: { model.theme },
+                        set: { model.setTheme($0) }
+                    )
+                ) {
+                    ForEach(AppThemePreference.allCases) { preference in
+                        Text(preference.label).tag(preference)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+            }
+
+            Text("Também podes alternar rapidamente o tema com ⌥⌘T.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+private struct LatexSettingsView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Form {
+            Section("Compilação") {
+                Picker(
+                    "Shell escape",
+                    selection: Binding(
+                        get: { model.latexShellEscapeMode },
+                        set: { model.setLatexShellEscapeMode($0) }
+                    )
+                ) {
+                    ForEach(LatexShellEscapeMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+            }
+
+            Label(
+                "Shell escape pode permitir que o processo LaTeX execute comandos externos. Ativa-o apenas para documentos em que confias.",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+private struct ShortcutRow: View {
+    let title: String
+    let shortcut: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(shortcut)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

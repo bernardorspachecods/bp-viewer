@@ -998,10 +998,12 @@ final class AppModel: ObservableObject {
     }
 
     func cycleTheme() {
-        switch theme {
-        case .light: theme = .dark
-        case .dark: theme = .light
-        }
+        setTheme(theme == .light ? .dark : .light)
+    }
+
+    func setTheme(_ preference: AppThemePreference) {
+        guard theme != preference else { return }
+        theme = preference
         appState.global.theme = theme.rawValue
         saveState()
     }
