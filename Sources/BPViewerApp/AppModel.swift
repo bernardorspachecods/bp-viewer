@@ -50,11 +50,16 @@ final class AppModel: ObservableObject {
     @Published var showingRootChangeConfirmation = false
     @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
     @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
+    @Published var isSnapshotCaptureActive = false
 
     private let scanner = FileSystemScanner()
     private let latexRenderCache = LatexRenderCache()
     private let stateStore = AppStateStore()
+    private let snapshotArtifactStore = SnapshotArtifactStore()
     private var appState: AppState
+    private lazy var snapshotWindowManager = SnapshotWindowManager { [weak self] id in
+        self?.removeSnapshot(id: id)
+    }
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
     private var fullyIndexedNodes: [FileNode]?
@@ -73,6 +78,7 @@ final class AppModel: ObservableObject {
     private var fileRefreshGeneration = 0
     private var pendingOpenURLs: [URL] = []
     private var openFilesObserver: NSObjectProtocol?
+    private var terminationObserver: NSObjectProtocol?
     private var localKeyMonitor: Any?
 
     init() {
@@ -98,6 +104,10 @@ final class AppModel: ObservableObject {
 
             if flags == [.command],
                event.charactersIgnoringModifiers?.lowercased() == "w" {
+                if let snapshotWindow = NSApp.keyWindow as? SnapshotPanel {
+                    snapshotWindow.performClose(nil)
+                    return nil
+                }
                 Task { @MainActor [weak self] in
                     self?.closeActiveTab()
                 }
@@ -112,6 +122,18 @@ final class AppModel: ObservableObject {
             }
 
             return event
+        }
+
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.snapshotWindowManager.prepareForTermination()
+                self.persistState()
+            }
         }
 
         if let path = appState.lastWorkspacePath {
@@ -176,6 +198,7 @@ final class AppModel: ObservableObject {
     }
 
     func openRoot(_ url: URL) {
+        snapshotWindowManager.closeAllPreservingRecords()
         persistState()
         latexRenderTasks.values.forEach { $0.cancel() }
         latexRenderTasks.removeAll()
@@ -299,6 +322,90 @@ final class AppModel: ObservableObject {
         copyText(FilePathCopy.string(for: url))
     }
 
+    var canCaptureActivePreview: Bool {
+        guard let activeTab else { return false }
+        return activeTab.previewHTML != nil || activeTab.previewPDFData != nil
+    }
+
+    func startSnapshotCapture() {
+        guard canCaptureActivePreview else { return }
+        isSnapshotCaptureActive = true
+    }
+
+    func cancelSnapshotCapture() {
+        isSnapshotCaptureActive = false
+    }
+
+    func finishSnapshotCapture(_ image: NSImage, forTabID tabID: String) {
+        guard let tab = tabs.first(where: { $0.id == tabID }),
+              let rootURL,
+              image.size.width > 1,
+              image.size.height > 1 else {
+            cancelSnapshotCapture()
+            return
+        }
+
+        let recordID = UUID().uuidString
+        do {
+            let artifactURL = try snapshotArtifactStore.save(image, id: recordID)
+            let record = SnapshotRecord(
+                id: recordID,
+                documentPath: documentKey(for: tab.url),
+                title: tab.title,
+                artifactPath: artifactURL.path,
+                createdAt: Date()
+            )
+            let rootKey = workspaceKey(for: rootURL)
+            var workspace = appState.workspaceStates[rootKey] ?? WorkspaceState()
+            workspace.snapshots.append(record)
+            appState.workspaceStates[rootKey] = workspace
+            persistState()
+            snapshotWindowManager.open(
+                record: record,
+                image: image,
+                above: NSApp.keyWindow ?? NSApp.windows.first
+            )
+        } catch {
+            // A failed snapshot must not leave capture mode active.
+        }
+        cancelSnapshotCapture()
+    }
+
+    private func removeSnapshot(id: String) {
+        var artifactPath: String?
+        for key in appState.workspaceStates.keys {
+            guard var workspace = appState.workspaceStates[key],
+                  let index = workspace.snapshots.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            artifactPath = workspace.snapshots.remove(at: index).artifactPath
+            appState.workspaceStates[key] = workspace
+            break
+        }
+        if let artifactPath {
+            snapshotArtifactStore.remove(at: URL(fileURLWithPath: artifactPath))
+        }
+        persistState()
+    }
+
+    private func restoreSnapshots(for rootURL: URL) {
+        let records = appState.workspaceStates[workspaceKey(for: rootURL)]?.snapshots ?? []
+        guard !records.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
+            for record in records {
+                guard let image = self.snapshotArtifactStore.load(
+                    from: URL(fileURLWithPath: record.artifactPath)
+                ) else { continue }
+                self.snapshotWindowManager.open(
+                    record: record,
+                    image: image,
+                    above: NSApp.keyWindow ?? NSApp.windows.first
+                )
+            }
+        }
+    }
+
     func openExternalURLs(_ urls: [URL]) {
         let files = urls
             .filter(\.isFileURL)
@@ -412,6 +519,7 @@ final class AppModel: ObservableObject {
             markdownReadingPosition: documentState.markdownReadingPosition,
             pdfReadingPosition: documentState.pdfReadingPosition
         )
+
         tabs.append(tab)
         activeTabID = session.activePath?.path
         syncPreviewZoomToActiveTab()
@@ -963,6 +1071,7 @@ final class AppModel: ObservableObject {
         syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         loadExpandedChildrenIfNeeded()
+        restoreSnapshots(for: rootURL)
     }
 
     private func saveState() {

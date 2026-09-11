@@ -172,6 +172,7 @@ leitura.
 - posição de scroll da árvore;
 - tabs abertas, ordem e tab ativa;
 - contexto LaTeX das tabs.
+- snapshots visuais persistidos e associados ao workspace/documento.
 
 A pesquisa da árvore é transitória e não é persistida.
 
@@ -303,6 +304,7 @@ Uma camada de preferências local deve guardar apenas estado pequeno e reconstru
 - `DocumentState` separado de `WorkspaceState`;
 - posição de leitura, outline e zoom no documento;
 - tabs, expansão e scroll da árvore no workspace;
+- snapshots como artefactos visuais locais associados ao workspace;
 - defaults para campos desconhecidos ou ausentes em versões futuras.
 
 Conteúdo raw, HTML, PDF e logs não devem ser tratados como estado persistido da UI.

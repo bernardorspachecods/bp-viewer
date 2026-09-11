@@ -64,6 +64,11 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
 - O utilizador deve poder navegar por um índice/outline do documento quando essa estrutura estiver disponível.
 - O texto do preview deve poder ser selecionado e copiado com `⌘C`.
+- O utilizador deve poder selecionar uma área do preview Markdown ou LaTeX/PDF
+  como num screenshot, incluindo auto-scroll junto às extremidades, e abrir o
+  recorte numa janela flutuante acima da app.
+- Os snapshots flutuantes devem permanecer disponíveis depois de fechar e
+  reabrir a aplicação; fechar a janela remove esse snapshot da sessão guardada.
 - A topbar deve incluir uma ação para forçar a atualização ou recompilação da tab atual.
 - `⌘R` deve forçar a atualização ou recompilação da tab atual.
 

@@ -15,6 +15,9 @@ struct MarkdownPreviewView: View {
     @Binding var isOutlineVisible: Bool
     let readingPosition: MarkdownReadingPosition?
     let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
+    let isSnapshotCaptureActive: Bool
+    let onSnapshotCancel: () -> Void
+    let onSnapshotCapture: (NSImage) -> Void
     @State private var selectedHeadingID: String?
     @State private var outlineRequestID = 0
 
@@ -49,20 +52,29 @@ struct MarkdownPreviewView: View {
                     Divider()
                 }
 
-                MarkdownWebView(
-                    html: html,
-                    baseURL: baseURL,
-                    documentID: documentID,
-                    onNavigate: onNavigate,
-                    zoom: zoom,
-                    findQuery: findQuery,
-                    findRequestID: findRequestID,
-                    findBackwards: findBackwards,
-                    requestedHeadingID: selectedHeadingID,
-                    outlineRequestID: outlineRequestID,
-                    readingPosition: readingPosition,
-                    onReadingPositionChanged: onReadingPositionChanged
-                )
+                ZStack {
+                    MarkdownWebView(
+                        html: html,
+                        baseURL: baseURL,
+                        documentID: documentID,
+                        onNavigate: onNavigate,
+                        zoom: zoom,
+                        findQuery: findQuery,
+                        findRequestID: findRequestID,
+                        findBackwards: findBackwards,
+                        requestedHeadingID: selectedHeadingID,
+                        outlineRequestID: outlineRequestID,
+                        readingPosition: readingPosition,
+                        onReadingPositionChanged: onReadingPositionChanged
+                    )
+                    if isSnapshotCaptureActive {
+                        SnapshotSelectionOverlay(
+                            onCancel: onSnapshotCancel,
+                            onCapture: onSnapshotCapture
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
             }
         }
         .id(documentID)

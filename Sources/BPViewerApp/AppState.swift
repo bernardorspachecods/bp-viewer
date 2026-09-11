@@ -83,6 +83,14 @@ struct DocumentState: Codable {
     }
 }
 
+struct SnapshotRecord: Codable, Hashable, Identifiable {
+    let id: String
+    let documentPath: String
+    let title: String
+    let artifactPath: String
+    let createdAt: Date
+}
+
 struct WorkspaceState: Codable {
     var tabPaths: [String] = []
     var activeTabPath: String?
@@ -92,10 +100,11 @@ struct WorkspaceState: Codable {
     var compatibleOnly = true
     var latexRootSelections: [String: String] = [:]
     var latexExternalGrants: [String: [String]] = [:]
+    var snapshots: [SnapshotRecord] = []
 
     private enum CodingKeys: String, CodingKey {
         case tabPaths, activeTabPath, tabContexts, expandedPaths, treeScrollOffset
-        case compatibleOnly, latexRootSelections, latexExternalGrants
+        case compatibleOnly, latexRootSelections, latexExternalGrants, snapshots
     }
 
     init() {}
@@ -110,6 +119,7 @@ struct WorkspaceState: Codable {
         compatibleOnly = try container.decodeIfPresent(Bool.self, forKey: .compatibleOnly) ?? true
         latexRootSelections = try container.decodeIfPresent([String: String].self, forKey: .latexRootSelections) ?? [:]
         latexExternalGrants = try container.decodeIfPresent([String: [String]].self, forKey: .latexExternalGrants) ?? [:]
+        snapshots = try container.decodeIfPresent([SnapshotRecord].self, forKey: .snapshots) ?? []
     }
 }
 

@@ -220,6 +220,11 @@ struct PreviewPane: View {
                     .onHover { isPathRowHovered = $0 }
                 }
                 Spacer()
+                if model.activeTabID == tab.id && model.canCaptureActivePreview {
+                    ToolbarIconButton(systemName: "camera.viewfinder", help: "Criar snapshot do preview") {
+                        model.startSnapshotCapture()
+                    }
+                }
                 VStack(alignment: .trailing, spacing: BPTokens.Spacing.xxs) {
                     StatusBadge(status: tab.status)
                     if let updatedAt = tab.previewUpdatedAt {
@@ -235,91 +240,101 @@ struct PreviewPane: View {
             Divider()
 
             Group {
-                if tab.kind == .markdown, let html = tab.previewHTML {
-                    VStack(spacing: 0) {
-                        if model.isFindBarVisible {
-                            PreviewFindBar()
-                        }
-                        if let errorMessage = tab.errorMessage {
-                            PreviewErrorBanner(
-                                message: errorMessage,
-                                showingStalePreview: tab.isStale,
-                                onRetry: model.refreshActiveTab
+                    if tab.kind == .markdown, let html = tab.previewHTML {
+                        VStack(spacing: 0) {
+                            if model.isFindBarVisible {
+                                PreviewFindBar()
+                            }
+                            if let errorMessage = tab.errorMessage {
+                                PreviewErrorBanner(
+                                    message: errorMessage,
+                                    showingStalePreview: tab.isStale,
+                                    onRetry: model.refreshActiveTab
+                                )
+                            }
+                            MarkdownPreviewView(
+                                html: html,
+                                baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
+                                documentID: tab.id,
+                                outline: tab.markdownOutline,
+                                onNavigate: model.openPreviewURL,
+                                zoom: tab.previewZoom,
+                                findQuery: model.findQuery,
+                                findRequestID: model.findRequestID,
+                                findBackwards: model.findBackwards,
+                                isOutlineVisible: Binding(
+                                    get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
+                                    set: { model.setOutlineVisible($0, forTabID: tab.id) }
+                                ),
+                                readingPosition: tab.markdownReadingPosition,
+                                onReadingPositionChanged: { position in
+                                    model.updateMarkdownReadingPosition(position, forTabID: tab.id)
+                                },
+                                isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
+                                onSnapshotCancel: model.cancelSnapshotCapture,
+                                onSnapshotCapture: { image in
+                                    model.finishSnapshotCapture(image, forTabID: tab.id)
+                                },
                             )
                         }
-                        MarkdownPreviewView(
-                            html: html,
-                            baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
-                            documentID: tab.id,
-                            outline: tab.markdownOutline,
-                            onNavigate: model.openPreviewURL,
-                            zoom: tab.previewZoom,
-                            findQuery: model.findQuery,
-                            findRequestID: model.findRequestID,
-                            findBackwards: model.findBackwards,
-                            isOutlineVisible: Binding(
-                                get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
-                                set: { model.setOutlineVisible($0, forTabID: tab.id) }
-                            ),
-                            readingPosition: tab.markdownReadingPosition,
-                            onReadingPositionChanged: { position in
-                                model.updateMarkdownReadingPosition(position, forTabID: tab.id)
-                            },
-                        )
-                    }
-                } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
-                    VStack(spacing: 0) {
-                        if model.isFindBarVisible {
-                            PreviewFindBar()
-                        }
-                        if let errorMessage = tab.errorMessage {
-                            PreviewErrorBanner(
-                                message: errorMessage,
-                                showingStalePreview: tab.isStale,
-                                onRetry: model.refreshActiveTab
+                    } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
+                        VStack(spacing: 0) {
+                            if model.isFindBarVisible {
+                                PreviewFindBar()
+                            }
+                            if let errorMessage = tab.errorMessage {
+                                PreviewErrorBanner(
+                                    message: errorMessage,
+                                    showingStalePreview: tab.isStale,
+                                    onRetry: model.refreshActiveTab
+                                )
+                            }
+                            PDFPreviewView(
+                                data: pdfData,
+                                zoom: tab.previewZoom,
+                                findQuery: model.findQuery,
+                                findRequestID: model.findRequestID,
+                                findBackwards: model.findBackwards,
+                                pageIndex: tab.previewPageIndex,
+                                readingPosition: tab.pdfReadingPosition,
+                                onReadingPositionChanged: { position in
+                                    model.updatePDFReadingPosition(position, forTabID: tab.id)
+                                },
+                                isOutlineVisible: Binding(
+                                    get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
+                                    set: { model.setOutlineVisible($0, forTabID: tab.id) }
+                                ),
+                                isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
+                                onSnapshotCancel: model.cancelSnapshotCapture,
+                                onSnapshotCapture: { image in
+                                    model.finishSnapshotCapture(image, forTabID: tab.id)
+                                }
                             )
                         }
-                        PDFPreviewView(
-                            data: pdfData,
-                            zoom: tab.previewZoom,
-                            findQuery: model.findQuery,
-                            findRequestID: model.findRequestID,
-                            findBackwards: model.findBackwards,
-                            pageIndex: tab.previewPageIndex,
-                            readingPosition: tab.pdfReadingPosition,
-                            onReadingPositionChanged: { position in
-                                model.updatePDFReadingPosition(position, forTabID: tab.id)
-                            },
-                            isOutlineVisible: Binding(
-                                get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
-                                set: { model.setOutlineVisible($0, forTabID: tab.id) }
-                            )
-                        )
-                    }
-                } else {
-                    VStack(spacing: 0) {
-                        if let errorMessage = tab.errorMessage {
-                            PreviewErrorBanner(
-                                message: errorMessage,
-                                showingStalePreview: false,
-                                onRetry: model.refreshActiveTab
+                    } else {
+                        VStack(spacing: 0) {
+                            if let errorMessage = tab.errorMessage {
+                                PreviewErrorBanner(
+                                    message: errorMessage,
+                                    showingStalePreview: false,
+                                    onRetry: model.refreshActiveTab
+                                )
+                            }
+                            EmptyStateView(
+                                systemImage: tab.kind == .latex ? "doc.text.image" : "doc.richtext",
+                                title: tab.kind == .latex
+                                    ? (tab.errorMessage == nil ? "A preparar preview LaTeX…" : "Não foi possível gerar o preview")
+                                    : tab.status == .failed ? "Não foi possível gerar o preview" : "A preparar preview…",
+                                message: tab.errorMessage == nil
+                                    ? (tab.kind == .latex
+                                        ? "A compilar o documento principal com a instalação LaTeX local."
+                                        : "A ler o ficheiro Markdown e a gerar HTML.")
+                                    : "Consulta os detalhes acima, corrige o problema e tenta novamente."
                             )
                         }
-                        EmptyStateView(
-                            systemImage: tab.kind == .latex ? "doc.text.image" : "doc.richtext",
-                            title: tab.kind == .latex
-                                ? (tab.errorMessage == nil ? "A preparar preview LaTeX…" : "Não foi possível gerar o preview")
-                                : tab.status == .failed ? "Não foi possível gerar o preview" : "A preparar preview…",
-                            message: tab.errorMessage == nil
-                                ? (tab.kind == .latex
-                                    ? "A compilar o documento principal com a instalação LaTeX local."
-                                    : "A ler o ficheiro Markdown e a gerar HTML.")
-                                : "Consulta os detalhes acima, corrige o problema e tenta novamente."
-                        )
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(BPTokens.Color.canvas)
     }

@@ -12,6 +12,9 @@ struct PDFPreviewView: View {
     let readingPosition: PDFReadingPosition?
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
     @Binding var isOutlineVisible: Bool
+    let isSnapshotCaptureActive: Bool
+    let onSnapshotCancel: () -> Void
+    let onSnapshotCapture: (NSImage) -> Void
     @State private var requestedPageIndex: Int?
     @State private var selectedOutlineID: String?
 
@@ -53,22 +56,31 @@ struct PDFPreviewView: View {
                     Divider()
                 }
 
-                PDFKitPreviewView(
-                    data: data,
-                    zoom: zoom,
-                    findQuery: findQuery,
-                    findRequestID: findRequestID,
-                    findBackwards: findBackwards,
-                    pageIndex: pageIndex,
-                    requestedPageIndex: requestedPageIndex,
-                    readingPosition: readingPosition,
-                    onReadingPositionChanged: { position in
-                        if requestedPageIndex == position.pageIndex {
-                            requestedPageIndex = nil
+                ZStack {
+                    PDFKitPreviewView(
+                        data: data,
+                        zoom: zoom,
+                        findQuery: findQuery,
+                        findRequestID: findRequestID,
+                        findBackwards: findBackwards,
+                        pageIndex: pageIndex,
+                        requestedPageIndex: requestedPageIndex,
+                        readingPosition: readingPosition,
+                        onReadingPositionChanged: { position in
+                            if requestedPageIndex == position.pageIndex {
+                                requestedPageIndex = nil
+                            }
+                            onReadingPositionChanged(position)
                         }
-                        onReadingPositionChanged(position)
+                    )
+                    if isSnapshotCaptureActive {
+                        SnapshotSelectionOverlay(
+                            onCancel: onSnapshotCancel,
+                            onCapture: onSnapshotCapture
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                )
+                }
             }
         }
     }

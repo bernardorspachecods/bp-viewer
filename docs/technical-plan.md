@@ -733,6 +733,8 @@ O estado de cada workspace é indexado pela raiz aberta:
 - pastas expandidas;
 - posição de scroll da árvore;
 - filtro de ficheiros compatíveis.
+- snapshots visuais persistidos por workspace, com referência ao documento de
+  origem e ao artefacto de imagem guardado localmente.
 
 A pesquisa da árvore é transitória e não é persistida. No arranque restaura-se
 apenas o último workspace; os restantes estados ficam disponíveis quando a
@@ -744,16 +746,19 @@ de aumentar um objeto global indiferenciado. Os campos novos devem ter defaults
 ao descodificar versões anteriores do novo schema; isto é compatibilidade futura
 do modelo, não migração das chaves antigas.
 
-Guardar referências/estado, nunca conteúdo raw ou cópias de fontes. Um ficheiro
-removido aparece como indisponível; uma raiz inacessível pede recuperação; uma
-tab inválida não deve impedir as restantes.
+Guardar referências/estado, nunca conteúdo raw ou cópias de fontes. Um snapshot
+visual é uma exceção deliberada: guarda um artefacto PNG gerado para preservar
+exatamente a referência escolhida pelo utilizador, sem substituir o documento
+raw nem o preview vivo. Um ficheiro removido aparece como indisponível; uma
+raiz inacessível pede recuperação; uma tab inválida não deve impedir as
+restantes.
 
 ### 9.2 Ordem segura de restauração
 
 1. abrir e descodificar o `AppState`;
 2. resolver a última raiz e autorização;
 3. reconstruir snapshot/árvore;
-4. restaurar o workspace, pastas expandidas, scroll e tabs que ainda possam ser identificadas;
+4. restaurar o workspace, pastas expandidas, scroll, tabs e snapshots que ainda possam ser identificados;
 5. aplicar o `DocumentState` de cada tab;
 6. restaurar tab ativa, outline, zoom e posição de leitura depois do preview estar disponível;
 7. iniciar renderizações necessárias;
