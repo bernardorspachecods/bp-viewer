@@ -1,15 +1,34 @@
 import Foundation
 import Markdown
 
+public struct MarkdownOutlineEntry: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let title: String
+    public let level: Int
+
+    public init(id: String, title: String, level: Int) {
+        self.id = id
+        self.title = title
+        self.level = level
+    }
+}
+
 public struct MarkdownRenderResult: Sendable {
     public let html: String
     public let baseURL: URL
     public let dependencies: [URL]
+    public let outline: [MarkdownOutlineEntry]
 
-    public init(html: String, baseURL: URL, dependencies: [URL]) {
+    public init(
+        html: String,
+        baseURL: URL,
+        dependencies: [URL],
+        outline: [MarkdownOutlineEntry] = []
+    ) {
         self.html = html
         self.baseURL = baseURL
         self.dependencies = dependencies
+        self.outline = outline
     }
 }
 
@@ -31,7 +50,8 @@ public struct SwiftMarkdownAdapter: MarkdownAdapter {
         return MarkdownRenderResult(
             html: MarkdownHTMLDocument(body: renderer.html).rendered,
             baseURL: directoryBaseURL,
-            dependencies: Array(renderer.dependencies)
+            dependencies: Array(renderer.dependencies),
+            outline: renderer.outline
         )
     }
 }
@@ -84,6 +104,7 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
     private var headingCounts: [String: Int] = [:]
     private let mathRenderer = TeXMathMLRenderer()
     private(set) var dependencies: Set<URL> = []
+    private(set) var outline: [MarkdownOutlineEntry] = []
 
     init(baseURL: URL) {
         self.baseURL = baseURL
@@ -106,6 +127,13 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
 
     mutating func visitHeading(_ heading: Heading) {
         let id = uniqueHeadingID(for: heading.plainText)
+        outline.append(
+            MarkdownOutlineEntry(
+                id: id,
+                title: heading.plainText,
+                level: heading.level
+            )
+        )
         html += "<h\(heading.level) id=\"\(escapeAttribute(id))\">"
         descendInto(heading)
         html += "</h\(heading.level)>\n"

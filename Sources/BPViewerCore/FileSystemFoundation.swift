@@ -1,5 +1,11 @@
 import Foundation
 
+public enum FilePathCopy {
+    public static func string(for url: URL) -> String {
+        url.standardizedFileURL.path
+    }
+}
+
 public enum DocumentKind: String, Hashable, Sendable {
     case markdown
     case latex

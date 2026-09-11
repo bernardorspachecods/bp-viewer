@@ -1,4 +1,5 @@
 import AppKit
+import BPViewerCore
 import SwiftUI
 
 struct DocumentWorkspaceView: View {
@@ -86,7 +87,6 @@ struct TabBarView: View {
 
 struct TabItemView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var isHovered = false
     let tab: DocumentTab
     let isActive: Bool
     let isDropTarget: Bool
@@ -107,8 +107,6 @@ struct TabItemView: View {
                                 .foregroundStyle(BPTokens.Color.muted)
                         }
                     }
-                    Spacer(minLength: BPTokens.Spacing.xs)
-                    StatusBadge(status: tab.status)
                 }
                 .font(BPTokens.Typography.caption)
                 .padding(.leading, BPTokens.Spacing.xs)
@@ -122,18 +120,15 @@ struct TabItemView: View {
                 model.closeTab(tab)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
-                    .frame(width: 16, height: 16)
+                    .font(.system(size: 9, weight: .medium))
+                    .frame(width: 14, height: 14)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .opacity(isHovered ? 1 : 0)
             .zIndex(1)
-            .animation(.easeInOut(duration: 0.12), value: isHovered)
         }
         .padding(.horizontal, BPTokens.Spacing.xs)
         .frame(minWidth: 150, minHeight: 36)
-        .onHover { isHovered = $0 }
         .overlay(alignment: .bottom) {
             if isActive {
                 Rectangle()
@@ -150,6 +145,8 @@ struct TabItemView: View {
             }
         }
         .contextMenu {
+            Button("Copiar path") { model.copyPath(tab.url) }
+            Divider()
             Button("Fechar tab") { model.closeTab(tab) }
             Button("Fechar as outras") { model.closeOtherTabs(keeping: tab) }
             Button("Fechar as tabs à direita") { model.closeTabsToRight(of: tab) }
@@ -181,28 +178,59 @@ struct DocumentSurfaceView: View {
 struct PreviewPane: View {
     @EnvironmentObject private var model: AppModel
     let tab: DocumentTab
+    @State private var isTitleRowHovered = false
+    @State private var isPathRowHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                    Text(tab.title)
-                        .font(.title2.weight(.semibold))
-                    Text(tab.url.path)
-                        .font(BPTokens.Typography.caption)
-                        .foregroundStyle(BPTokens.Color.muted)
-                        .lineLimit(1)
+                    HStack(spacing: BPTokens.Spacing.xxs) {
+                        Text(tab.title)
+                            .font(.title2.weight(.semibold))
+                            .textSelection(.enabled)
+                            .contextMenu {
+                                Button("Copiar título") { model.copyText(tab.title) }
+                            }
+                        CopyTextButton(text: tab.title, isVisible: isTitleRowHovered) {
+                            model.copyText($0)
+                        }
+                    }
+                    .onHover { isTitleRowHovered = $0 }
+                    HStack(spacing: BPTokens.Spacing.xxs) {
+                        let path = FilePathCopy.string(for: tab.url)
+                        Text(path)
+                            .font(BPTokens.Typography.caption)
+                            .foregroundStyle(BPTokens.Color.muted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .layoutPriority(1)
+                            .textSelection(.enabled)
+                            .contextMenu {
+                                Button("Copiar path") { model.copyPath(tab.url) }
+                            }
+                        CopyTextButton(
+                            text: path,
+                            isVisible: isPathRowHovered,
+                            helpText: "Copiar path"
+                        ) {
+                            model.copyText($0)
+                        }
+                    }
+                    .onHover { isPathRowHovered = $0 }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: BPTokens.Spacing.xxs) {
+                    StatusBadge(status: tab.status)
                     if let updatedAt = tab.previewUpdatedAt {
-                        Text("Atualizado \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text("Atualizado em \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
                             .font(BPTokens.Typography.caption)
                             .foregroundStyle(BPTokens.Color.muted)
                     }
                 }
-                Spacer()
-                StatusBadge(status: tab.status)
             }
-            .padding(.horizontal, BPTokens.Spacing.lg)
-            .padding(.vertical, BPTokens.Spacing.md)
+            .padding(.horizontal, BPTokens.Spacing.md)
+            .padding(.vertical, BPTokens.Spacing.xs)
 
             Divider()
 
@@ -223,11 +251,16 @@ struct PreviewPane: View {
                             html: html,
                             baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
                             documentID: tab.id,
+                            outline: tab.markdownOutline,
                             onNavigate: model.openPreviewURL,
                             zoom: model.previewZoom,
                             findQuery: model.findQuery,
                             findRequestID: model.findRequestID,
-                            findBackwards: model.findBackwards
+                            findBackwards: model.findBackwards,
+                            isOutlineVisible: Binding(
+                                get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
+                                set: { model.setOutlineVisible($0, forTabID: tab.id) }
+                            )
                         )
                     }
                 } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
@@ -251,7 +284,11 @@ struct PreviewPane: View {
                             pageIndex: tab.previewPageIndex,
                             onPageChanged: { pageIndex in
                                 model.updateReadingPage(tabID: tab.id, pageIndex: pageIndex)
-                            }
+                            },
+                            isOutlineVisible: Binding(
+                                get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
+                                set: { model.setOutlineVisible($0, forTabID: tab.id) }
+                            )
                         )
                     }
                 } else {

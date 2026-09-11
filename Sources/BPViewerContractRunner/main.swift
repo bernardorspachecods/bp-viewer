@@ -26,6 +26,9 @@ struct BPViewerContractRunner {
 
         expect(result.html.contains("<h1 id=\"heading\">Heading</h1>"), "heading")
         expect(result.html.contains("<h1 id=\"heading-2\">Heading</h1>"), "duplicate heading id")
+        expect(result.outline.map(\.title) == ["Heading", "Heading"], "Markdown outline titles")
+        expect(result.outline.map(\.level) == [1, 1], "Markdown outline levels")
+        expect(result.outline.map(\.id) == ["heading", "heading-2"], "Markdown outline IDs")
         expect(result.html.contains("<strong>important</strong>"), "strong text")
         expect(
             result.html.contains("href=\"bpviewer://open-local-file?path=/tmp/project/chapter-1/chapter-2.md\""),

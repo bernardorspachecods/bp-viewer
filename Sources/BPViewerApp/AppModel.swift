@@ -87,6 +87,7 @@ final class AppModel: ObservableObject {
         static let latexExternalGrants = "bp-viewer.latexExternalGrants"
         static let tabPageIndices = "bp-viewer.tabPageIndices"
         static let tabContexts = "bp-viewer.tabContexts"
+        static let tabOutlineVisibility = "bp-viewer.tabOutlineVisibility"
     }
 
     init() {
@@ -272,6 +273,15 @@ final class AppModel: ObservableObject {
         }
 
         openDocument(url: node.url)
+    }
+
+    func copyText(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    func copyPath(_ url: URL) {
+        copyText(FilePathCopy.string(for: url))
     }
 
     func openExternalURLs(_ urls: [URL]) {
@@ -502,6 +512,13 @@ final class AppModel: ObservableObject {
     func showFindBar() {
         guard activeTab?.kind == .markdown || activeTab?.kind == .latex else { return }
         isFindBarVisible = true
+    }
+
+    func setOutlineVisible(_ visible: Bool, forTabID tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].isOutlineVisible != visible else { return }
+        tabs[index].isOutlineVisible = visible
+        persistState()
     }
 
     func cancelLatexRootSelection() {
@@ -827,6 +844,10 @@ final class AppModel: ObservableObject {
             Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.previewPageIndex) }),
             forKey: Keys.tabPageIndices
         )
+        defaults.set(
+            Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.isOutlineVisible) }),
+            forKey: Keys.tabOutlineVisibility
+        )
     }
 
     private func restoreTabs() {
@@ -834,6 +855,7 @@ final class AppModel: ObservableObject {
         let savedActivePath = defaults.string(forKey: Keys.activeTab)
         let savedPageIndices = defaults.dictionary(forKey: Keys.tabPageIndices) as? [String: Int] ?? [:]
         let savedContexts = defaults.dictionary(forKey: Keys.tabContexts) as? [String: String] ?? [:]
+        let savedOutlineVisibility = defaults.dictionary(forKey: Keys.tabOutlineVisibility) as? [String: Bool] ?? [:]
         let session = TabSessionState.restored(
             paths: savedPaths,
             activePath: savedActivePath,
@@ -856,6 +878,7 @@ final class AppModel: ObservableObject {
                 kind: kind,
                 contextURL: contextURL,
                 status: kind == .markdown || kind == .latex ? .idle : .unavailable,
+                isOutlineVisible: savedOutlineVisibility[url.path] ?? false,
                 previewPageIndex: savedPageIndices[url.path] ?? 0
             )
         }
@@ -1240,6 +1263,7 @@ final class AppModel: ObservableObject {
                 self.tabs[index].previewUpdatedAt = Date()
                 self.tabs[index].previewBaseURL = result.baseURL
                 self.tabs[index].previewDependencies = result.dependencies
+                self.tabs[index].markdownOutline = result.outline
                 self.tabs[index].status = .ready
                 self.tabs[index].isStale = false
                 self.tabs[index].errorMessage = nil

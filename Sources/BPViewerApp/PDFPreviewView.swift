@@ -10,38 +10,44 @@ struct PDFPreviewView: View {
     let findBackwards: Bool
     let pageIndex: Int
     let onPageChanged: (Int) -> Void
-    @State private var isOutlineVisible = false
+    @Binding var isOutlineVisible: Bool
     @State private var requestedPageIndex: Int?
+    @State private var selectedOutlineID: String?
 
     private var outlineEntries: [PDFOutlineEntry] {
         PDFOutlineEntry.entries(from: data)
     }
 
+    private var outlineItems: [DocumentOutlineItem] {
+        outlineEntries.map {
+            DocumentOutlineItem(
+                id: $0.id,
+                title: $0.title,
+                level: $0.level,
+                isSelectable: $0.pageIndex != nil
+            )
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if !outlineEntries.isEmpty {
-                HStack {
-                    Button {
-                        isOutlineVisible.toggle()
-                    } label: {
-                        Label(
-                            isOutlineVisible ? "Esconder índice" : "Mostrar índice",
-                            systemImage: "list.bullet.rectangle"
-                        )
-                    }
-                    .buttonStyle(.borderless)
-                    Spacer()
+            if !outlineItems.isEmpty {
+                DocumentOutlineToolbar(isVisible: isOutlineVisible) {
+                    isOutlineVisible.toggle()
                 }
-                .padding(.horizontal, BPTokens.Spacing.md)
-                .padding(.vertical, BPTokens.Spacing.xs)
-                .background(BPTokens.Color.surface)
-                Divider()
             }
 
             HStack(spacing: 0) {
                 if isOutlineVisible {
-                    PDFOutlineSidebar(entries: outlineEntries) { index in
-                        requestedPageIndex = index
+                    DocumentOutlineSidebar(
+                        entries: outlineItems,
+                        selectedID: selectedOutlineID
+                    ) { item in
+                        guard let pageIndex = outlineEntries.first(where: { $0.id == item.id })?.pageIndex else {
+                            return
+                        }
+                        selectedOutlineID = item.id
+                        requestedPageIndex = pageIndex
                     }
                     Divider()
                 }
@@ -69,93 +75,43 @@ struct PDFPreviewView: View {
 private struct PDFOutlineEntry: Identifiable {
     let id: String
     let title: String
+    let level: Int
     let pageIndex: Int?
-    let children: [PDFOutlineEntry]
 
     static func entries(from data: Data) -> [PDFOutlineEntry] {
         guard let document = PDFDocument(data: data),
               let root = document.outlineRoot else {
             return []
         }
-        return entries(from: root, document: document, prefix: "outline")
+        return entries(from: root, document: document, prefix: "outline", level: 0)
     }
 
     private static func entries(
         from outline: PDFOutline,
         document: PDFDocument,
-        prefix: String
+        prefix: String,
+        level: Int
     ) -> [PDFOutlineEntry] {
-        (0..<outline.numberOfChildren).compactMap { offset -> PDFOutlineEntry? in
-            guard let child = outline.child(at: offset) else { return nil }
+        (0..<outline.numberOfChildren).flatMap { offset -> [PDFOutlineEntry] in
+            guard let child = outline.child(at: offset) else { return [] }
             let id = "\(prefix)-\(offset)"
-            let children = entries(from: child, document: document, prefix: id)
+            let children = entries(from: child, document: document, prefix: id, level: level + 1)
             let title = child.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !title.isEmpty || child.destination?.page != nil || !children.isEmpty else {
-                return nil
-            }
             let pageIndex: Int? = child.destination.flatMap { destination in
                 guard let page = destination.page else { return nil }
                 return document.index(for: page)
             }
-            return PDFOutlineEntry(
+            guard !title.isEmpty || pageIndex != nil || !children.isEmpty else {
+                return []
+            }
+
+            let entry = PDFOutlineEntry(
                 id: id,
                 title: title.isEmpty ? "Sem título" : title,
+                level: level,
                 pageIndex: pageIndex,
-                children: children
             )
-        }
-    }
-}
-
-private struct PDFOutlineSidebar: View {
-    let entries: [PDFOutlineEntry]
-    let onSelect: (Int) -> Void
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(entries) { entry in
-                    PDFOutlineRow(entry: entry, level: 0, onSelect: onSelect)
-                }
-            }
-            .padding(.vertical, BPTokens.Spacing.xs)
-        }
-        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
-        .background(BPTokens.Color.surface)
-    }
-}
-
-private struct PDFOutlineRow: View {
-    let entry: PDFOutlineEntry
-    let level: Int
-    let onSelect: (Int) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                if let pageIndex = entry.pageIndex {
-                    onSelect(pageIndex)
-                }
-            } label: {
-                HStack(spacing: BPTokens.Spacing.xs) {
-                    Image(systemName: entry.pageIndex == nil ? "folder" : "doc.text")
-                        .foregroundStyle(BPTokens.Color.muted)
-                    Text(entry.title)
-                        .font(BPTokens.Typography.caption)
-                        .lineLimit(2)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, BPTokens.Spacing.sm + CGFloat(level) * BPTokens.Spacing.md)
-                .padding(.trailing, BPTokens.Spacing.xs)
-                .padding(.vertical, BPTokens.Spacing.xs)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(entry.pageIndex == nil)
-
-            ForEach(entry.children) { child in
-                PDFOutlineRow(entry: child, level: level + 1, onSelect: onSelect)
-            }
+            return [entry] + children
         }
     }
 }

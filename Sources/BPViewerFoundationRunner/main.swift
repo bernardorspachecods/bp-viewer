@@ -21,6 +21,7 @@ private struct Runner {
 
         runScannerContracts(root: fixture)
         runTabContracts(root: fixture)
+        runPathCopyContracts(root: fixture)
 
         print("Foundation contracts: " + String(passed) + " passed, " + String(failed) + " failed")
         if failed > 0 {
@@ -132,6 +133,14 @@ private struct Runner {
         expect(reorderState.reorder([second, third, first]), "accepting a native tab order succeeds")
         expect(reorderState.paths == [second.standardizedFileURL, third.standardizedFileURL, first.standardizedFileURL], "native tab order is applied")
         expect(!reorderState.reorder([second, second, first]), "invalid native tab order is ignored")
+    }
+
+    private mutating func runPathCopyContracts(root: URL) {
+        let path = root.appendingPathComponent("chapters/../working.md")
+        expect(
+            FilePathCopy.string(for: path) == root.appendingPathComponent("working.md").path,
+            "copy path is normalized and absolute"
+        )
     }
 
     private mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {

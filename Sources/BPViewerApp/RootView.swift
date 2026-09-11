@@ -230,6 +230,13 @@ struct TopBarView: View {
 
     var body: some View {
         HStack(spacing: BPTokens.Spacing.sm) {
+            ToolbarIconButton(
+                systemName: "sidebar.left",
+                help: model.sidebarVisible ? "Esconder sidebar" : "Mostrar sidebar"
+            ) {
+                model.setSidebarVisible(!model.sidebarVisible)
+            }
+
             ToolbarIconButton(systemName: "folder", help: "Abrir pasta") {
                 model.openFolder()
             }
@@ -244,10 +251,6 @@ struct TopBarView: View {
             }
 
             Spacer()
-
-            if let activeTab = model.activeTab {
-                StatusBadge(status: activeTab.status)
-            }
 
             if model.activeTab?.kind == .markdown || model.activeTab?.kind == .latex {
                 if model.activeTab?.kind == .latex {
@@ -294,12 +297,6 @@ struct TopBarView: View {
                 model.cycleTheme()
             }
 
-            ToolbarIconButton(
-                systemName: model.sidebarVisible ? "sidebar.left" : "sidebar.right",
-                help: model.sidebarVisible ? "Esconder sidebar" : "Mostrar sidebar"
-            ) {
-                model.setSidebarVisible(!model.sidebarVisible)
-            }
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .frame(height: BPTokens.Size.toolbar)

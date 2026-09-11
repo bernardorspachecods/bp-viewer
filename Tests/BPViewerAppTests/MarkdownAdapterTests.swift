@@ -52,3 +52,35 @@ func rendersCommonTeXMathAsLocalMathML() throws {
     #expect(result.html.contains("<msup>"))
     #expect(result.html.contains("<mfrac>"))
 }
+
+@Test("exposes a navigable outline with stable heading IDs")
+func exposesNavigableMarkdownOutline() throws {
+    let source = """
+    # Introduction
+
+    ## Methods
+
+    ```markdown
+    # Not a heading
+    ```
+
+    ## Methods
+    """
+
+    let result = try SwiftMarkdownAdapter().render(
+        source: source,
+        baseURL: URL(fileURLWithPath: "/tmp/project")
+    )
+
+    #expect(result.outline.map(\.title) == ["Introduction", "Methods", "Methods"])
+    #expect(result.outline.map(\.level) == [1, 2, 2])
+    #expect(result.outline.map(\.id) == ["introduction", "methods", "methods-2"])
+    #expect(result.outline.allSatisfy { result.html.contains("id=\"\($0.id)\"") })
+}
+
+@Test("produces the normalized absolute path used by copy-path actions")
+func producesNormalizedAbsolutePathForCopyActions() {
+    let url = URL(fileURLWithPath: "/tmp/project/chapters/../working.md")
+
+    #expect(FilePathCopy.string(for: url) == "/tmp/project/working.md")
+}

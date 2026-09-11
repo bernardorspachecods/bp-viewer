@@ -53,11 +53,54 @@ struct ToolbarIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(BPTokens.Color.muted)
+                .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .contentShape(Rectangle())
+        .help(help)
+    }
+}
+
+struct CopyTextButton: View {
+    let text: String
+    let isVisible: Bool
+    let helpText: String
+    let onCopy: (String) -> Void
+    @State private var didCopy = false
+
+    init(
+        text: String,
+        isVisible: Bool = true,
+        helpText: String = "Copiar texto",
+        onCopy: @escaping (String) -> Void
+    ) {
+        self.text = text
+        self.isVisible = isVisible
+        self.helpText = helpText
+        self.onCopy = onCopy
+    }
+
+    var body: some View {
+        Button {
+            onCopy(text)
+            didCopy = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                didCopy = false
+            }
+        } label: {
+            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11, weight: .medium))
                 .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .help(help)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .accessibilityHidden(!isVisible)
+        .help(didCopy ? "Texto copiado" : helpText)
     }
 }
 

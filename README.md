@@ -60,8 +60,8 @@ pesquisa, tabs e restauração:
 swift run BPViewerFoundationRunner
 ```
 
-Neste momento existem 92 verificações base quando há um compilador LaTeX local:
-14 do Markdown, 34 do LaTeX/process runner e 44 das fundações da app. Quando o
+Neste momento existem 96 verificações base quando há um compilador LaTeX local:
+17 do Markdown, 34 do LaTeX/process runner e 45 das fundações da app. Quando o
 corpus local `developer-cv` existe, o runner acrescenta uma verificação real de
 integração. Sem compilador LaTeX, o contrato dependente do ambiente é marcado
 como `SKIP`. O target `swift test` continua dependente de um toolchain que

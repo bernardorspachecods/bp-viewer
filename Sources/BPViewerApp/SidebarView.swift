@@ -82,12 +82,7 @@ struct FileTreeRow: View {
     var body: some View {
         if node.isDirectory {
             VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    model.toggleExpanded(node.id)
-                } label: {
-                    rowLabel
-                }
-                .buttonStyle(.plain)
+                rowButton
 
                 if model.expandedPaths.contains(node.id) {
                     if node.childrenLoaded {
@@ -111,12 +106,20 @@ struct FileTreeRow: View {
                 }
             }
         } else {
-            Button {
-                model.open(node)
-            } label: {
-                rowLabel
-            }
-            .buttonStyle(.plain)
+            rowButton
+        }
+    }
+
+    private var rowButton: some View {
+        Button {
+            model.open(node)
+        } label: {
+            rowLabel
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contextMenu {
+            Button("Copiar path") { model.copyPath(node.url) }
         }
     }
 

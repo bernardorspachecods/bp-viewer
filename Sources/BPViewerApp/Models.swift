@@ -79,6 +79,8 @@ struct DocumentTab: Identifiable, Hashable {
     var isStale: Bool = false
     var previewHTML: String?
     var previewPDFData: Data?
+    var markdownOutline: [MarkdownOutlineEntry] = []
+    var isOutlineVisible = false
     var previewPageIndex: Int = 0
     var previewUpdatedAt: Date?
     var previewBaseURL: URL?

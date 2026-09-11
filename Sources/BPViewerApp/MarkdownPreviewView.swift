@@ -2,7 +2,70 @@ import SwiftUI
 import WebKit
 import BPViewerCore
 
-struct MarkdownPreviewView: NSViewRepresentable {
+struct MarkdownPreviewView: View {
+    let html: String
+    let baseURL: URL
+    let documentID: String
+    let outline: [MarkdownOutlineEntry]
+    let onNavigate: (URL) -> Void
+    let zoom: Double
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    @Binding var isOutlineVisible: Bool
+    @State private var selectedHeadingID: String?
+    @State private var outlineRequestID = 0
+
+    private var outlineItems: [DocumentOutlineItem] {
+        outline.map {
+            DocumentOutlineItem(
+                id: $0.id,
+                title: $0.title,
+                level: max($0.level - 1, 0),
+                isSelectable: true
+            )
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if !outlineItems.isEmpty {
+                DocumentOutlineToolbar(isVisible: isOutlineVisible) {
+                    isOutlineVisible.toggle()
+                }
+            }
+
+            HStack(spacing: 0) {
+                if isOutlineVisible {
+                    DocumentOutlineSidebar(
+                        entries: outlineItems,
+                        selectedID: selectedHeadingID
+                    ) { item in
+                        selectedHeadingID = item.id
+                        outlineRequestID += 1
+                    }
+                    Divider()
+                }
+
+                MarkdownWebView(
+                    html: html,
+                    baseURL: baseURL,
+                    documentID: documentID,
+                    onNavigate: onNavigate,
+                    zoom: zoom,
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    requestedHeadingID: selectedHeadingID,
+                    outlineRequestID: outlineRequestID
+                )
+            }
+        }
+        .id(documentID)
+    }
+}
+
+private struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL
     let documentID: String
@@ -11,6 +74,8 @@ struct MarkdownPreviewView: NSViewRepresentable {
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
+    let requestedHeadingID: String?
+    let outlineRequestID: Int
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -37,16 +102,27 @@ struct MarkdownPreviewView: NSViewRepresentable {
             context.coordinator.find(in: webView)
         }
 
-        guard context.coordinator.html != html || context.coordinator.baseURL != baseURL else { return }
-        if context.coordinator.documentID == documentID {
-            context.coordinator.scrollY = webView.enclosingScrollView?.contentView.bounds.origin.y
-        } else {
-            context.coordinator.scrollY = nil
+        let documentChanged = context.coordinator.html != html || context.coordinator.baseURL != baseURL
+        if documentChanged {
+            if context.coordinator.documentID == documentID {
+                context.coordinator.scrollY = webView.enclosingScrollView?.contentView.bounds.origin.y
+            } else {
+                context.coordinator.scrollY = nil
+            }
+            context.coordinator.documentID = documentID
+            context.coordinator.html = html
+            context.coordinator.baseURL = baseURL
+            context.coordinator.isDocumentLoaded = false
+            webView.loadHTMLString(html, baseURL: baseURL)
         }
-        context.coordinator.documentID = documentID
-        context.coordinator.html = html
-        context.coordinator.baseURL = baseURL
-        webView.loadHTMLString(html, baseURL: baseURL)
+
+        if context.coordinator.outlineRequestID != outlineRequestID {
+            context.coordinator.outlineRequestID = outlineRequestID
+            context.coordinator.pendingHeadingID = requestedHeadingID
+            if !documentChanged {
+                context.coordinator.scrollToPendingHeading(in: webView)
+            }
+        }
     }
 
     @MainActor
@@ -59,6 +135,9 @@ struct MarkdownPreviewView: NSViewRepresentable {
         var findQuery = ""
         var findRequestID = 0
         var findBackwards = false
+        var outlineRequestID = 0
+        var pendingHeadingID: String?
+        var isDocumentLoaded = false
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             if let scrollY, let scrollView = webView.enclosingScrollView {
@@ -69,7 +148,20 @@ struct MarkdownPreviewView: NSViewRepresentable {
                 scrollView.reflectScrolledClipView(clipView)
                 self.scrollY = nil
             }
+            isDocumentLoaded = true
+            scrollToPendingHeading(in: webView)
             find(in: webView)
+        }
+
+        func scrollToPendingHeading(in webView: WKWebView) {
+            guard isDocumentLoaded, let pendingHeadingID,
+                  let encodedID = try? String(data: JSONEncoder().encode(pendingHeadingID), encoding: .utf8) else {
+                return
+            }
+
+            let script = "document.getElementById(\(encodedID))?.scrollIntoView({ block: 'start', behavior: 'smooth' });"
+            webView.evaluateJavaScript(script, completionHandler: nil)
+            self.pendingHeadingID = nil
         }
 
         func find(in webView: WKWebView) {
