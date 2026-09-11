@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">bp-viewer</title>
+  <desc id="desc">Duas páginas abertas.</desc>
+
+  <rect width="256" height="256" fill="#19324D"/>
+
+  <path
+    d="M50 72c24-13 49-11 75 6v112c-26-17-51-19-75-6V72Z"
+    fill="#F7F3E8"
+  />
+  <path
+    d="M131 78c27-17 52-19 75-6v112c-23-13-48-11-75 6V78Z"
+    fill="#F7F3E8"
+  />
+</svg>

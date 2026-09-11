@@ -8,6 +8,8 @@
 	<string>bp-viewer</string>
 	<key>CFBundleExecutable</key>
 	<string>BPViewer</string>
+	<key>CFBundleIconFile</key>
+	<string>BPViewer.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.bernardopacheco.bp-viewer</string>
 	<key>CFBundleInfoDictionaryVersion</key>
