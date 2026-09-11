@@ -255,6 +255,18 @@ public struct TabSessionState: Equatable, Sendable {
     }
 
     @discardableResult
+    public mutating func reorder(_ requestedPaths: [URL]) -> Bool {
+        let normalized = requestedPaths.map(\.standardizedFileURL)
+        guard normalized.count == paths.count,
+              Set(normalized) == Set(paths) else {
+            return false
+        }
+
+        paths = normalized
+        return true
+    }
+
+    @discardableResult
     public mutating func close(_ path: URL) -> Bool {
         let normalized = path.standardizedFileURL
         guard let index = paths.firstIndex(of: normalized) else { return false }

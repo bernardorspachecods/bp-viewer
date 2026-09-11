@@ -74,13 +74,20 @@ struct DocumentTab: Identifiable, Hashable {
     let id: String
     let url: URL
     let kind: DocumentKind
+    var contextURL: URL?
     var status: PreviewStatus = .idle
     var isStale: Bool = false
     var previewHTML: String?
+    var previewPDFData: Data?
+    var previewPageIndex: Int = 0
+    var previewUpdatedAt: Date?
     var previewBaseURL: URL?
     var previewDependencies: [URL] = []
+    var previewExternalDependencies: [URL] = []
     var errorMessage: String?
 
     var title: String { url.deletingPathExtension().lastPathComponent }
-    var subtitle: String { url.deletingLastPathComponent().lastPathComponent }
+    var subtitle: String {
+        contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
+    }
 }

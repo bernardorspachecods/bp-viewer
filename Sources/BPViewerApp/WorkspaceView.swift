@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct DocumentWorkspaceView: View {
@@ -191,6 +192,11 @@ struct PreviewPane: View {
                         .font(BPTokens.Typography.caption)
                         .foregroundStyle(BPTokens.Color.muted)
                         .lineLimit(1)
+                    if let updatedAt = tab.previewUpdatedAt {
+                        Text("Atualizado \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(BPTokens.Typography.caption)
+                            .foregroundStyle(BPTokens.Color.muted)
+                    }
                 }
                 Spacer()
                 StatusBadge(status: tab.status)
@@ -204,30 +210,71 @@ struct PreviewPane: View {
                 if tab.kind == .markdown, let html = tab.previewHTML {
                     VStack(spacing: 0) {
                         if model.isFindBarVisible {
-                            MarkdownFindBar()
+                            PreviewFindBar()
                         }
                         if let errorMessage = tab.errorMessage {
-                            PreviewErrorBanner(message: errorMessage, showingStalePreview: tab.isStale)
+                            PreviewErrorBanner(
+                                message: errorMessage,
+                                showingStalePreview: tab.isStale,
+                                onRetry: model.refreshActiveTab
+                            )
                         }
-                    MarkdownPreviewView(
-                        html: html,
-                        baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
-                        documentID: tab.id,
-                        onNavigate: model.openPreviewURL,
-                        zoom: model.previewZoom,
-                        findQuery: model.findQuery,
-                        findRequestID: model.findRequestID,
-                        findBackwards: model.findBackwards
-                    )
+                        MarkdownPreviewView(
+                            html: html,
+                            baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
+                            documentID: tab.id,
+                            onNavigate: model.openPreviewURL,
+                            zoom: model.previewZoom,
+                            findQuery: model.findQuery,
+                            findRequestID: model.findRequestID,
+                            findBackwards: model.findBackwards
+                        )
+                    }
+                } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
+                    VStack(spacing: 0) {
+                        if model.isFindBarVisible {
+                            PreviewFindBar()
+                        }
+                        if let errorMessage = tab.errorMessage {
+                            PreviewErrorBanner(
+                                message: errorMessage,
+                                showingStalePreview: tab.isStale,
+                                onRetry: model.refreshActiveTab
+                            )
+                        }
+                        PDFPreviewView(
+                            data: pdfData,
+                            zoom: model.previewZoom,
+                            findQuery: model.findQuery,
+                            findRequestID: model.findRequestID,
+                            findBackwards: model.findBackwards,
+                            pageIndex: tab.previewPageIndex,
+                            onPageChanged: { pageIndex in
+                                model.updateReadingPage(tabID: tab.id, pageIndex: pageIndex)
+                            }
+                        )
                     }
                 } else {
-                    EmptyStateView(
-                        systemImage: tab.kind == .latex ? "doc.text.image" : "doc.richtext",
-                        title: tab.kind == .latex ? "Adapter LaTeX pendente" : tab.status == .failed ? "Não foi possível gerar o preview" : "A preparar preview…",
-                        message: tab.errorMessage ?? (tab.kind == .latex
-                            ? "O shell está pronto. A compilação LaTeX será ligada no próximo vertical slice."
-                            : "A ler o ficheiro Markdown e a gerar HTML.")
-                    )
+                    VStack(spacing: 0) {
+                        if let errorMessage = tab.errorMessage {
+                            PreviewErrorBanner(
+                                message: errorMessage,
+                                showingStalePreview: false,
+                                onRetry: model.refreshActiveTab
+                            )
+                        }
+                        EmptyStateView(
+                            systemImage: tab.kind == .latex ? "doc.text.image" : "doc.richtext",
+                            title: tab.kind == .latex
+                                ? (tab.errorMessage == nil ? "A preparar preview LaTeX…" : "Não foi possível gerar o preview")
+                                : tab.status == .failed ? "Não foi possível gerar o preview" : "A preparar preview…",
+                            message: tab.errorMessage == nil
+                                ? (tab.kind == .latex
+                                    ? "A compilar o documento principal com a instalação LaTeX local."
+                                    : "A ler o ficheiro Markdown e a gerar HTML.")
+                                : "Consulta os detalhes acima, corrige o problema e tenta novamente."
+                        )
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -236,7 +283,7 @@ struct PreviewPane: View {
     }
 }
 
-struct MarkdownFindBar: View {
+struct PreviewFindBar: View {
     @EnvironmentObject private var model: AppModel
     @FocusState private var isSearchFocused: Bool
 
@@ -271,20 +318,53 @@ struct MarkdownFindBar: View {
 struct PreviewErrorBanner: View {
     let message: String
     let showingStalePreview: Bool
+    let onRetry: () -> Void
+    @State private var isExpanded = true
+    @State private var didCopy = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: BPTokens.Spacing.xs) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(BPTokens.Color.warning)
-            VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                Text(showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview")
-                    .font(BPTokens.Typography.caption.weight(.semibold))
-                Text(message)
-                    .font(BPTokens.Typography.caption)
-                    .foregroundStyle(BPTokens.Color.muted)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
+            HStack(alignment: .top, spacing: BPTokens.Spacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(BPTokens.Color.warning)
+                VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
+                    Text(showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview")
+                        .font(BPTokens.Typography.caption.weight(.semibold))
+                    if !isExpanded {
+                        Text(message)
+                            .font(BPTokens.Typography.caption)
+                            .foregroundStyle(BPTokens.Color.muted)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer()
+                Button(isExpanded ? "Ocultar" : "Detalhes") {
+                    isExpanded.toggle()
+                }
+                .buttonStyle(.borderless)
+                Button(didCopy ? "Copiado" : "Copiar") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(message, forType: .string)
+                    didCopy = true
+                }
+                .buttonStyle(.borderless)
+                Button("Tentar novamente", action: onRetry)
+                    .buttonStyle(.borderless)
             }
-            Spacer()
+
+            if isExpanded {
+                ScrollView {
+                    Text(message)
+                        .font(BPTokens.Typography.code)
+                        .foregroundStyle(BPTokens.Color.muted)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(BPTokens.Spacing.xs)
+                }
+                .frame(maxHeight: 220)
+                .background(BPTokens.Color.surface)
+                .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
+            }
         }
         .padding(.horizontal, BPTokens.Spacing.lg)
         .padding(.vertical, BPTokens.Spacing.sm)

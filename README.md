@@ -10,7 +10,13 @@ O projeto é pessoal e começa focado em macOS.
 
 ## Estado
 
-O shell nativo e o vertical slice Markdown estão implementados. O adapter LaTeX ainda está pendente.
+O shell nativo e o vertical slice Markdown estão implementados. O vertical
+slice LaTeX está em progresso: já existe descoberta de root, escolha manual
+persistida por projeto, compilação isolada e preview PDF; a integração
+avançada da cadeia LaTeX já cobre recorder, dependências externas confirmadas,
+BibTeX/Biber, engines de fontes, cache validada por dependências e configuração
+explícita de shell escape. O PDF viewer também aplica uma política explícita
+para links e actions incorporadas.
 
 ## Executar
 
@@ -27,6 +33,15 @@ app automaticamente quando o código muda:
 
 O launcher é apenas uma ferramenta local de desenvolvimento; a app normal não
 fica dependente dele.
+
+Para gerar uma build `.app` local com associação a Markdown e LaTeX, usa:
+
+```bash
+./scripts/build-app.sh
+```
+
+O script não empacota o TeX Live: a app continua a usar a instalação LaTeX
+local do Mac.
 
 ## Validação automática
 
@@ -45,8 +60,11 @@ pesquisa, tabs e restauração:
 swift run BPViewerFoundationRunner
 ```
 
-Neste momento existem 55 verificações executáveis: 14 do Markdown e 41 das
-fundações da app. O target `swift test` continua dependente de um toolchain que
+Neste momento existem 92 verificações base quando há um compilador LaTeX local:
+14 do Markdown, 34 do LaTeX/process runner e 44 das fundações da app. Quando o
+corpus local `developer-cv` existe, o runner acrescenta uma verificação real de
+integração. Sem compilador LaTeX, o contrato dependente do ambiente é marcado
+como `SKIP`. O target `swift test` continua dependente de um toolchain que
 disponha do módulo `Testing`; no CommandLineTools atual esse módulo não está
 disponível.
 

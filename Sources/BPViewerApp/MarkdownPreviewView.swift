@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import BPViewerCore
 
 struct MarkdownPreviewView: NSViewRepresentable {
     let html: String
@@ -85,13 +86,34 @@ struct MarkdownPreviewView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
-            guard navigationAction.navigationType == .linkActivated,
-                  let url = navigationAction.request.url else {
+            guard let requestedURL = navigationAction.request.url else {
                 decisionHandler(.allow)
                 return
             }
 
-            onNavigate?(url)
+            let currentBaseURL = baseURL
+
+            let resolvedURL: URL
+            if requestedURL.scheme == nil,
+               let currentBaseURL,
+               let relativeURL = URL(string: requestedURL.absoluteString, relativeTo: currentBaseURL)?.absoluteURL {
+                resolvedURL = relativeURL
+            } else {
+                resolvedURL = requestedURL
+            }
+
+            let isLocalFileNavigation = resolvedURL.isFileURL
+                && !resolvedURL.hasDirectoryPath
+                && resolvedURL != webView.url
+            let isAppPreviewNavigation = resolvedURL.scheme?.lowercased() == MarkdownPreviewLink.scheme
+            guard navigationAction.navigationType == .linkActivated
+                    || isLocalFileNavigation
+                    || isAppPreviewNavigation else {
+                decisionHandler(.allow)
+                return
+            }
+
+            onNavigate?(resolvedURL)
             decisionHandler(.cancel)
         }
     }

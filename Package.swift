@@ -36,6 +36,14 @@ let package = Package(
         .executableTarget(
             name: "BPViewerFoundationRunner",
             dependencies: ["BPViewerCore"]
+        ),
+        .executableTarget(
+            name: "BPViewerTabPrototype",
+            dependencies: []
+        ),
+        .executableTarget(
+            name: "BPViewerWindowTabPrototype",
+            dependencies: []
         )
     ]
 )

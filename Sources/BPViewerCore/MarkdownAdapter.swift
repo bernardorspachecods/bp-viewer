@@ -223,13 +223,26 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
             descendInto(link)
             return
         }
-        html += "<a href=\"\(escapeAttribute(destination))\""
+        let renderedDestination = localPreviewLinkDestination(for: destination) ?? destination
+        html += "<a href=\"\(escapeAttribute(renderedDestination))\""
         if let title = link.title, !title.isEmpty {
             html += " title=\"\(escapeAttribute(title))\""
         }
         html += ">"
         descendInto(link)
         html += "</a>"
+    }
+
+    private func localPreviewLinkDestination(for source: String) -> String? {
+        guard !source.hasPrefix("#"),
+              let sourceURL = URL(string: source),
+              sourceURL.scheme == nil,
+              let resolvedURL = URL(string: source, relativeTo: baseURL)?.absoluteURL,
+              let previewURL = MarkdownPreviewLink.url(for: resolvedURL) else {
+            return nil
+        }
+
+        return previewURL.absoluteString
     }
 
     mutating func visitLineBreak(_ lineBreak: LineBreak) {

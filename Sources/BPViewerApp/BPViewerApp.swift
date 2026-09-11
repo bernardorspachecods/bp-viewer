@@ -2,9 +2,15 @@ import AppKit
 import SwiftUI
 
 @main
+@MainActor
 struct BPViewerApp: App {
     @NSApplicationDelegateAdaptor(BPViewerAppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model: AppModel
+
+    init() {
+        let model = AppModel()
+        _model = StateObject(wrappedValue: model)
+    }
 
     var body: some Scene {
         WindowGroup("bp-viewer") {
@@ -62,10 +68,21 @@ struct BPViewerApp: App {
 
 final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
+    }
+
+    func application(_ application: NSApplication, openFiles filenames: [String]) {
+        let urls = filenames.map { URL(fileURLWithPath: $0) }
+        NotificationCenter.default.post(name: .bpViewerOpenFiles, object: urls)
+        application.reply(toOpenOrPrint: .success)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        NotificationCenter.default.post(name: .bpViewerOpenFiles, object: urls)
     }
 }

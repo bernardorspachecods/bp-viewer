@@ -1,0 +1,17 @@
+\begin{tikzpicture}[
+  node distance=1.25cm and 0.85cm,
+  box/.style={draw=accent, fill=softblue, rounded corners=2pt,
+              minimum width=2.55cm, minimum height=0.9cm,
+              align=center, font=\small},
+  arrow/.style={-{Latex[length=2mm]}, thick, draw=accent}
+]
+  \node[box] (source) {fontes\\\texttt{.tex}};
+  \node[box, right=of source] (deps) {dependências\\\texttt{.bib} + includes};
+  \node[box, right=of deps] (build) {compilação\\isolada};
+  \node[box, right=of build] (pdf) {preview\\PDF atualizado v3};
+  \draw[arrow] (source) -- (deps);
+  \draw[arrow] (deps) -- (build);
+  \draw[arrow] (build) -- (pdf);
+  \node[below=0.7cm of build, align=center, font=\footnotesize, text=black!65]
+    {geração atual\quad + \quad artefacto válido};
+\end{tikzpicture}

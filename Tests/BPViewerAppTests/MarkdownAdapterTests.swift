@@ -18,7 +18,7 @@ func rendersCoreMarkdownAndKeepsResourceURLsRelative() throws {
 
     #expect(result.html.contains("<h1 id=\"heading\">Heading</h1>"))
     #expect(result.html.contains("<strong>important</strong>"))
-    #expect(result.html.contains("href=\"chapter-2.md\""))
+    #expect(result.html.contains("href=\"bpviewer://open-local-file?path=/tmp/project/chapter-1/chapter-2.md\""))
     #expect(result.html.contains("src=\"images/figure.png\""))
 }
 

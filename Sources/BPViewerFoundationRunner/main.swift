@@ -129,6 +129,9 @@ private struct Runner {
         expect(reorderState.activePath == second.standardizedFileURL, "reordering keeps the active tab")
         expect(reorderState.moveToEnd(third), "moving a tab to the end succeeds")
         expect(reorderState.paths == [first.standardizedFileURL, second.standardizedFileURL, third.standardizedFileURL], "tab can be dropped after the last tab")
+        expect(reorderState.reorder([second, third, first]), "accepting a native tab order succeeds")
+        expect(reorderState.paths == [second.standardizedFileURL, third.standardizedFileURL, first.standardizedFileURL], "native tab order is applied")
+        expect(!reorderState.reorder([second, second, first]), "invalid native tab order is ignored")
     }
 
     private mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {

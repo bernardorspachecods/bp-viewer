@@ -29,12 +29,37 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - a árvore observa a raiz e os diretórios conhecidos para detetar alterações externas e recarrega o snapshot; expansões persistidas voltam a carregar automaticamente depois do arranque;
 - erros mantêm o último preview disponível e mostram o diagnóstico;
 - a árvore indexa inicialmente apenas o primeiro nível, carrega pastas sob pedido e mostra progresso durante indexação/pesquisa;
-- links Markdown internos para `.md`/`.tex` focam ou abrem tabs, enquanto links externos passam para o browser do macOS;
+- links Markdown locais para `.md`/`.tex` focam ou abrem tabs e outros ficheiros locais abrem no macOS, mesmo fora da raiz atualmente aberta; links externos passam para o browser do macOS;
 - o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
 - imagens locais do Markdown são embutidas no HTML quando existem, mas continuam nas dependências observadas para atualização automática;
 - o adapter Markdown vive num módulo core partilhado com um contract runner executável;
 - as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs e restauração vivem num módulo core partilhado com um foundation runner executável;
-- matemática TeX avançada, links internos fora da raiz, dependências transclusivas e LaTeX continuam fases seguintes.
+- o núcleo inicial LaTeX já descobre roots, usa `ProcessRunner`, executa o
+  compiler com cwd no workspace temporário e paths de pesquisa controlados, e
+  entrega bytes de PDF à superfície PDFKit;
+- os paths `TEXINPUTS`, `BIBINPUTS` e `BSTINPUTS` são não recursivos, para
+  evitar que uma raiz ampla percorra pastas pessoais/protegidas; as pastas das
+  dependências descobertas são adicionadas individualmente;
+- `latexmk` é preferido quando existe e `pdflatex` é usado como fallback explícito;
+- a escolha manual de root LaTeX é apresentada numa sheet, guardada por projeto e pode ser alterada a partir da topbar;
+- a abertura de ficheiros `.tex` recebida do Finder é encaminhada para a mesma resolução de projeto/root, incluindo confirmação quando muda de pasta;
+- as dependências do recorder `.fls` são combinadas com a descoberta estática e filtradas à pasta do projeto;
+- referências explícitas a ficheiros fora do projeto pedem confirmação antes da compilação e a aprovação fica guardada por projeto/root;
+- erros de compilação LaTeX têm agora detalhes expandíveis, cópia do diagnóstico e ação de nova tentativa;
+- BibLaTeX/Biber e BibTeX têm fallback de múltiplas passagens quando `latexmk` não existe;
+- documentos com `fontspec`/fontes do sistema podem usar `xelatex`, e sinais de LuaTeX são reconhecidos para `lualatex`;
+- o PDF viewer expõe outline quando o PDF o fornece, guarda a página de leitura por tab e tenta preservar a página/ponto visível ao substituir o PDF após uma recompilação;
+- o preview mostra a hora da última compilação bem-sucedida e cancela renders LaTeX obsoletos quando surge uma nova geração;
+- o contexto do capítulo LaTeX é persistido separadamente da tab do root e
+  validado novamente dentro do projeto ao restaurar;
+- os watchers de dependências permanecem ativos durante um render e são
+  rearmados no fim, para não perder alterações concorrentes ou renames;
+- o fallback de engine direto executa passagens adicionais para estabilizar referências e outline;
+- logs de processos têm limite de captura, timeout reportado e paths são
+  validados depois de resolver symlinks; quando possível, o cancelamento
+  termina também o grupo de processos descendentes;
+- ficheiros `.tex` recebidos do Finder seguem a mesma resolução de projeto/root, quando a app está empacotada como `.app`;
+- TikZ/fontes continuam fases seguintes; a cache LaTeX reutilizável valida conteúdo das dependências, identidade do compiler e configuração, e `shell escape` já tem configuração explícita e segura por defeito;
 
 Esta implementação é deliberadamente provisória: a escolha do parser, a política completa de recursos e o watcher de dependências só ficam fechados depois de testar a tese real.
 
@@ -42,7 +67,9 @@ Esta implementação é deliberadamente provisória: a escolha do parser, a pol�
 
 O shell nativo e o vertical slice Markdown foram validados manualmente no Mac
 atual, incluindo navegação, filtro, tabs, atualização externa, links, imagens
-locais e matemática comum. A próxima fase de implementação é o adapter LaTeX;
+locais e matemática comum. O vertical slice LaTeX está agora em progresso:
+descoberta de root, escolha manual persistida e compilação mínima já passam,
+incluindo o `pdflatex` instalado no Mac atual;
 as lacunas automáticas abaixo continuam a ser dívida de testes e não devem ser
 confundidas com decisões de produto em aberto.
 
@@ -50,16 +77,25 @@ confundidas com decisões de produto em aberto.
 
 Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
 
-- `BPViewerContractRunner`: 14 contratos do adapter Markdown, incluindo links,
-  imagens, dependências, CSP, HTML raw e matemática TeX comum;
-- `BPViewerFoundationRunner`: 41 contratos de scanner, árvore lazy, filtro,
+- `BPViewerContractRunner`: 14 contratos do adapter Markdown e 34 contratos
+  LaTeX/process runner, incluindo root discovery, workspace temporário, logs,
+  filtragem de artefactos runtime,
+  fallback `pdflatex` e roots ambíguos;
+- `BPViewerFoundationRunner`: 44 contratos de scanner, árvore lazy, filtro,
   pesquisa, tabs e restauração/persistência em formato puro.
 
-Os 55 contratos passam após a correção da resolução de recursos locais. A suite
+Os 92 contratos base passam quando existe um compilador LaTeX local; quando o
+corpus local `developer-cv` existe, o runner acrescenta uma verificação real de
+integração. Sem compilador LaTeX, o contrato dependente do ambiente é marcado
+como `SKIP`. A suite
 `swift test` ainda não corre no CommandLineTools atual porque o target existente
 usa o módulo `Testing`, que não está disponível nesse toolchain. Esta limitação
 não invalida os runners, mas deve ser resolvida ou aceite explicitamente antes
 de depender da suite standard como gate de CI.
+
+No Mac atual, a verificação opcional do corpus real `developer-cv` também passou
+através do adapter: três passagens `pdflatex` produziram um PDF A4 de 2 páginas
+num workspace isolado, sem deixar artefactos na pasta raw.
 
 Continuam sem cobertura automática de integração: SwiftUI/AppKit, entrega de
 eventos de UI, WKWebView, atalhos, ciclo de vida assíncrono da `AppModel`,
@@ -114,13 +150,170 @@ regressão:
    confirmar que o preview acompanha a dependência.
 9. Testar links internos Markdown, links externos e links para ficheiros não
    suportados, verificando que cada ação abre o destino esperado.
+   - [x] Links locais relativos para `.csv` fora da raiz e `.md` no diretório
+     pai abriram os destinos esperados.
+   - [x] Links externos abriram no browser e ficheiros `.txt`/`.csv` abriram
+     nas aplicações predefinidas, sem criar tabs de preview.
 10. Confirmar que a app continua estável ao alternar rapidamente entre tabs,
     atualizar, pesquisar e alterar ficheiros externamente ao mesmo tempo.
 
 Em futuras execuções, registar para cada ponto `passou`, `falhou` ou `não
 aplicável`, com uma nota curta e, quando houver falha, os passos para
 reproduzir. A ronda Markdown/UI atual não revelou bloqueios; a implementação
-do adapter LaTeX pode começar, mantendo esta checklist como regressão.
+do adapter LaTeX continua, mantendo esta checklist como regressão.
+
+### Checklist manual LaTeX/PDF — ronda atual
+
+Estado inicial: todos os pontos abaixo ficam por confirmar até serem exercitados
+na app com o corpus real `developer-cv`. Os testes automáticos passam, mas
+não substituem esta verificação visual e de interação.
+
+#### Root discovery e tabs
+
+- [x] Abrir `main.tex` com um único root e confirmar compilação automática.
+- [x] Abrir `main.tex` diretamente pelo Finder na build `.app` e confirmar que
+  a pasta correta é aberta e a compilação começa automaticamente.
+- [x] Abrir um capítulo `.tex` diretamente pelo Finder e confirmar que a
+  aplicação encontra o projeto/root ancestral e mantém o capítulo como contexto.
+- [x] Arrastar `main.tex`, um capítulo `.tex` e uma pasta do Finder para a
+  janela e confirmar que cada caso abre o projeto/root esperado.
+- [x] Abrir um capítulo `.tex` e confirmar que a tab aponta para o root,
+  mostra o capítulo como contexto e não cria uma tab duplicada.
+- [x] Criar/usar um projeto com dois roots, confirmar que aparece a sheet de
+  escolha e selecionar o root correto.
+- [x] Criar/usar um projeto sem candidato automático e confirmar que a sheet
+  permite escolher manualmente um `.tex` dentro da pasta do projeto.
+- [x] Fechar e reabrir a app/projeto e confirmar que a escolha do root ficou
+  memorizada.
+- [x] Fechar e reabrir a app/projeto com um capítulo aberto e confirmar que a
+  tab do root recupera o caminho do capítulo como contexto.
+- [x] Usar o botão da topbar para alterar posteriormente o root e confirmar
+  que o documento recompila com a nova escolha.
+- [x] Abrir uma pasta que contenha subpastas protegidas ou pessoais e confirmar
+  que a app não pede acesso a todas elas no arranque; o acesso só deve ser
+  tentado depois de o utilizador expandir uma subpasta explicitamente.
+
+#### Compilação e dependências
+
+- [ ] Alterar um capítulo incluído e confirmar recompilação automática do root.
+- [ ] Alterar `developercv.cls` ou outro ficheiro local usado e confirmar
+  recompilação automática.
+- [ ] Referenciar temporariamente um ficheiro fora do projeto, confirmar que a
+  app pede autorização antes de compilar e que a compilação só avança depois
+  de usar `Permitir e compilar`.
+- [ ] Cancelar essa confirmação e confirmar que o processo não arranca.
+- [ ] Criar um symlink dentro do projeto que aponte para fora, confirmar que a
+  app pede autorização; trocar o destino do symlink e confirmar que a
+  autorização/cache não é reutilizada para conteúdo diferente.
+- [ ] Confirmar que a app continua a compilar sem copiar artefactos de runtime
+  ou outros ficheiros irrelevantes para dentro do projeto.
+- [ ] Confirmar que a compilação não deixa artefactos na pasta raw do projeto.
+- [ ] Forçar uma falha LaTeX e confirmar que o último PDF válido fica
+  identificável como desatualizado.
+- [ ] Fazer várias alterações rápidas num ficheiro LaTeX e confirmar que a app
+  cancela renders obsoletos e publica apenas o último resultado.
+- [ ] Alterar uma dependência enquanto uma compilação ainda está a decorrer e
+  confirmar que a segunda alteração não é perdida e origina o preview final.
+- [ ] Fechar a app durante uma compilação e confirmar que a janela fecha sem
+  ficar bloqueada.
+- [ ] Forçar um timeout controlado e confirmar que o estado mostra `Timeout`,
+  que não ficam processos descendentes ativos e que `Tentar novamente` funciona.
+- [ ] Confirmar que a hora `Atualizado` muda apenas depois de uma compilação
+  bem-sucedida.
+- [ ] Repetir uma abertura/atualização sem alterar fontes e confirmar que o
+  segundo preview pode reutilizar a cache sem executar outro compiler.
+- [ ] Alterar o root, uma dependência local ou uma dependência externa e
+  confirmar que a cache é invalidada antes de publicar o PDF antigo.
+- [ ] Alterar o modo `shell escape` ou o engine disponível e confirmar que a
+  cache anterior não é reutilizada.
+- [ ] Usar `Atualizar preview` e confirmar que a ação força compilação mesmo
+  quando existe uma entrada válida na cache.
+- [ ] Confirmar que uma compilação falhada não substitui a última entrada
+  válida da cache.
+- [ ] Forçar um processo que devolva texto com exit code 0 mas não seja PDF e
+  confirmar que a app o rejeita sem substituir o último preview válido.
+
+#### Diagnóstico
+
+- [ ] Com uma falha ativa, confirmar que o log começa expandido por defeito,
+  é legível e tem scroll; fechar e reabrir `Detalhes` também deve funcionar.
+- [ ] Repetir o teste na primeira compilação, quando ainda não existe PDF, e
+  confirmar que as mesmas ações aparecem.
+- [ ] Usar `Copiar` e confirmar que o diagnóstico completo fica disponível
+  na área de transferência.
+- [ ] Usar `Tentar novamente` depois de corrigir a falha e confirmar
+  recuperação para `Atualizado`.
+- [ ] Testar uma máquina sem ferramenta LaTeX disponível e confirmar mensagem
+  específica, instruções e ação de nova tentativa, sem impedir Markdown.
+
+#### PDF preview
+
+- [ ] Confirmar que o PDF abre ajustado à largura e com scroll contínuo legível.
+- [ ] Usar os botões de aproximar, afastar e repor zoom na topbar.
+- [ ] Confirmar `Cmd+`, `Cmd-` e `Cmd0` em tab LaTeX.
+- [ ] Usar `Cmd+F`, escrever uma expressão presente no PDF e confirmar
+  destaques dos resultados.
+- [ ] Confirmar navegação para resultado anterior/seguinte e fecho com `Esc`
+  (limitação conhecida: as setas anterior/seguinte não funcionam nesta ronda;
+  fica como melhoria futura).
+- [ ] Selecionar e copiar texto do PDF com `Cmd+C`.
+- [ ] Redimensionar a janela e confirmar que a escala inicial se ajusta sem
+  tornar o documento microscópico.
+- [x] Ir para uma página mais abaixo, recompilar e confirmar que a posição de
+  leitura é preservada.
+- [x] Fechar e reabrir a app e confirmar que a tab LaTeX regressa à mesma
+  página.
+- [x] Abrir um PDF com outline e confirmar que aparece `Mostrar índice`,
+  que a hierarquia é legível e que clicar numa entrada navega para a página.
+- [x] Abrir um PDF sem outline e confirmar que a app continua utilizável sem
+  mostrar um controlo de índice vazio.
+- [x] Clicar num link `http`, `https` ou `mailto` no PDF e confirmar que abre
+  apenas como resultado desse clique explícito.
+- [x] Confirmar que um link local `file:` abre diretamente o ficheiro pedido.
+- [ ] Confirmar que uma ação `run:`/`Launch` pede autorização antes de abrir
+  uma aplicação ou executar um ficheiro (feature adiada; não implementada
+  nesta ronda).
+- [ ] Confirmar que destinos remotos e anexos não abrem ficheiros ou outras
+  aplicações silenciosamente.
+- [ ] Confirmar que actions PDF de imprimir, procurar ou saltar para página
+  não substituem os controlos da própria app.
+
+Nota de ronda: a pesquisa e os destaques funcionam, mas os controlos de
+resultado anterior/seguinte permanecem uma melhoria futura conhecida. A
+confirmação e abertura controlada de ações PDF `Launch`/`run:` também ficam
+adiadas; nesta ronda a app não tenta executar essas ações.
+
+#### Configuração de segurança
+
+- [ ] Abrir o menu de configuração LaTeX e confirmar que `Desativado` é
+  o modo inicial.
+- [ ] Confirmar que mudar para `Restrito` e `Ativado` fica guardado
+  depois de reabrir a app.
+- [ ] Compilar um documento que use `\write18` com o modo desativado e
+  confirmar que não executa comandos externos.
+- [ ] Ativar `Restrito` ou `Ativado` apenas conscientemente e
+  confirmar no log qual foi o modo usado.
+
+#### Bibliografia e múltiplas passagens
+
+- [ ] Compilar um documento com BibLaTeX e confirmar que a bibliografia aparece
+  depois das passagens `pdflatex → biber → pdflatex → pdflatex`.
+- [ ] Compilar um documento com bibliografia BibTeX clássica e confirmar que
+  as referências aparecem corretamente.
+- [ ] Com `pdflatex`/`xelatex` direto e sem `latexmk`, confirmar que referências
+  cruzadas e outline estabilizam após as passagens adicionais.
+- [ ] Confirmar que alterações no `.bib` provocam nova compilação do root.
+- [ ] Remover temporariamente `biber` ou `bibtex` e confirmar uma
+  mensagem específica de ferramenta em falta, com log copiável e retry.
+- [ ] Se `latexmk` estiver disponível, confirmar que a app o prefere e
+  que a cadeia configurada continua a produzir o PDF correto.
+- [ ] Compilar um documento com `fontspec` e confirmar seleção de `xelatex`
+  (ou a indicação equivalente no `latexmk`).
+- [ ] Compilar um documento com `\directlua`/LuaTeX e confirmar seleção de
+  `lualatex`, se esse engine estiver instalado.
+
+Em cada execução, substituir `[ ]` por `[x]` apenas depois de
+confirmar o comportamento e acrescentar uma nota curta em caso de falha.
 
 ## 1. Requisitos e implicações que o plano deve respeitar
 
@@ -416,6 +609,38 @@ O fixture LaTeX deve incluir, se a tese os usar:
 - ferramentas externas detetadas pelo log/recorder.
 
 O runner deve distinguir “Biber ausente”, “versão incompatível”, “fonte ausente”, “ferramenta ausente” e erro TeX. Não instalar automaticamente pacotes no primeiro caminho. A visão permite configurações avançadas e reconhece `shell escape`/ferramentas externas; o modo de ativação continua a exigir decisão e teste.
+
+#### Inventário observado do toolchain `developer-cv`
+
+Este inventário vem do teste da pasta `/Users/bernardopacheco/developer-cv` no
+Mac atual. Deve ser tratado como requisito de reprodução do corpus, não como
+uma decisão de empacotamento da app:
+
+- `pdflatex`: disponível na instalação TeX Live `2026basic`;
+- `latexmk`: não encontrado; o adapter usa `pdflatex` como fallback inicial;
+- `bibtex`: disponível em `/Library/TeX/texbin/bibtex`;
+- `biber`: não encontrado no ambiente atual; a sequência BibLaTeX está coberta
+  por contrato com runner falso e aguarda validação numa instalação real;
+- `developercv.cls`: classe local, fornecida pelo projeto;
+- `raleway`: pacote TeX externo, instalado manualmente com `tlmgr`;
+- `ly1`: pacote TeX externo necessário porque o `raleway`/`fontenc` usa
+  `ly1enc.def`; já disponível no ambiente atual;
+- `fontawesome`: pacote TeX externo referenciado pela classe; já disponível
+  no ambiente atual;
+- a classe referencia ainda `hyperref`, `moresize`, `graphicx`,
+  `etoolbox`, `dashrule`, `multirow`, `tabularx`,
+  `changepage`, `tikz`, `tcolorbox`, `enumitem`,
+  `smartdiagram`, `amssymb`, `xcolor`, `ocgx2`,
+  `tasks`, `mdframed`, `calc`, `pgffor`,
+  `listofitems`, `geometry`, `inputenc`, `fontenc`,
+  `eurosym` e `longtable`. Estes pacotes devem entrar na
+  verificação de disponibilidade do corpus real; muitos já vêm incluídos na
+  distribuição TeX Live usada no Mac atual.
+
+Se no futuro o build da app provisionar ou empacotar o toolchain, esta lista
+deve ser convertida numa matriz com nome do pacote, versão, licença, origem,
+engine suportado e motivo de inclusão. A instalação automática durante o fluxo
+normal da app continua proibida até essa decisão ser tomada.
 
 ### 6.4 Shell escape e segurança
 
@@ -747,7 +972,6 @@ compilação.
 - estratégia de carregamento HTML e política de CSS;
 - backend do watcher e valores de debounce;
 - root discovery exato;
-- engine/wrapper LaTeX e compatibilidade Biber/TikZ/fontes;
-- política final de shell escape e cache;
-- PDF actions;
+- validação real da cadeia LaTeX e compatibilidade Biber/TikZ/fontes em mais corpus;
+- validação manual da política de shell escape, cache e PDF actions;
 - forma de assinatura/notarização e qualquer distribuição além do uso pessoal.

@@ -3,6 +3,27 @@ import BPViewerCore
 import Combine
 import Darwin
 import Foundation
+import UniformTypeIdentifiers
+
+extension Notification.Name {
+    static let bpViewerOpenFiles = Notification.Name("bp-viewer.open-files")
+}
+
+struct LatexRootSelectionRequest: Identifiable {
+    let id: String
+    let tabID: String
+    let openedFile: URL
+    let projectRoot: URL
+    let candidates: [LatexRootCandidate]
+}
+
+struct LatexExternalDependencyRequest: Identifiable {
+    let id: String
+    let tabID: String
+    let rootURL: URL
+    let projectRoot: URL
+    let dependencies: [LatexExternalDependency]
+}
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -17,6 +38,7 @@ final class AppModel: ObservableObject {
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
     @Published var previewZoom: Double = 1.0
+    @Published var latexShellEscapeMode: LatexShellEscapeMode = .disabled
     @Published var isFindBarVisible = false
     @Published var findQuery = ""
     @Published var findRequestID = 0
@@ -25,8 +47,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
     @Published var showingRootChangeConfirmation = false
+    @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
+    @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
 
     private let scanner = FileSystemScanner()
+    private let latexRenderCache = LatexRenderCache()
     private let defaults = UserDefaults.standard
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
@@ -37,12 +62,15 @@ final class AppModel: ObservableObject {
     private var treeFilterTask: Task<Void, Never>?
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
+    private var latexRenderTasks: [String: Task<Void, Never>] = [:]
     private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedDirectoryURLs: Set<URL> = []
     private var treeRefreshGeneration = 0
     private var activeFileWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedFileURLs: Set<URL> = []
     private var fileRefreshGeneration = 0
+    private var pendingOpenURLs: [URL] = []
+    private var openFilesObserver: NSObjectProtocol?
     private var localKeyMonitor: Any?
 
     private enum Keys {
@@ -53,7 +81,12 @@ final class AppModel: ObservableObject {
         static let sidebarVisible = "bp-viewer.sidebarVisible"
         static let sidebarWidth = "bp-viewer.sidebarWidth"
         static let previewZoom = "bp-viewer.previewZoom"
+        static let latexShellEscapeMode = "bp-viewer.latexShellEscapeMode"
         static let compatibleOnly = "bp-viewer.compatibleOnly"
+        static let latexRootSelections = "bp-viewer.latexRootSelections"
+        static let latexExternalGrants = "bp-viewer.latexExternalGrants"
+        static let tabPageIndices = "bp-viewer.tabPageIndices"
+        static let tabContexts = "bp-viewer.tabContexts"
     }
 
     init() {
@@ -62,7 +95,21 @@ final class AppModel: ObservableObject {
         sidebarVisible = defaults.object(forKey: Keys.sidebarVisible) as? Bool ?? true
         sidebarWidth = defaults.object(forKey: Keys.sidebarWidth) as? Double ?? 280
         previewZoom = defaults.object(forKey: Keys.previewZoom) as? Double ?? 1.0
+        latexShellEscapeMode = LatexShellEscapeMode(
+            rawValue: defaults.string(forKey: Keys.latexShellEscapeMode) ?? ""
+        ) ?? .disabled
         compatibleOnly = defaults.object(forKey: Keys.compatibleOnly) as? Bool ?? true
+
+        openFilesObserver = NotificationCenter.default.addObserver(
+            forName: .bpViewerOpenFiles,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let urls = notification.object as? [URL] else { return }
+            Task { @MainActor [weak self] in
+                self?.openExternalURLs(urls)
+            }
+        }
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -113,12 +160,16 @@ final class AppModel: ObservableObject {
         panel.prompt = "Abrir pasta"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        pendingOpenURLs = []
         requestRoot(url)
     }
 
     func requestRoot(_ url: URL) {
-        guard rootURL != nil, !tabs.isEmpty else {
+        guard rootURL != nil else {
             openRoot(url)
+            let urlsToOpen = pendingOpenURLs
+            pendingOpenURLs = []
+            urlsToOpen.forEach { openDocument(url: $0) }
             return
         }
 
@@ -128,17 +179,24 @@ final class AppModel: ObservableObject {
 
     func confirmRootChange() {
         guard let pendingRootURL else { return }
+        let urlsToOpen = pendingOpenURLs
+        pendingOpenURLs = []
         openRoot(pendingRootURL)
         self.pendingRootURL = nil
         showingRootChangeConfirmation = false
+        urlsToOpen.forEach { openDocument(url: $0) }
     }
 
     func cancelRootChange() {
         pendingRootURL = nil
+        pendingOpenURLs = []
         showingRootChangeConfirmation = false
     }
 
     func openRoot(_ url: URL) {
+        latexRenderTasks.values.forEach { $0.cancel() }
+        latexRenderTasks.removeAll()
+        previewGenerations.removeAll()
         stopWatchingDirectories()
         stopWatchingActiveFiles()
         treeFilterTask?.cancel()
@@ -216,7 +274,46 @@ final class AppModel: ObservableObject {
         openDocument(url: node.url)
     }
 
+    func openExternalURLs(_ urls: [URL]) {
+        let files = urls
+            .filter(\.isFileURL)
+            .map { $0.resolvingSymlinksInPath().standardizedFileURL }
+            .filter { DocumentKind(url: $0) == .markdown || DocumentKind(url: $0) == .latex }
+        guard let first = files.first else { return }
+
+        let desiredRoot = DocumentKind(url: first) == .latex
+            ? inferredLatexProjectRoot(for: first)
+            : first.deletingLastPathComponent()
+        let currentRoot = rootURL?.resolvingSymlinksInPath().standardizedFileURL
+        let sameRoot = currentRoot?.path == desiredRoot.resolvingSymlinksInPath().standardizedFileURL.path
+
+        if rootURL == nil {
+            openRoot(desiredRoot)
+            files.forEach { openDocument(url: $0) }
+        } else if sameRoot {
+            files.forEach { openDocument(url: $0) }
+        } else {
+            pendingOpenURLs = files
+            requestRoot(desiredRoot)
+        }
+    }
+
+    func openDroppedURLs(_ urls: [URL]) {
+        let resolvedURLs = urls.map { $0.resolvingSymlinksInPath().standardizedFileURL }
+        if let directory = resolvedURLs.first(where: { isDirectory($0) }) {
+            pendingOpenURLs = []
+            requestRoot(directory)
+            return
+        }
+        openExternalURLs(resolvedURLs)
+    }
+
     func openPreviewURL(_ url: URL) {
+        if let localFileURL = MarkdownPreviewLink.fileURL(from: url) {
+            openPreviewURL(localFileURL)
+            return
+        }
+
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             NSWorkspace.shared.open(url)
             return
@@ -227,10 +324,10 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let standardizedURL = url.standardizedFileURL
-        guard let rootURL,
-              standardizedURL.path == rootURL.standardizedFileURL.path
-                || standardizedURL.path.hasPrefix(rootURL.standardizedFileURL.path + "/") else { return }
+        let standardizedURL = url.resolvingSymlinksInPath().standardizedFileURL
+        guard FileManager.default.fileExists(atPath: standardizedURL.path) else {
+            return
+        }
 
         if DocumentKind(url: standardizedURL) == .other {
             NSWorkspace.shared.open(standardizedURL)
@@ -249,11 +346,28 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let id = standardizedURL.path
+        var documentURL = standardizedURL
+        var contextURL: URL?
+        if kind == .latex,
+           let projectRoot = rootURL,
+           let selectedRoot = storedLatexRoot(for: projectRoot)
+               ?? (try? LatexRootDiscovery().resolve(
+                   openedFile: standardizedURL,
+                   projectRoot: projectRoot
+               ))?.selectedRoot {
+            documentURL = selectedRoot
+            contextURL = selectedRoot == standardizedURL ? nil : standardizedURL
+        }
+
+        let id = documentURL.path
         var session = tabSessionState
-        let inserted = session.open(standardizedURL)
+        let inserted = session.open(documentURL)
         if !inserted {
             activeTabID = session.activePath?.path
+            if let contextURL,
+               let index = tabs.firstIndex(where: { $0.id == id }) {
+                tabs[index].contextURL = contextURL
+            }
             renderActiveTabIfNeeded()
             persistState()
             return
@@ -261,9 +375,10 @@ final class AppModel: ObservableObject {
 
         let tab = DocumentTab(
             id: id,
-            url: standardizedURL,
+            url: documentURL,
             kind: kind,
-            status: kind == .markdown ? .updating : .unavailable
+            contextURL: contextURL,
+            status: kind == .markdown || kind == .latex ? .updating : .unavailable
         )
         tabs.append(tab)
         activeTabID = session.activePath?.path
@@ -271,8 +386,33 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
+    private func inferredLatexProjectRoot(for fileURL: URL) -> URL {
+        var directory = fileURL.deletingLastPathComponent().standardizedFileURL
+        while directory.path != "/" {
+            if let resolution = try? LatexRootDiscovery().resolve(
+                openedFile: fileURL,
+                projectRoot: directory
+            ), !resolution.candidates.isEmpty {
+                return directory
+            }
+            let parent = directory.deletingLastPathComponent()
+            guard parent.path != directory.path else { break }
+            directory = parent
+        }
+        return fileURL.deletingLastPathComponent().standardizedFileURL
+    }
+
     func closeTab(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
+        latexRenderTasks[tab.id]?.cancel()
+        latexRenderTasks.removeValue(forKey: tab.id)
+        previewGenerations[tab.id, default: 0] += 1
+        if pendingLatexRootSelection?.tabID == tab.id {
+            pendingLatexRootSelection = nil
+        }
+        if pendingLatexExternalDependencies?.tabID == tab.id {
+            pendingLatexExternalDependencies = nil
+        }
         let wasActive = activeTabID == tab.id
         var session = tabSessionState
         guard session.close(tab.url) else { return }
@@ -306,6 +446,16 @@ final class AppModel: ObservableObject {
         reorderTabs(using: session)
     }
 
+    func reorderTabs(ids: [String]) {
+        let urlsByID = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.url) })
+        let requestedPaths = ids.compactMap { urlsByID[$0] }
+        guard requestedPaths.count == tabs.count else { return }
+
+        var session = tabSessionState
+        guard session.reorder(requestedPaths) else { return }
+        reorderTabs(using: session)
+    }
+
     private func reorderTabs(using session: TabSessionState) {
         let tabsByID = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0) })
         tabs = session.paths.compactMap { tabsByID[$0.path] }
@@ -315,6 +465,7 @@ final class AppModel: ObservableObject {
     func closeOtherTabs(keeping tab: DocumentTab) {
         var session = tabSessionState
         guard session.closeOthers(keeping: tab.url) else { return }
+        cancelLatexRenders(for: tabs.filter { $0.id != tab.id })
         tabs = [tab]
         activeTabID = session.activePath?.path
         renderActiveTabIfNeeded()
@@ -325,6 +476,7 @@ final class AppModel: ObservableObject {
         var session = tabSessionState
         guard session.closeToRight(of: tab.url) else { return }
         let allowed = Set(session.paths.map(\.path))
+        cancelLatexRenders(for: tabs.filter { !allowed.contains($0.id) })
         tabs = tabs.filter { allowed.contains($0.id) }
         if let activeTabID, !allowed.contains(activeTabID) {
             self.activeTabID = session.activePath?.path
@@ -338,6 +490,8 @@ final class AppModel: ObservableObject {
         guard let activeTabID else { return }
         if tabs.first(where: { $0.id == activeTabID })?.kind == .markdown {
             renderMarkdown(tabID: activeTabID)
+        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
+            renderLatex(tabID: activeTabID, force: true)
         } else if let index = tabs.firstIndex(where: { $0.id == activeTabID }) {
             tabs[index].status = .unavailable
             tabs[index].errorMessage = nil
@@ -346,8 +500,106 @@ final class AppModel: ObservableObject {
     }
 
     func showFindBar() {
-        guard activeTab?.kind == .markdown else { return }
+        guard activeTab?.kind == .markdown || activeTab?.kind == .latex else { return }
         isFindBarVisible = true
+    }
+
+    func cancelLatexRootSelection() {
+        pendingLatexRootSelection = nil
+    }
+
+    func cancelLatexExternalDependencies() {
+        pendingLatexExternalDependencies = nil
+    }
+
+    func chooseLatexRootFile() {
+        guard let request = pendingLatexRootSelection else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = request.projectRoot
+        if let texType = UTType(filenameExtension: "tex") {
+            panel.allowedContentTypes = [texType]
+        }
+        panel.prompt = "Escolher root"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        chooseLatexRoot(url)
+    }
+
+    func approveLatexExternalDependencies() {
+        guard let request = pendingLatexExternalDependencies else { return }
+        var grants = defaults.dictionary(forKey: Keys.latexExternalGrants) ?? [:]
+        let grantKey = latexExternalGrantKey(projectRoot: request.projectRoot, rootURL: request.rootURL)
+        var paths = grants[grantKey] as? [String] ?? []
+        paths.append(contentsOf: request.dependencies.map(\.url.path))
+        grants[grantKey] = Array(Set(paths)).sorted()
+        defaults.set(grants, forKey: Keys.latexExternalGrants)
+        pendingLatexExternalDependencies = nil
+        renderLatex(tabID: request.tabID, rootURL: request.rootURL)
+    }
+
+    func changeLatexRoot() {
+        guard let tab = activeTab,
+              tab.kind == .latex,
+              let projectRoot = rootURL else {
+            return
+        }
+
+        let openedFile = tab.contextURL ?? tab.url
+        guard let resolution = try? LatexRootDiscovery().resolve(
+            openedFile: openedFile,
+            projectRoot: projectRoot
+        ) else {
+            return
+        }
+
+        pendingLatexRootSelection = LatexRootSelectionRequest(
+            id: tab.id,
+            tabID: tab.id,
+            openedFile: openedFile,
+            projectRoot: projectRoot,
+            candidates: resolution.candidates
+        )
+    }
+
+    func chooseLatexRoot(_ rootURL: URL) {
+        guard let request = pendingLatexRootSelection,
+              (request.candidates.isEmpty
+                || request.candidates.contains(where: { $0.url.standardizedFileURL == rootURL.standardizedFileURL })),
+              rootURL.pathExtension.lowercased() == "tex",
+              isRegularFile(rootURL),
+              isInside(rootURL, project: request.projectRoot) else {
+            return
+        }
+
+        pendingLatexRootSelection = nil
+        storeLatexRoot(rootURL, for: request.projectRoot)
+
+        guard let oldIndex = tabs.firstIndex(where: { $0.id == request.tabID }) else { return }
+        let contextURL = request.openedFile.standardizedFileURL == rootURL.standardizedFileURL
+            ? nil
+            : request.openedFile.standardizedFileURL
+
+        if let existingIndex = tabs.firstIndex(where: {
+            $0.id == rootURL.path && $0.id != request.tabID
+        }) {
+            tabs[existingIndex].contextURL = contextURL
+            tabs.remove(at: oldIndex)
+            activeTabID = rootURL.path
+        } else {
+            tabs[oldIndex] = DocumentTab(
+                id: rootURL.path,
+                url: rootURL.standardizedFileURL,
+                kind: .latex,
+                contextURL: contextURL,
+                status: .updating
+            )
+            activeTabID = rootURL.path
+        }
+
+        renderLatex(tabID: rootURL.path, rootURL: rootURL, force: true)
+        persistState()
     }
 
     func hideFindBar() {
@@ -376,6 +628,23 @@ final class AppModel: ObservableObject {
 
     func resetPreviewZoom() {
         setPreviewZoom(1.0)
+    }
+
+    func setLatexShellEscapeMode(_ mode: LatexShellEscapeMode) {
+        guard latexShellEscapeMode != mode else { return }
+        latexShellEscapeMode = mode
+        defaults.set(mode.rawValue, forKey: Keys.latexShellEscapeMode)
+        if let activeTabID, activeTab?.kind == .latex {
+            renderLatex(tabID: activeTabID, force: true)
+        }
+    }
+
+    func updateReadingPage(tabID: String, pageIndex: Int) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              pageIndex >= 0 else { return }
+        guard tabs[index].previewPageIndex != pageIndex else { return }
+        tabs[index].previewPageIndex = pageIndex
+        persistState()
     }
 
     private func setPreviewZoom(_ value: Double) {
@@ -549,11 +818,22 @@ final class AppModel: ObservableObject {
         defaults.set(session.persistedPaths, forKey: Keys.lastTabs)
         defaults.set(session.activePath?.path, forKey: Keys.activeTab)
         defaults.set(Array(expandedPaths), forKey: "bp-viewer.expandedPaths")
+        let contexts = tabs.reduce(into: [String: String]()) { result, tab in
+            guard tab.kind == .latex, let contextURL = tab.contextURL else { return }
+            LatexTabContextPersistence.store(contextURL: contextURL, forTabID: tab.id, in: &result)
+        }
+        defaults.set(contexts, forKey: Keys.tabContexts)
+        defaults.set(
+            Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.previewPageIndex) }),
+            forKey: Keys.tabPageIndices
+        )
     }
 
     private func restoreTabs() {
         let savedPaths = defaults.stringArray(forKey: Keys.lastTabs) ?? []
         let savedActivePath = defaults.string(forKey: Keys.activeTab)
+        let savedPageIndices = defaults.dictionary(forKey: Keys.tabPageIndices) as? [String: Int] ?? [:]
+        let savedContexts = defaults.dictionary(forKey: Keys.tabContexts) as? [String: String] ?? [:]
         let session = TabSessionState.restored(
             paths: savedPaths,
             activePath: savedActivePath,
@@ -561,7 +841,23 @@ final class AppModel: ObservableObject {
         )
         let available = session.paths.compactMap { url -> DocumentTab? in
             let kind = DocumentKind(url: url)
-            return DocumentTab(id: url.path, url: url, kind: kind, status: kind == .markdown ? .idle : .unavailable)
+            let contextURL = rootURL.flatMap {
+                LatexTabContextPersistence.restore(
+                    forTabID: url.path,
+                    tabURL: url,
+                    kind: kind,
+                    from: savedContexts,
+                    projectRoot: $0
+                )
+            }
+            return DocumentTab(
+                id: url.path,
+                url: url,
+                kind: kind,
+                contextURL: contextURL,
+                status: kind == .markdown || kind == .latex ? .idle : .unavailable,
+                previewPageIndex: savedPageIndices[url.path] ?? 0
+            )
         }
         tabs = available
         activeTabID = session.activePath?.path
@@ -579,14 +875,23 @@ final class AppModel: ObservableObject {
     private func renderActiveTabIfNeeded() {
         guard let activeTabID,
               let tab = tabs.first(where: { $0.id == activeTabID }),
-              tab.kind == .markdown else {
+              tab.kind == .markdown || tab.kind == .latex else {
             stopWatchingActiveFiles()
             return
         }
 
-        startWatchingActiveFiles([tab.url] + tab.previewDependencies)
-        if tab.previewHTML == nil || tab.status != .ready {
-            renderMarkdown(tabID: activeTabID)
+        startWatchingActiveFiles(
+            [tab.url] + tab.previewDependencies + tab.previewExternalDependencies
+        )
+        let hasPreview = tab.kind == .markdown
+            ? tab.previewHTML != nil
+            : tab.previewPDFData != nil
+        if !hasPreview || tab.status != .ready {
+            if tab.kind == .markdown {
+                renderMarkdown(tabID: activeTabID)
+            } else {
+                renderLatex(tabID: activeTabID)
+            }
         }
     }
 
@@ -646,6 +951,10 @@ final class AppModel: ObservableObject {
 
     private func collectDirectories(from nodes: [FileNode], into directories: inout Set<URL>) {
         for node in nodes where node.isDirectory {
+            // A top-level scan only discovers directory names. Do not open
+            // protected folders merely to watch them; wait until the user
+            // expands that directory and its children have been loaded.
+            guard node.childrenLoaded else { continue }
             directories.insert(node.url.standardizedFileURL)
             collectDirectories(from: node.children, into: &directories)
         }
@@ -677,12 +986,18 @@ final class AppModel: ObservableObject {
         fileRefreshGeneration += 1
     }
 
+    private func restartWatchingActiveFiles(_ urls: [URL]) {
+        stopWatchingActiveFiles()
+        startWatchingActiveFiles(urls)
+    }
+
     private func scheduleActiveFileRefresh(for url: URL) {
         guard watchedFileURLs.contains(url),
               let activeTabID,
               tabs.contains(where: { tab in
                   tab.id == activeTabID
-                    && ([tab.url] + tab.previewDependencies).map(\.standardizedFileURL).contains(url)
+                    && ([tab.url] + tab.previewDependencies + tab.previewExternalDependencies)
+                        .map(\.standardizedFileURL).contains(url)
               }) else { return }
 
         fileRefreshGeneration += 1
@@ -690,9 +1005,211 @@ final class AppModel: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
             guard let self, self.fileRefreshGeneration == generation else { return }
-            self.stopWatchingActiveFiles()
-            self.renderMarkdown(tabID: activeTabID)
+            if self.tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
+                self.renderLatex(tabID: activeTabID)
+            } else {
+                self.renderMarkdown(tabID: activeTabID)
+            }
         }
+    }
+
+    private func renderLatex(
+        tabID: String,
+        rootURL explicitRootURL: URL? = nil,
+        force: Bool = false
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .latex,
+              let projectRoot = self.rootURL else { return }
+
+        let tabURL = tabs[index].url
+        let storedRootURL = explicitRootURL ?? storedLatexRoot(for: projectRoot)
+        let approvedExternalPaths = approvedLatexExternalPaths
+        let cache = latexRenderCache
+        let shellEscapeMode = latexShellEscapeMode
+        latexRenderTasks[tabID]?.cancel()
+        let generation = (previewGenerations[tabID] ?? 0) + 1
+        previewGenerations[tabID] = generation
+        tabs[index].status = .updating
+        tabs[index].errorMessage = nil
+
+        let adapter = LocalLatexAdapter(shellEscapeMode: latexShellEscapeMode)
+        let task = Task { [weak self] in
+            do {
+                let renderOperation = Task.detached(priority: .userInitiated) {
+                    let resolvedRootURL: URL
+                    if let storedRootURL {
+                        resolvedRootURL = storedRootURL
+                    } else {
+                        let resolution = try LatexRootDiscovery().resolve(
+                            openedFile: tabURL,
+                            projectRoot: projectRoot
+                        )
+                        guard let selectedRoot = resolution.selectedRoot else {
+                            throw LatexRenderError.rootSelectionRequired(resolution.candidates)
+                        }
+                        resolvedRootURL = selectedRoot
+                    }
+                    let externalDependencies = adapter.externalDependencies(
+                        rootURL: resolvedRootURL,
+                        projectRoot: projectRoot
+                    )
+                    let grantKey = "\(projectRoot.standardizedFileURL.path)\n\(resolvedRootURL.standardizedFileURL.path)"
+                    let unapprovedDependencies = externalDependencies.filter {
+                        !approvedExternalPaths[grantKey, default: []].contains($0.url.path)
+                    }
+                    if !unapprovedDependencies.isEmpty {
+                        throw LatexRenderError.externalDependenciesRequireConfirmation(
+                            resolvedRootURL,
+                            unapprovedDependencies
+                        )
+                    }
+                    let cacheKey = LatexCacheKey(
+                        projectRoot: projectRoot,
+                        rootURL: resolvedRootURL,
+                        compilerIdentity: try adapter.compilerIdentity(
+                            rootURL: resolvedRootURL,
+                            projectRoot: projectRoot
+                        ),
+                        shellEscapeMode: shellEscapeMode
+                    )
+                    if !force, let cached = cache.load(key: cacheKey) {
+                        return LatexRenderResult(
+                            pdfData: cached.pdfData,
+                            rootURL: cached.rootURL,
+                            dependencies: cached.dependencies,
+                            externalDependencies: cached.externalDependencies,
+                            processResult: ProcessResult(
+                                status: .success,
+                                exitCode: 0,
+                                standardOutput: "cache hit",
+                                standardError: ""
+                            ),
+                            wasCached: true
+                        )
+                    }
+                    let result = try adapter.render(rootURL: resolvedRootURL, projectRoot: projectRoot)
+                    try? cache.store(key: cacheKey, result: result)
+                    return result
+                }
+                let result = try await withTaskCancellationHandler(operation: {
+                    try await renderOperation.value
+                }, onCancel: {
+                    renderOperation.cancel()
+                })
+
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.latexRenderTasks.removeValue(forKey: tabID)
+                self.tabs[index].previewPDFData = result.pdfData
+                self.tabs[index].previewUpdatedAt = Date()
+                self.tabs[index].previewHTML = nil
+                self.tabs[index].previewBaseURL = nil
+                self.tabs[index].previewDependencies = result.dependencies
+                self.tabs[index].previewExternalDependencies = result.externalDependencies
+                self.tabs[index].status = .ready
+                self.tabs[index].isStale = false
+                self.tabs[index].errorMessage = nil
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles(
+                        [tabURL] + result.dependencies + result.externalDependencies
+                    )
+                }
+            } catch {
+                if Task.isCancelled { return }
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.latexRenderTasks.removeValue(forKey: tabID)
+                self.tabs[index].status = self.previewStatus(for: error)
+                self.tabs[index].isStale = self.tabs[index].previewPDFData != nil
+                self.tabs[index].errorMessage = error.localizedDescription
+                if let latexError = error as? LatexRenderError,
+                   case let .rootSelectionRequired(candidates) = latexError {
+                    self.pendingLatexRootSelection = LatexRootSelectionRequest(
+                        id: tabID,
+                        tabID: tabID,
+                        openedFile: tabURL,
+                        projectRoot: projectRoot,
+                        candidates: candidates
+                    )
+                }
+                if let latexError = error as? LatexRenderError,
+                   case let .externalDependenciesRequireConfirmation(rootURL, dependencies) = latexError {
+                    self.pendingLatexExternalDependencies = LatexExternalDependencyRequest(
+                        id: tabID,
+                        tabID: tabID,
+                        rootURL: rootURL,
+                        projectRoot: projectRoot,
+                        dependencies: dependencies
+                    )
+                }
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles(
+                        [tabURL]
+                            + self.tabs[index].previewDependencies
+                            + self.tabs[index].previewExternalDependencies
+                    )
+                }
+            }
+        }
+        latexRenderTasks[tabID] = task
+    }
+
+    private func cancelLatexRenders(for tabs: [DocumentTab]) {
+        let removedIDs = Set(tabs.map(\.id))
+        guard !removedIDs.isEmpty else { return }
+
+        for tabID in removedIDs {
+            latexRenderTasks[tabID]?.cancel()
+            latexRenderTasks.removeValue(forKey: tabID)
+            previewGenerations[tabID, default: 0] += 1
+        }
+
+        if let pendingLatexRootSelection,
+           removedIDs.contains(pendingLatexRootSelection.tabID) {
+            self.pendingLatexRootSelection = nil
+        }
+        if let pendingLatexExternalDependencies,
+           removedIDs.contains(pendingLatexExternalDependencies.tabID) {
+            self.pendingLatexExternalDependencies = nil
+        }
+    }
+
+    private func storedLatexRoot(for projectRoot: URL) -> URL? {
+        guard let selections = defaults.dictionary(forKey: Keys.latexRootSelections) as? [String: String],
+              let path = selections[projectRoot.standardizedFileURL.path] else {
+            return nil
+        }
+
+        let rootURL = URL(fileURLWithPath: path).standardizedFileURL
+        guard isRegularFile(rootURL),
+              isInside(rootURL, project: projectRoot.standardizedFileURL) else {
+            return nil
+        }
+        return rootURL
+    }
+
+    private func storeLatexRoot(_ rootURL: URL, for projectRoot: URL) {
+        var selections = defaults.dictionary(forKey: Keys.latexRootSelections) as? [String: String] ?? [:]
+        selections[projectRoot.standardizedFileURL.path] = rootURL.standardizedFileURL.path
+        defaults.set(selections, forKey: Keys.latexRootSelections)
+    }
+
+    private var approvedLatexExternalPaths: [String: Set<String>] {
+        let grants = defaults.dictionary(forKey: Keys.latexExternalGrants) ?? [:]
+        return grants.reduce(into: [:]) { result, entry in
+            if let paths = entry.value as? [String] {
+                result[entry.key] = Set(paths)
+            }
+        }
+    }
+
+    private func latexExternalGrantKey(projectRoot: URL, rootURL: URL) -> String {
+        "\(projectRoot.standardizedFileURL.path)\n\(rootURL.standardizedFileURL.path)"
     }
 
     private func renderMarkdown(tabID: String) {
@@ -720,13 +1237,14 @@ final class AppModel: ObservableObject {
                       let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
 
                 self.tabs[index].previewHTML = result.html
+                self.tabs[index].previewUpdatedAt = Date()
                 self.tabs[index].previewBaseURL = result.baseURL
                 self.tabs[index].previewDependencies = result.dependencies
                 self.tabs[index].status = .ready
                 self.tabs[index].isStale = false
                 self.tabs[index].errorMessage = nil
                 if self.activeTabID == tabID {
-                    self.startWatchingActiveFiles([tabURL] + result.dependencies)
+                    self.restartWatchingActiveFiles([tabURL] + result.dependencies)
                 }
             } catch {
                 guard let self,
@@ -737,10 +1255,38 @@ final class AppModel: ObservableObject {
                 self.tabs[index].isStale = self.tabs[index].previewHTML != nil
                 self.tabs[index].errorMessage = error.localizedDescription
                 if self.activeTabID == tabID {
-                    self.startWatchingActiveFiles([tabURL] + self.tabs[index].previewDependencies)
+                    self.restartWatchingActiveFiles([tabURL] + self.tabs[index].previewDependencies)
                 }
             }
         }
+    }
+
+    private func isRegularFile(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
+        return values?.isRegularFile == true && values?.isDirectory != true
+    }
+
+    private func previewStatus(for error: Error) -> PreviewStatus {
+        guard let latexError = error as? LatexRenderError else { return .failed }
+        switch latexError {
+        case .toolUnavailable:
+            return .unavailable
+        case let .compilationFailed(result), let .outputPDFMissing(_, result):
+            switch result.status {
+            case .cancelled: return .cancelled
+            case .timedOut: return .timeout
+            case .launchFailed: return .unavailable
+            case .failed, .success: return .failed
+            }
+        default:
+            return .failed
+        }
+    }
+
+    private func isInside(_ url: URL, project: URL) -> Bool {
+        let candidatePath = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let projectPath = project.resolvingSymlinksInPath().standardizedFileURL.path
+        return candidatePath == projectPath || candidatePath.hasPrefix(projectPath + "/")
     }
 
     private func isDirectory(_ url: URL) -> Bool {
