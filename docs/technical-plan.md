@@ -29,6 +29,7 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - a árvore observa a raiz e os diretórios conhecidos para detetar alterações externas e recarrega o snapshot; expansões persistidas voltam a carregar automaticamente depois do arranque;
 - erros mantêm o último preview disponível e mostram o diagnóstico;
 - a árvore indexa inicialmente apenas o primeiro nível, carrega pastas sob pedido e mostra progresso durante indexação/pesquisa;
+- ao abrir uma raiz nova, a árvore expande automaticamente a cadeia de diretórios com uma única subpasta até encontrar uma bifurcação;
 - links Markdown locais para `.md`/`.tex` focam ou abrem tabs e outros ficheiros locais abrem no macOS, mesmo fora da raiz atualmente aberta; links externos passam para o browser do macOS;
 - o preview já oferece pesquisa `⌘F`, zoom persistido e MathML local para a sintaxe TeX comum;
 - imagens locais do Markdown são embutidas no HTML quando existem, mas continuam nas dependências observadas para atualização automática;

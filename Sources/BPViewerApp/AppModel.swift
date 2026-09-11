@@ -67,6 +67,8 @@ final class AppModel: ObservableObject {
     private var treeScanGeneration = 0
     private var treeFilterGeneration = 0
     private var treeFilterTask: Task<Void, Never>?
+    private var automaticSingleChildExpansionPending = false
+    private var automaticSingleChildExpansionBasePath: String?
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
     private var latexRenderTasks: [String: Task<Void, Never>] = [:]
@@ -248,6 +250,7 @@ final class AppModel: ObservableObject {
             self.isScanningTree = false
             self.startWatchingDirectories(rootURL: rootURL, nodes: scannedNodes)
             self.applyTreeFilter()
+            self.expandAutomaticSingleChildChainIfNeeded()
             self.loadExpandedChildrenIfNeeded()
         }
     }
@@ -264,11 +267,19 @@ final class AppModel: ObservableObject {
     }
 
     func toggleExpanded(_ path: String) {
+        automaticSingleChildExpansionPending = false
+        automaticSingleChildExpansionBasePath = nil
         if expandedPaths.contains(path) {
             expandedPaths.remove(path)
         } else {
             expandedPaths.insert(path)
-            loadChildrenIfNeeded(for: path)
+            automaticSingleChildExpansionPending = true
+            automaticSingleChildExpansionBasePath = path
+            if findNode(in: completeNodes, id: path)?.childrenLoaded == true {
+                expandAutomaticSingleChildChainIfNeeded()
+            } else {
+                loadChildrenIfNeeded(for: path)
+            }
         }
         persistState()
     }
@@ -907,6 +918,7 @@ final class AppModel: ObservableObject {
             }
             self.startWatchingDirectories(rootURL: rootURL, nodes: self.completeNodes)
             self.applyTreeFilter()
+            self.expandAutomaticSingleChildChainIfNeeded()
             self.loadExpandedChildrenIfNeeded()
         }
     }
@@ -1034,6 +1046,7 @@ final class AppModel: ObservableObject {
         }
 
         let rootKey = workspaceKey(for: rootURL)
+        automaticSingleChildExpansionPending = appState.workspaceStates[rootKey] == nil
         let savedWorkspace = appState.workspaceStates[rootKey] ?? WorkspaceState()
         compatibleOnly = savedWorkspace.compatibleOnly
         treeScrollOffset = savedWorkspace.treeScrollOffset
@@ -1094,6 +1107,50 @@ final class AppModel: ObservableObject {
         for path in expandedPaths.sorted(by: { $0.count < $1.count }) {
             loadChildrenIfNeeded(for: path)
         }
+    }
+
+    private func expandAutomaticSingleChildChainIfNeeded() {
+        guard automaticSingleChildExpansionPending else { return }
+
+        let candidatesForExpansion: [FileNode]
+        if let basePath = automaticSingleChildExpansionBasePath {
+            guard let baseNode = findNode(in: completeNodes, id: basePath) else {
+                automaticSingleChildExpansionPending = false
+                automaticSingleChildExpansionBasePath = nil
+                return
+            }
+            guard baseNode.childrenLoaded else {
+                loadChildrenIfNeeded(for: basePath)
+                return
+            }
+            candidatesForExpansion = baseNode.children
+        } else {
+            candidatesForExpansion = completeNodes
+        }
+
+        var candidates = candidatesForExpansion
+        while let directory = onlyDirectory(in: candidates) {
+            if !expandedPaths.contains(directory.id) {
+                expandedPaths.insert(directory.id)
+                loadChildrenIfNeeded(for: directory.id)
+                return
+            }
+
+            guard directory.childrenLoaded else {
+                loadChildrenIfNeeded(for: directory.id)
+                return
+            }
+            candidates = directory.children
+        }
+
+        automaticSingleChildExpansionPending = false
+        automaticSingleChildExpansionBasePath = nil
+        persistState()
+    }
+
+    private func onlyDirectory(in nodes: [FileNode]) -> FileNode? {
+        let directories = nodes.filter(\.isDirectory)
+        return directories.count == 1 ? directories[0] : nil
     }
 
     private func renderActiveTabIfNeeded() {

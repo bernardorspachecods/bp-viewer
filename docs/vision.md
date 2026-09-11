@@ -63,6 +63,9 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A pesquisa (`⌘F`) deve atuar apenas sobre o conteúdo renderizado da tab atual.
 - O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
 - O utilizador deve poder navegar por um índice/outline do documento quando essa estrutura estiver disponível.
+- Ao abrir uma raiz nova, a árvore deve expandir automaticamente uma cadeia de
+  diretórios com uma única subpasta, parando no primeiro nível com zero ou mais
+  de uma subpasta.
 - O texto do preview deve poder ser selecionado e copiado com `⌘C`.
 - O utilizador deve poder selecionar uma área do preview Markdown ou LaTeX/PDF
   como num screenshot, incluindo auto-scroll junto às extremidades, e abrir o
