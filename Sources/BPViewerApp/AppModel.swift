@@ -35,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var treeQuery = ""
     @Published var compatibleOnly = true
     @Published var expandedPaths: Set<String> = []
+    @Published var treeScrollOffset: Double = 0
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
     @Published var previewZoom: Double = 1.0
@@ -52,7 +53,8 @@ final class AppModel: ObservableObject {
 
     private let scanner = FileSystemScanner()
     private let latexRenderCache = LatexRenderCache()
-    private let defaults = UserDefaults.standard
+    private let stateStore = AppStateStore()
+    private var appState: AppState
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
     private var fullyIndexedNodes: [FileNode]?
@@ -73,33 +75,12 @@ final class AppModel: ObservableObject {
     private var openFilesObserver: NSObjectProtocol?
     private var localKeyMonitor: Any?
 
-    private enum Keys {
-        static let theme = "bp-viewer.theme"
-        static let lastRoot = "bp-viewer.lastRoot"
-        static let lastTabs = "bp-viewer.lastTabs"
-        static let activeTab = "bp-viewer.activeTab"
-        static let sidebarVisible = "bp-viewer.sidebarVisible"
-        static let sidebarWidth = "bp-viewer.sidebarWidth"
-        static let previewZoom = "bp-viewer.previewZoom"
-        static let latexShellEscapeMode = "bp-viewer.latexShellEscapeMode"
-        static let compatibleOnly = "bp-viewer.compatibleOnly"
-        static let latexRootSelections = "bp-viewer.latexRootSelections"
-        static let latexExternalGrants = "bp-viewer.latexExternalGrants"
-        static let tabPageIndices = "bp-viewer.tabPageIndices"
-        static let tabContexts = "bp-viewer.tabContexts"
-        static let tabOutlineVisibility = "bp-viewer.tabOutlineVisibility"
-    }
-
     init() {
-        let savedTheme = defaults.string(forKey: Keys.theme)
-        theme = AppThemePreference(rawValue: savedTheme ?? "") ?? .dark
-        sidebarVisible = defaults.object(forKey: Keys.sidebarVisible) as? Bool ?? true
-        sidebarWidth = defaults.object(forKey: Keys.sidebarWidth) as? Double ?? 280
-        previewZoom = defaults.object(forKey: Keys.previewZoom) as? Double ?? 1.0
-        latexShellEscapeMode = LatexShellEscapeMode(
-            rawValue: defaults.string(forKey: Keys.latexShellEscapeMode) ?? ""
-        ) ?? .disabled
-        compatibleOnly = defaults.object(forKey: Keys.compatibleOnly) as? Bool ?? true
+        appState = stateStore.load()
+        theme = AppThemePreference(rawValue: appState.global.theme) ?? .dark
+        sidebarVisible = appState.global.sidebarVisible
+        sidebarWidth = appState.global.sidebarWidth
+        latexShellEscapeMode = LatexShellEscapeMode(rawValue: appState.global.latexShellEscapeMode) ?? .disabled
 
         openFilesObserver = NotificationCenter.default.addObserver(
             forName: .bpViewerOpenFiles,
@@ -133,7 +114,7 @@ final class AppModel: ObservableObject {
             return event
         }
 
-        if let path = defaults.string(forKey: Keys.lastRoot) {
+        if let path = appState.lastWorkspacePath {
             let url = URL(fileURLWithPath: path)
             if FileManager.default.fileExists(atPath: url.path), isDirectory(url) {
                 rootURL = url
@@ -195,6 +176,7 @@ final class AppModel: ObservableObject {
     }
 
     func openRoot(_ url: URL) {
+        persistState()
         latexRenderTasks.values.forEach { $0.cancel() }
         latexRenderTasks.removeAll()
         previewGenerations.removeAll()
@@ -208,9 +190,11 @@ final class AppModel: ObservableObject {
         rootURL = standardizedRoot
         tabs = []
         activeTabID = nil
+        treeScrollOffset = 0
         expandedPaths = []
+        restoreTabs()
         startWatchingDirectories(rootURL: standardizedRoot, nodes: [])
-        defaults.set(rootURL?.path, forKey: Keys.lastRoot)
+        appState.lastWorkspacePath = workspaceKey(for: standardizedRoot)
         reloadTree()
         persistState()
     }
@@ -252,7 +236,7 @@ final class AppModel: ObservableObject {
 
     func updateCompatibleOnly(_ value: Bool) {
         compatibleOnly = value
-        defaults.set(value, forKey: Keys.compatibleOnly)
+        persistState()
         applyTreeFilter()
     }
 
@@ -263,6 +247,37 @@ final class AppModel: ObservableObject {
             expandedPaths.insert(path)
             loadChildrenIfNeeded(for: path)
         }
+        persistState()
+    }
+
+    func updateTreeScrollOffset(_ offset: Double) {
+        let normalizedOffset = max(offset, 0)
+        guard abs(treeScrollOffset - normalizedOffset) > 0.5 else { return }
+        treeScrollOffset = normalizedOffset
+        persistState()
+    }
+
+    func updateMarkdownReadingPosition(
+        _ position: MarkdownReadingPosition,
+        forTabID tabID: String
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].markdownReadingPosition != position else { return }
+        tabs[index].markdownReadingPosition = position
+        persistState()
+    }
+
+    func updatePDFReadingPosition(
+        _ position: PDFReadingPosition,
+        forTabID tabID: String
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let pageIndex = position.pageIndex
+        let changed = tabs[index].pdfReadingPosition != position
+            || tabs[index].previewPageIndex != pageIndex
+        guard changed else { return }
+        tabs[index].pdfReadingPosition = position
+        tabs[index].previewPageIndex = pageIndex
         persistState()
     }
 
@@ -378,20 +393,28 @@ final class AppModel: ObservableObject {
                let index = tabs.firstIndex(where: { $0.id == id }) {
                 tabs[index].contextURL = contextURL
             }
+            syncPreviewZoomToActiveTab()
             renderActiveTabIfNeeded()
             persistState()
             return
         }
 
+        let documentState = appState.documentStates[documentKey(for: documentURL)] ?? DocumentState()
         let tab = DocumentTab(
             id: id,
             url: documentURL,
             kind: kind,
             contextURL: contextURL,
-            status: kind == .markdown || kind == .latex ? .updating : .unavailable
+            status: kind == .markdown || kind == .latex ? .updating : .unavailable,
+            isOutlineVisible: documentState.outlineVisible,
+            previewZoom: documentState.zoom,
+            previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,
+            markdownReadingPosition: documentState.markdownReadingPosition,
+            pdfReadingPosition: documentState.pdfReadingPosition
         )
         tabs.append(tab)
         activeTabID = session.activePath?.path
+        syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
     }
@@ -428,6 +451,7 @@ final class AppModel: ObservableObject {
         guard session.close(tab.url) else { return }
         tabs.removeAll { $0.id == tab.id }
         activeTabID = session.activePath?.path
+        syncPreviewZoomToActiveTab()
         if wasActive {
             renderActiveTabIfNeeded()
         }
@@ -478,6 +502,7 @@ final class AppModel: ObservableObject {
         cancelLatexRenders(for: tabs.filter { $0.id != tab.id })
         tabs = [tab]
         activeTabID = session.activePath?.path
+        syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
     }
@@ -490,6 +515,7 @@ final class AppModel: ObservableObject {
         tabs = tabs.filter { allowed.contains($0.id) }
         if let activeTabID, !allowed.contains(activeTabID) {
             self.activeTabID = session.activePath?.path
+            syncPreviewZoomToActiveTab()
             renderActiveTabIfNeeded()
         }
         persistState()
@@ -546,12 +572,14 @@ final class AppModel: ObservableObject {
 
     func approveLatexExternalDependencies() {
         guard let request = pendingLatexExternalDependencies else { return }
-        var grants = defaults.dictionary(forKey: Keys.latexExternalGrants) ?? [:]
         let grantKey = latexExternalGrantKey(projectRoot: request.projectRoot, rootURL: request.rootURL)
-        var paths = grants[grantKey] as? [String] ?? []
+        let workspaceID = workspaceKey(for: request.projectRoot)
+        var workspace = appState.workspaceStates[workspaceID] ?? WorkspaceState()
+        var paths = workspace.latexExternalGrants[grantKey] ?? []
         paths.append(contentsOf: request.dependencies.map(\.url.path))
-        grants[grantKey] = Array(Set(paths)).sorted()
-        defaults.set(grants, forKey: Keys.latexExternalGrants)
+        workspace.latexExternalGrants[grantKey] = Array(Set(paths)).sorted()
+        appState.workspaceStates[workspaceID] = workspace
+        saveState()
         pendingLatexExternalDependencies = nil
         renderLatex(tabID: request.tabID, rootURL: request.rootURL)
     }
@@ -604,6 +632,7 @@ final class AppModel: ObservableObject {
             tabs[existingIndex].contextURL = contextURL
             tabs.remove(at: oldIndex)
             activeTabID = rootURL.path
+            syncPreviewZoomToActiveTab()
         } else {
             tabs[oldIndex] = DocumentTab(
                 id: rootURL.path,
@@ -613,6 +642,13 @@ final class AppModel: ObservableObject {
                 status: .updating
             )
             activeTabID = rootURL.path
+            let documentState = appState.documentStates[documentKey(for: rootURL)] ?? DocumentState()
+            tabs[oldIndex].isOutlineVisible = documentState.outlineVisible
+            tabs[oldIndex].previewZoom = documentState.zoom
+            tabs[oldIndex].previewPageIndex = documentState.pdfReadingPosition?.pageIndex ?? 0
+            tabs[oldIndex].markdownReadingPosition = documentState.markdownReadingPosition
+            tabs[oldIndex].pdfReadingPosition = documentState.pdfReadingPosition
+            syncPreviewZoomToActiveTab()
         }
 
         renderLatex(tabID: rootURL.path, rootURL: rootURL, force: true)
@@ -650,7 +686,8 @@ final class AppModel: ObservableObject {
     func setLatexShellEscapeMode(_ mode: LatexShellEscapeMode) {
         guard latexShellEscapeMode != mode else { return }
         latexShellEscapeMode = mode
-        defaults.set(mode.rawValue, forKey: Keys.latexShellEscapeMode)
+        appState.global.latexShellEscapeMode = mode.rawValue
+        saveState()
         if let activeTabID, activeTab?.kind == .latex {
             renderLatex(tabID: activeTabID, force: true)
         }
@@ -665,8 +702,14 @@ final class AppModel: ObservableObject {
     }
 
     private func setPreviewZoom(_ value: Double) {
-        previewZoom = min(max(value, 0.7), 2.0)
-        defaults.set(previewZoom, forKey: Keys.previewZoom)
+        let normalizedValue = min(max(value, 0.7), 2.0)
+        previewZoom = normalizedValue
+        guard let activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == activeTabID }) else {
+            return
+        }
+        tabs[index].previewZoom = normalizedValue
+        persistState()
     }
 
     private func applyTreeFilter() {
@@ -791,17 +834,20 @@ final class AppModel: ObservableObject {
         case .light: theme = .dark
         case .dark: theme = .light
         }
-        defaults.set(theme.rawValue, forKey: Keys.theme)
+        appState.global.theme = theme.rawValue
+        saveState()
     }
 
     func setSidebarVisible(_ visible: Bool) {
         sidebarVisible = visible
-        defaults.set(visible, forKey: Keys.sidebarVisible)
+        appState.global.sidebarVisible = visible
+        saveState()
     }
 
     func setSidebarWidth(_ width: Double) {
         sidebarWidth = min(max(width, BPTokens.Size.sidebarMin), BPTokens.Size.sidebarMax)
-        defaults.set(sidebarWidth, forKey: Keys.sidebarWidth)
+        appState.global.sidebarWidth = sidebarWidth
+        saveState()
     }
 
     func resizeSidebar(to width: Double) {
@@ -817,6 +863,7 @@ final class AppModel: ObservableObject {
         var session = tabSessionState
         guard session.selectNext() else { return }
         activeTabID = session.activePath?.path
+        syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
     }
@@ -826,67 +873,112 @@ final class AppModel: ObservableObject {
         var session = tabSessionState
         guard session.select(tab.url) else { return }
         activeTabID = session.activePath?.path
+        syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
     }
 
     func persistState() {
+        guard let rootURL else {
+            saveState()
+            return
+        }
+
         let session = tabSessionState
-        defaults.set(session.persistedPaths, forKey: Keys.lastTabs)
-        defaults.set(session.activePath?.path, forKey: Keys.activeTab)
-        defaults.set(Array(expandedPaths), forKey: "bp-viewer.expandedPaths")
-        let contexts = tabs.reduce(into: [String: String]()) { result, tab in
+        let rootKey = workspaceKey(for: rootURL)
+        var workspace = appState.workspaceStates[rootKey] ?? WorkspaceState()
+        workspace.tabPaths = session.persistedPaths
+        workspace.activeTabPath = session.activePath?.path
+        workspace.expandedPaths = expandedPaths.sorted()
+        workspace.treeScrollOffset = treeScrollOffset
+        workspace.compatibleOnly = compatibleOnly
+        workspace.tabContexts = tabs.reduce(into: [String: String]()) { result, tab in
             guard tab.kind == .latex, let contextURL = tab.contextURL else { return }
             LatexTabContextPersistence.store(contextURL: contextURL, forTabID: tab.id, in: &result)
         }
-        defaults.set(contexts, forKey: Keys.tabContexts)
-        defaults.set(
-            Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.previewPageIndex) }),
-            forKey: Keys.tabPageIndices
-        )
-        defaults.set(
-            Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.isOutlineVisible) }),
-            forKey: Keys.tabOutlineVisibility
-        )
+        appState.workspaceStates[rootKey] = workspace
+
+        for tab in tabs {
+            let key = documentKey(for: tab.url)
+            appState.documentStates[key] = DocumentState(
+                zoom: tab.previewZoom,
+                outlineVisible: tab.isOutlineVisible,
+                markdownReadingPosition: tab.markdownReadingPosition,
+                pdfReadingPosition: tab.pdfReadingPosition
+            )
+        }
+
+        appState.lastWorkspacePath = rootKey
+        appState.global.theme = theme.rawValue
+        appState.global.sidebarVisible = sidebarVisible
+        appState.global.sidebarWidth = sidebarWidth
+        appState.global.latexShellEscapeMode = latexShellEscapeMode.rawValue
+        saveState()
     }
 
     private func restoreTabs() {
-        let savedPaths = defaults.stringArray(forKey: Keys.lastTabs) ?? []
-        let savedActivePath = defaults.string(forKey: Keys.activeTab)
-        let savedPageIndices = defaults.dictionary(forKey: Keys.tabPageIndices) as? [String: Int] ?? [:]
-        let savedContexts = defaults.dictionary(forKey: Keys.tabContexts) as? [String: String] ?? [:]
-        let savedOutlineVisibility = defaults.dictionary(forKey: Keys.tabOutlineVisibility) as? [String: Bool] ?? [:]
+        guard let rootURL else {
+            tabs = []
+            activeTabID = nil
+            expandedPaths = []
+            treeScrollOffset = 0
+            return
+        }
+
+        let rootKey = workspaceKey(for: rootURL)
+        let savedWorkspace = appState.workspaceStates[rootKey] ?? WorkspaceState()
+        compatibleOnly = savedWorkspace.compatibleOnly
+        treeScrollOffset = savedWorkspace.treeScrollOffset
         let session = TabSessionState.restored(
-            paths: savedPaths,
-            activePath: savedActivePath,
+            paths: savedWorkspace.tabPaths,
+            activePath: savedWorkspace.activeTabPath,
             fileExists: { FileManager.default.fileExists(atPath: $0.path) }
         )
         let available = session.paths.compactMap { url -> DocumentTab? in
             let kind = DocumentKind(url: url)
-            let contextURL = rootURL.flatMap {
-                LatexTabContextPersistence.restore(
-                    forTabID: url.path,
-                    tabURL: url,
-                    kind: kind,
-                    from: savedContexts,
-                    projectRoot: $0
-                )
-            }
+            let documentState = appState.documentStates[documentKey(for: url)] ?? DocumentState()
+            let contextURL = LatexTabContextPersistence.restore(
+                forTabID: url.path,
+                tabURL: url,
+                kind: kind,
+                from: savedWorkspace.tabContexts,
+                projectRoot: rootURL
+            )
             return DocumentTab(
                 id: url.path,
                 url: url,
                 kind: kind,
                 contextURL: contextURL,
                 status: kind == .markdown || kind == .latex ? .idle : .unavailable,
-                isOutlineVisible: savedOutlineVisibility[url.path] ?? false,
-                previewPageIndex: savedPageIndices[url.path] ?? 0
+                isOutlineVisible: documentState.outlineVisible,
+                previewZoom: documentState.zoom,
+                previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,
+                markdownReadingPosition: documentState.markdownReadingPosition,
+                pdfReadingPosition: documentState.pdfReadingPosition
             )
         }
         tabs = available
         activeTabID = session.activePath?.path
-        expandedPaths = Set(defaults.stringArray(forKey: "bp-viewer.expandedPaths") ?? [])
+        expandedPaths = Set(savedWorkspace.expandedPaths)
+        syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         loadExpandedChildrenIfNeeded()
+    }
+
+    private func saveState() {
+        stateStore.save(appState)
+    }
+
+    private func workspaceKey(for url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    private func documentKey(for url: URL) -> String {
+        workspaceKey(for: url)
+    }
+
+    private func syncPreviewZoomToActiveTab() {
+        previewZoom = tabs.first(where: { $0.id == activeTabID })?.previewZoom ?? 1.0
     }
 
     private func loadExpandedChildrenIfNeeded() {
@@ -1203,8 +1295,8 @@ final class AppModel: ObservableObject {
     }
 
     private func storedLatexRoot(for projectRoot: URL) -> URL? {
-        guard let selections = defaults.dictionary(forKey: Keys.latexRootSelections) as? [String: String],
-              let path = selections[projectRoot.standardizedFileURL.path] else {
+        let key = workspaceKey(for: projectRoot)
+        guard let path = appState.workspaceStates[key]?.latexRootSelections[projectRoot.standardizedFileURL.path] else {
             return nil
         }
 
@@ -1217,18 +1309,17 @@ final class AppModel: ObservableObject {
     }
 
     private func storeLatexRoot(_ rootURL: URL, for projectRoot: URL) {
-        var selections = defaults.dictionary(forKey: Keys.latexRootSelections) as? [String: String] ?? [:]
-        selections[projectRoot.standardizedFileURL.path] = rootURL.standardizedFileURL.path
-        defaults.set(selections, forKey: Keys.latexRootSelections)
+        let key = workspaceKey(for: projectRoot)
+        var workspace = appState.workspaceStates[key] ?? WorkspaceState()
+        workspace.latexRootSelections[projectRoot.standardizedFileURL.path] = rootURL.standardizedFileURL.path
+        appState.workspaceStates[key] = workspace
+        saveState()
     }
 
     private var approvedLatexExternalPaths: [String: Set<String>] {
-        let grants = defaults.dictionary(forKey: Keys.latexExternalGrants) ?? [:]
-        return grants.reduce(into: [:]) { result, entry in
-            if let paths = entry.value as? [String] {
-                result[entry.key] = Set(paths)
-            }
-        }
+        guard let rootURL else { return [:] }
+        let grants = appState.workspaceStates[workspaceKey(for: rootURL)]?.latexExternalGrants ?? [:]
+        return grants.mapValues(Set.init)
     }
 
     private func latexExternalGrantKey(projectRoot: URL, rootURL: URL) -> String {

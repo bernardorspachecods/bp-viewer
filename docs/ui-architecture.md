@@ -144,21 +144,36 @@ O estado deve ser separado por responsabilidade, mesmo que a implementação ini
 
 ### `AppState`
 
-- tema;
-- tamanho/posição da janela;
-- largura e visibilidade da sidebar;
+- `schemaVersion`;
+- preferências globais, incluindo tema e sidebar;
 - pastas recentes;
-- versão do esquema de preferências.
+- `documentStates` indexado por path absoluto canonicalizado;
+- `workspaceStates` indexado por raiz;
+- último workspace aberto.
 
-### `ProjectState`
+### `DocumentState`
+
+- zoom;
+- índice/outline visível;
+- posição de leitura específica do renderer;
+- para LaTeX, identidade do `main.tex` renderizado, página e ponto visível.
+
+O conteúdo raw, HTML e PDF não pertencem ao estado persistido. Um capítulo
+LaTeX aberto é contexto da tab do `main.tex`, não um segundo documento de
+leitura.
+
+### `WorkspaceState`
 
 - referência da pasta-raiz;
 - estado de acesso;
 - snapshot da árvore;
 - filtro de ficheiros compatíveis;
-- pesquisa da árvore;
-- seleção atual;
 - estado expandido/fechado das pastas.
+- posição de scroll da árvore;
+- tabs abertas, ordem e tab ativa;
+- contexto LaTeX das tabs.
+
+A pesquisa da árvore é transitória e não é persistida.
 
 ### `TabState`
 
@@ -166,10 +181,12 @@ O estado deve ser separado por responsabilidade, mesmo que a implementação ini
 - referência do ficheiro;
 - root e contexto LaTeX, quando aplicável;
 - sequência da sessão e documento ativo;
-- posição de leitura;
-- zoom;
 - estado de preview;
 - diagnóstico atual e último preview válido.
+
+A posição de leitura, o outline e o zoom pertencem ao `DocumentState`, para
+serem reutilizados pela mesma fonte em qualquer workspace. A tab mantém apenas
+o contexto de sessão e a ligação ao documento.
 
 ### `RenderState`
 
@@ -281,14 +298,12 @@ Não é necessária uma base de dados.
 
 Uma camada de preferências local deve guardar apenas estado pequeno e reconstruível:
 
+- um único `Codable` `AppState` com `schemaVersion`;
 - referências persistentes a raízes autorizadas;
-- tabs e ordem;
-- root/contexto LaTeX;
-- posição de leitura e zoom;
-- tema;
-- expansão da árvore;
-- tamanho da janela e sidebar;
-- versão do esquema para migrações futuras.
+- `DocumentState` separado de `WorkspaceState`;
+- posição de leitura, outline e zoom no documento;
+- tabs, expansão e scroll da árvore no workspace;
+- defaults para campos desconhecidos ou ausentes em versões futuras.
 
 Conteúdo raw, HTML, PDF e logs não devem ser tratados como estado persistido da UI.
 
@@ -298,6 +313,7 @@ Esta especificação fecha a forma da UI, mas não escolhe ainda:
 
 - detalhes da fronteira entre SwiftUI e AppKit e dos serviços nativos;
 - mecanismo concreto de persistência de bookmarks;
+- política de limpeza de estados de documentos que deixaram de existir;
 - arquitetura exata do store/coordenador;
 - biblioteca de WebView/PDF além das superfícies nativas a validar;
 - refinamentos do design system depois da próxima ronda visual, sem quebrar os tokens e primitivas existentes.

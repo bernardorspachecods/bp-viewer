@@ -253,14 +253,18 @@ struct PreviewPane: View {
                             documentID: tab.id,
                             outline: tab.markdownOutline,
                             onNavigate: model.openPreviewURL,
-                            zoom: model.previewZoom,
+                            zoom: tab.previewZoom,
                             findQuery: model.findQuery,
                             findRequestID: model.findRequestID,
                             findBackwards: model.findBackwards,
                             isOutlineVisible: Binding(
                                 get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
                                 set: { model.setOutlineVisible($0, forTabID: tab.id) }
-                            )
+                            ),
+                            readingPosition: tab.markdownReadingPosition,
+                            onReadingPositionChanged: { position in
+                                model.updateMarkdownReadingPosition(position, forTabID: tab.id)
+                            },
                         )
                     }
                 } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
@@ -277,13 +281,14 @@ struct PreviewPane: View {
                         }
                         PDFPreviewView(
                             data: pdfData,
-                            zoom: model.previewZoom,
+                            zoom: tab.previewZoom,
                             findQuery: model.findQuery,
                             findRequestID: model.findRequestID,
                             findBackwards: model.findBackwards,
                             pageIndex: tab.previewPageIndex,
-                            onPageChanged: { pageIndex in
-                                model.updateReadingPage(tabID: tab.id, pageIndex: pageIndex)
+                            readingPosition: tab.pdfReadingPosition,
+                            onReadingPositionChanged: { position in
+                                model.updatePDFReadingPosition(position, forTabID: tab.id)
                             },
                             isOutlineVisible: Binding(
                                 get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },

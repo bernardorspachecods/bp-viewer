@@ -1,4 +1,5 @@
 import BPViewerCore
+import Foundation
 import SwiftUI
 
 enum AppThemePreference: String, CaseIterable, Identifiable {
@@ -70,6 +71,18 @@ enum PreviewStatus: Hashable {
     }
 }
 
+struct MarkdownReadingPosition: Codable, Hashable {
+    let scrollY: Double
+    let anchorID: String?
+    let anchorOffset: Double
+}
+
+struct PDFReadingPosition: Codable, Hashable {
+    let pageIndex: Int
+    let x: Double?
+    let y: Double?
+}
+
 struct DocumentTab: Identifiable, Hashable {
     let id: String
     let url: URL
@@ -81,7 +94,10 @@ struct DocumentTab: Identifiable, Hashable {
     var previewPDFData: Data?
     var markdownOutline: [MarkdownOutlineEntry] = []
     var isOutlineVisible = false
+    var previewZoom: Double = 1.0
     var previewPageIndex: Int = 0
+    var markdownReadingPosition: MarkdownReadingPosition?
+    var pdfReadingPosition: PDFReadingPosition?
     var previewUpdatedAt: Date?
     var previewBaseURL: URL?
     var previewDependencies: [URL] = []

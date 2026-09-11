@@ -9,7 +9,8 @@ struct PDFPreviewView: View {
     let findRequestID: Int
     let findBackwards: Bool
     let pageIndex: Int
-    let onPageChanged: (Int) -> Void
+    let readingPosition: PDFReadingPosition?
+    let onReadingPositionChanged: (PDFReadingPosition) -> Void
     @Binding var isOutlineVisible: Bool
     @State private var requestedPageIndex: Int?
     @State private var selectedOutlineID: String?
@@ -60,11 +61,12 @@ struct PDFPreviewView: View {
                     findBackwards: findBackwards,
                     pageIndex: pageIndex,
                     requestedPageIndex: requestedPageIndex,
-                    onPageChanged: { index in
-                        if requestedPageIndex == index {
+                    readingPosition: readingPosition,
+                    onReadingPositionChanged: { position in
+                        if requestedPageIndex == position.pageIndex {
                             requestedPageIndex = nil
                         }
-                        onPageChanged(index)
+                        onReadingPositionChanged(position)
                     }
                 )
             }
@@ -124,10 +126,11 @@ private struct PDFKitPreviewView: NSViewRepresentable {
     let findBackwards: Bool
     let pageIndex: Int
     let requestedPageIndex: Int?
-    let onPageChanged: (Int) -> Void
+    let readingPosition: PDFReadingPosition?
+    let onReadingPositionChanged: (PDFReadingPosition) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPageChanged: onPageChanged)
+        Coordinator(onReadingPositionChanged: onReadingPositionChanged)
     }
 
     func makeNSView(context: Context) -> FittingPDFView {
@@ -142,10 +145,18 @@ private struct PDFKitPreviewView: NSViewRepresentable {
         return view
     }
 
+    static func dismantleNSView(_ view: FittingPDFView, coordinator: Coordinator) {
+        guard view.document != nil else { return }
+        coordinator.onReadingPositionChanged(
+            view.persistedReadingPosition(fallbackPageIndex: 0)
+        )
+    }
+
     func updateNSView(_ view: FittingPDFView, context: Context) {
-        context.coordinator.onPageChanged = onPageChanged
+        context.coordinator.onReadingPositionChanged = onReadingPositionChanged
         let documentChanged = view.loadedPDFData != data
-        let previousPosition = documentChanged
+        let zoomChanged = view.zoom != zoom
+        let previousPosition = (documentChanged || zoomChanged) && view.loadedPDFData != nil
             ? view.readingPosition(fallbackPageIndex: pageIndex)
             : nil
         if documentChanged {
@@ -153,7 +164,6 @@ private struct PDFKitPreviewView: NSViewRepresentable {
             view.document = PDFDocument(data: data)
             view.loadedPDFData = data
         }
-        let zoomChanged = view.zoom != zoom
         view.zoom = zoom
         if documentChanged || zoomChanged {
             view.fitPageWidth(force: true)
@@ -166,7 +176,15 @@ private struct PDFKitPreviewView: NSViewRepresentable {
         )
         if let previousPosition {
             view.scheduleRestore(of: previousPosition) { restoredPageIndex in
-                onPageChanged(restoredPageIndex)
+                onReadingPositionChanged(
+                    view.persistedReadingPosition(fallbackPageIndex: restoredPageIndex)
+                )
+            }
+        } else if documentChanged, let readingPosition {
+            view.scheduleRestore(of: .init(readingPosition)) { restoredPageIndex in
+                onReadingPositionChanged(
+                    view.persistedReadingPosition(fallbackPageIndex: restoredPageIndex)
+                )
             }
         } else {
             view.goToPage(at: requestedPageIndex ?? pageIndex)
@@ -175,11 +193,11 @@ private struct PDFKitPreviewView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject {
-        var onPageChanged: (Int) -> Void
+        var onReadingPositionChanged: (PDFReadingPosition) -> Void
         private var pageChangedObservers: [ObserverToken] = []
 
-        init(onPageChanged: @escaping (Int) -> Void) {
-            self.onPageChanged = onPageChanged
+        init(onReadingPositionChanged: @escaping (PDFReadingPosition) -> Void) {
+            self.onReadingPositionChanged = onReadingPositionChanged
         }
 
         func observe(_ view: FittingPDFView) {
@@ -195,12 +213,10 @@ private struct PDFKitPreviewView: NSViewRepresentable {
                 ) { [weak self, weak view] _ in
                     Task { @MainActor [weak self, weak view] in
                         guard let self, let view, !view.isRestoringPosition,
-                              let page = view.currentPage,
-                              let document = view.document,
-                              let pageIndex = (0..<document.pageCount).first(where: {
-                                  document.page(at: $0) === page
-                              }) else { return }
-                        self.onPageChanged(pageIndex)
+                              view.document != nil else { return }
+                        self.onReadingPositionChanged(
+                            view.persistedReadingPosition(fallbackPageIndex: 0)
+                        )
                     }
                 }
             }
@@ -259,6 +275,20 @@ final class FittingPDFView: PDFView {
     struct ReadingPosition {
         let pageIndex: Int
         let point: CGPoint?
+
+        init(pageIndex: Int, point: CGPoint?) {
+            self.pageIndex = pageIndex
+            self.point = point
+        }
+
+        init(_ position: PDFReadingPosition) {
+            pageIndex = position.pageIndex
+            if let x = position.x, let y = position.y {
+                point = CGPoint(x: x, y: y)
+            } else {
+                point = nil
+            }
+        }
     }
 
     var zoom = 1.0
@@ -307,6 +337,15 @@ final class FittingPDFView: PDFView {
         return ReadingPosition(
             pageIndex: pageIndex,
             point: currentDestination?.point
+        )
+    }
+
+    func persistedReadingPosition(fallbackPageIndex: Int) -> PDFReadingPosition {
+        let position = readingPosition(fallbackPageIndex: fallbackPageIndex)
+        return PDFReadingPosition(
+            pageIndex: position.pageIndex,
+            x: position.point.map { Double($0.x) },
+            y: position.point.map { Double($0.y) }
         )
     }
 

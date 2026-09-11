@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var treeScrollPosition = ScrollPosition()
+    @State private var isRestoringTreeScroll = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,9 +70,33 @@ struct SidebarView: View {
                     }
                     .padding(.vertical, BPTokens.Spacing.xs)
                 }
+                .id(model.rootURL?.standardizedFileURL.path ?? "no-root")
+                .scrollPosition($treeScrollPosition)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y
+                } action: { _, newOffset in
+                    if isRestoringTreeScroll {
+                        if abs(Double(newOffset) - model.treeScrollOffset) <= 1 {
+                            isRestoringTreeScroll = false
+                        }
+                        return
+                    }
+                    model.updateTreeScrollOffset(Double(newOffset))
+                }
             }
         }
         .background(BPTokens.Color.surface)
+        .onAppear {
+            restoreTreeScrollPosition()
+        }
+        .onChange(of: model.rootURL?.standardizedFileURL.path) { _, _ in
+            restoreTreeScrollPosition()
+        }
+    }
+
+    private func restoreTreeScrollPosition() {
+        isRestoringTreeScroll = true
+        treeScrollPosition = ScrollPosition(y: CGFloat(model.treeScrollOffset))
     }
 }
 

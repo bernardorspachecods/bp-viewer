@@ -81,10 +81,10 @@ Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
   LaTeX/process runner, incluindo root discovery, workspace temporário, logs,
   filtragem de artefactos runtime,
   fallback `pdflatex` e roots ambíguos;
-- `BPViewerFoundationRunner`: 44 contratos de scanner, árvore lazy, filtro,
+- `BPViewerFoundationRunner`: 45 contratos de scanner, árvore lazy, filtro,
   pesquisa, tabs e restauração/persistência em formato puro.
 
-Os 92 contratos base passam quando existe um compilador LaTeX local; quando o
+Os 93 contratos base passam quando existe um compilador LaTeX local; quando o
 corpus local `developer-cv` existe, o runner acrescenta uma verificação real de
 integração. Sem compilador LaTeX, o contrato dependente do ambiente é marcado
 como `SKIP`. A suite
@@ -709,31 +709,55 @@ Isto permite começar com a instalação local de LaTeX do Mac, sem prometer que
 
 ## 9. Restauração de tabs e estado local
 
-### 9.1 Modelo recomendado
+### 9.1 Modelo confirmado — estado do documento e estado do workspace
 
-Guardar localmente, por projeto:
+O estado persistido é um único `Codable` `AppState`, com `schemaVersion`,
+preferências globais, `documentStates`, `workspaceStates` e o último workspace
+aberto. O modelo substitui as chaves de preferências anteriores; não existe
+compatibilidade retroativa com o formato atual.
 
-- referência persistente da raiz;
-- lista ordenada de tabs;
-- referência do ficheiro e, para LaTeX, root de preview/contexto de capítulo;
-- tab ativa;
-- posição de leitura por tab;
+O estado próprio de cada documento é indexado pelo path absoluto canonicalizado:
+
+- zoom;
+- visibilidade do índice/outline;
+- posição de leitura Markdown, com heading/âncora, offset e fallback de scroll;
+- posição de leitura LaTeX/PDF, com root renderizado, página e ponto visível.
+
+No LaTeX, a identidade do documento é o `main.tex` que gera o PDF. Um capítulo
+aberto como contexto não cria um estado de leitura separado.
+
+O estado de cada workspace é indexado pela raiz aberta:
+
+- lista ordenada de tabs e tab ativa;
+- contexto de capítulo/root das tabs LaTeX;
 - pastas expandidas;
-- tema;
-- tamanho da janela e largura da sidebar;
-- root LaTeX escolhido e configurações avançadas explicitamente opt-in.
+- posição de scroll da árvore;
+- filtro de ficheiros compatíveis.
 
-Guardar referências/estado, nunca conteúdo raw ou cópias de fontes. O formato de persistência deve aceitar campos desconhecidos/futuros e falhas parciais: um ficheiro removido aparece como indisponível; uma raiz inacessível pede recuperação; uma tab inválida não deve impedir as restantes.
+A pesquisa da árvore é transitória e não é persistida. No arranque restaura-se
+apenas o último workspace; os restantes estados ficam disponíveis quando a
+raiz correspondente voltar a ser aberta. Tema e sidebar permanecem
+preferências globais.
+
+Adicionar uma preferência futura deve colocá-la no estado que a possui, em vez
+de aumentar um objeto global indiferenciado. Os campos novos devem ter defaults
+ao descodificar versões anteriores do novo schema; isto é compatibilidade futura
+do modelo, não migração das chaves antigas.
+
+Guardar referências/estado, nunca conteúdo raw ou cópias de fontes. Um ficheiro
+removido aparece como indisponível; uma raiz inacessível pede recuperação; uma
+tab inválida não deve impedir as restantes.
 
 ### 9.2 Ordem segura de restauração
 
-1. abrir o estado local;
-2. resolver a raiz e autorização;
+1. abrir e descodificar o `AppState`;
+2. resolver a última raiz e autorização;
 3. reconstruir snapshot/árvore;
-4. restaurar pastas expandidas e tabs que ainda possam ser identificadas;
-5. restaurar tab ativa e posição de leitura depois do preview estar disponível;
-6. iniciar renderizações necessárias;
-7. marcar referências inválidas sem apagar silenciosamente o estado guardado.
+4. restaurar o workspace, pastas expandidas, scroll e tabs que ainda possam ser identificadas;
+5. aplicar o `DocumentState` de cada tab;
+6. restaurar tab ativa, outline, zoom e posição de leitura depois do preview estar disponível;
+7. iniciar renderizações necessárias;
+8. marcar referências inválidas sem apagar silenciosamente o estado guardado.
 
 O menu de pastas recentes e as ações de Finder devem reutilizar o mesmo modelo de sessão, para não criarem uma segunda forma de resolver permissões.
 
@@ -787,7 +811,7 @@ Para um burst de N alterações, é aceitável iniciar vários trabalhos se nece
 | Cache de compilação | Reutilização desejada; formato aberto | cache por root/cadeia; limpeza manual/automática | invalidar corretamente após cada tipo de dependência |
 | PDF actions | Ler PDF confirmado; política ainda aberta | bloquear; confirmação explícita; permitir limitado | PDF malicioso/legítimo em macOS atual |
 | Grau de empacotamento | MVP usa ferramentas externas | apenas build local; pacote direto com ferramentas detetadas; helpers empacotados futuro | assinatura, notarização, licenças e paths reais |
-| Metadados persistidos | tabs/posição/janela/tema confirmados; esquema aberto | documento versionado e tolerante a falhas | restart, ficheiros removidos, mudança de raiz e migração futura |
+| Metadados persistidos | documento/workspace separados; schema confirmado; sem compatibilidade retroativa | `Codable` versionado, defaults para campos novos e store substituível | restart, ficheiros removidos, mudança de raiz e crescimento de preferências |
 
 Nenhuma linha acima deve ser fechada por preferência estética ou popularidade de uma ferramenta. O critério é o corpus, as permissões, a distribuição e os testes do MVP.
 

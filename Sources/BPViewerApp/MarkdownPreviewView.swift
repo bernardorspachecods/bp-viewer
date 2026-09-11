@@ -13,6 +13,8 @@ struct MarkdownPreviewView: View {
     let findRequestID: Int
     let findBackwards: Bool
     @Binding var isOutlineVisible: Bool
+    let readingPosition: MarkdownReadingPosition?
+    let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
     @State private var selectedHeadingID: String?
     @State private var outlineRequestID = 0
 
@@ -57,7 +59,9 @@ struct MarkdownPreviewView: View {
                     findRequestID: findRequestID,
                     findBackwards: findBackwards,
                     requestedHeadingID: selectedHeadingID,
-                    outlineRequestID: outlineRequestID
+                    outlineRequestID: outlineRequestID,
+                    readingPosition: readingPosition,
+                    onReadingPositionChanged: onReadingPositionChanged
                 )
             }
         }
@@ -76,6 +80,8 @@ private struct MarkdownWebView: NSViewRepresentable {
     let findBackwards: Bool
     let requestedHeadingID: String?
     let outlineRequestID: Int
+    let readingPosition: MarkdownReadingPosition?
+    let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -88,11 +94,19 @@ private struct MarkdownWebView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
+        context.coordinator.observeScroll(in: webView)
         return webView
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.captureReadingPosition(in: webView)
+        coordinator.removeScrollObservation()
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onNavigate = onNavigate
+        context.coordinator.onReadingPositionChanged = onReadingPositionChanged
+        context.coordinator.observeScroll(in: webView)
         webView.pageZoom = zoom
 
         if context.coordinator.findRequestID != findRequestID || context.coordinator.findQuery != findQuery {
@@ -104,11 +118,21 @@ private struct MarkdownWebView: NSViewRepresentable {
 
         let documentChanged = context.coordinator.html != html || context.coordinator.baseURL != baseURL
         if documentChanged {
-            if context.coordinator.documentID == documentID {
-                context.coordinator.scrollY = webView.enclosingScrollView?.contentView.bounds.origin.y
-            } else {
-                context.coordinator.scrollY = nil
+            let isSameDocument = context.coordinator.documentID == documentID
+            let currentScrollY = webView.enclosingScrollView.map {
+                max(Double($0.contentView.bounds.origin.y), 0)
             }
+            let knownPosition = context.coordinator.lastReadingPosition ?? readingPosition
+            let currentPosition = currentScrollY.map { scrollY in
+                MarkdownReadingPosition(
+                    scrollY: scrollY,
+                    anchorID: knownPosition?.anchorID,
+                    anchorOffset: knownPosition?.anchorOffset ?? 0
+                )
+            }
+            context.coordinator.pendingReadingPosition = isSameDocument
+                ? currentPosition ?? knownPosition
+                : readingPosition
             context.coordinator.documentID = documentID
             context.coordinator.html = html
             context.coordinator.baseURL = baseURL
@@ -131,26 +155,130 @@ private struct MarkdownWebView: NSViewRepresentable {
         var baseURL: URL?
         var documentID: String?
         var onNavigate: ((URL) -> Void)?
-        var scrollY: CGFloat?
+        var onReadingPositionChanged: ((MarkdownReadingPosition) -> Void)?
+        var lastReadingPosition: MarkdownReadingPosition?
+        var pendingReadingPosition: MarkdownReadingPosition?
         var findQuery = ""
         var findRequestID = 0
         var findBackwards = false
         var outlineRequestID = 0
         var pendingHeadingID: String?
         var isDocumentLoaded = false
+        private var scrollObserver: ObserverToken?
+        private var captureWorkItem: DispatchWorkItem?
+
+        deinit {
+            if let scrollObserver {
+                NotificationCenter.default.removeObserver(scrollObserver.value)
+            }
+        }
+
+        func observeScroll(in webView: WKWebView) {
+            guard scrollObserver == nil, let scrollView = webView.enclosingScrollView else { return }
+            let contentView = scrollView.contentView
+            contentView.postsBoundsChangedNotifications = true
+            scrollObserver = ObserverToken(NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: contentView,
+                queue: .main
+            ) { [weak self, weak webView] _ in
+                Task { @MainActor [weak self, weak webView] in
+                    guard let self, let webView else { return }
+                    self.scheduleCapture(of: webView)
+                }
+            })
+        }
+
+        func removeScrollObservation() {
+            guard let scrollObserver else { return }
+            NotificationCenter.default.removeObserver(scrollObserver.value)
+            self.scrollObserver = nil
+        }
+
+        func scheduleCapture(of webView: WKWebView) {
+            captureWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak webView] in
+                guard let self, let webView else { return }
+                self.captureReadingPosition(in: webView)
+            }
+            captureWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
+        }
+
+        func captureReadingPosition(in webView: WKWebView) {
+            guard isDocumentLoaded else { return }
+            webView.evaluateJavaScript(
+                """
+                (() => {
+                    const scrollY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+                    const headings = Array.from(document.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'));
+                    const anchor = headings.find((element) => element.getBoundingClientRect().bottom >= 0) || headings.at(-1);
+                    return {
+                        scrollY,
+                        anchorID: anchor ? anchor.id : null,
+                        anchorOffset: anchor ? anchor.getBoundingClientRect().top : 0
+                    };
+                })()
+                """,
+                completionHandler: { [weak self] result, _ in
+                    guard let self,
+                          let payload = result as? [String: Any] else { return }
+                    let scrollY = (payload["scrollY"] as? NSNumber)?.doubleValue ?? 0
+                    let anchorOffset = (payload["anchorOffset"] as? NSNumber)?.doubleValue ?? 0
+                    let position = MarkdownReadingPosition(
+                        scrollY: max(scrollY, 0),
+                        anchorID: payload["anchorID"] as? String,
+                        anchorOffset: anchorOffset
+                    )
+                    guard self.lastReadingPosition != position else { return }
+                    self.lastReadingPosition = position
+                    self.onReadingPositionChanged?(position)
+                }
+            )
+        }
+
+        private final class ObserverToken: @unchecked Sendable {
+            let value: NSObjectProtocol
+
+            init(_ value: NSObjectProtocol) {
+                self.value = value
+            }
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            if let scrollY, let scrollView = webView.enclosingScrollView {
-                let clipView = scrollView.contentView
-                var origin = clipView.bounds.origin
-                origin.y = scrollY
-                clipView.scroll(to: origin)
-                scrollView.reflectScrolledClipView(clipView)
-                self.scrollY = nil
-            }
             isDocumentLoaded = true
+            if let pendingReadingPosition {
+                restoreReadingPosition(pendingReadingPosition, in: webView)
+                self.pendingReadingPosition = nil
+            }
             scrollToPendingHeading(in: webView)
             find(in: webView)
+            scheduleCapture(of: webView)
+        }
+
+        func restoreReadingPosition(_ position: MarkdownReadingPosition, in webView: WKWebView) {
+            guard let encodedID = try? String(
+                data: JSONEncoder().encode(position.anchorID),
+                encoding: .utf8
+            ),
+            let scrollY = String(position.scrollY).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+            let anchorOffset = String(position.anchorOffset).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                return
+            }
+
+            let script = """
+            (() => {
+                const fallback = \(scrollY);
+                const anchor = \(encodedID) ? document.getElementById(\(encodedID)) : null;
+                if (!anchor) {
+                    window.scrollTo(0, fallback);
+                    return;
+                }
+                const desiredTop = window.scrollY + anchor.getBoundingClientRect().top - \(anchorOffset);
+                window.scrollTo(0, Math.max(0, desiredTop));
+            })();
+            """
+            webView.evaluateJavaScript(script, completionHandler: nil)
         }
 
         func scrollToPendingHeading(in webView: WKWebView) {
