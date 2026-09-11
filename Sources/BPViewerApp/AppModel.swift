@@ -39,6 +39,8 @@ final class AppModel: ObservableObject {
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
     @Published var previewZoom: Double = 1.0
+    @Published var defaultMarkdownZoom: Double = 1.0
+    @Published var defaultLatexZoom: Double = 1.0
     @Published var latexShellEscapeMode: LatexShellEscapeMode = .disabled
     @Published var isFindBarVisible = false
     @Published var findQuery = ""
@@ -89,6 +91,8 @@ final class AppModel: ObservableObject {
         sidebarVisible = appState.global.sidebarVisible
         sidebarWidth = appState.global.sidebarWidth
         latexShellEscapeMode = LatexShellEscapeMode(rawValue: appState.global.latexShellEscapeMode) ?? .disabled
+        defaultMarkdownZoom = min(max(appState.global.defaultMarkdownZoom, 0.7), 2.0)
+        defaultLatexZoom = min(max(appState.global.defaultLatexZoom, 0.7), 2.0)
 
         openFilesObserver = NotificationCenter.default.addObserver(
             forName: .bpViewerOpenFiles,
@@ -525,7 +529,8 @@ final class AppModel: ObservableObject {
             contextURL: contextURL,
             status: kind == .markdown || kind == .latex ? .updating : .unavailable,
             isOutlineVisible: documentState.outlineVisible,
-            previewZoom: documentState.zoom,
+            previewZoom: documentState.zoom ?? defaultZoom(for: kind),
+            isPreviewZoomCustomized: documentState.zoom != nil,
             previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,
             markdownReadingPosition: documentState.markdownReadingPosition,
             pdfReadingPosition: documentState.pdfReadingPosition
@@ -763,7 +768,8 @@ final class AppModel: ObservableObject {
             activeTabID = rootURL.path
             let documentState = appState.documentStates[documentKey(for: rootURL)] ?? DocumentState()
             tabs[oldIndex].isOutlineVisible = documentState.outlineVisible
-            tabs[oldIndex].previewZoom = documentState.zoom
+            tabs[oldIndex].previewZoom = documentState.zoom ?? defaultZoom(for: .latex)
+            tabs[oldIndex].isPreviewZoomCustomized = documentState.zoom != nil
             tabs[oldIndex].previewPageIndex = documentState.pdfReadingPosition?.pageIndex ?? 0
             tabs[oldIndex].markdownReadingPosition = documentState.markdownReadingPosition
             tabs[oldIndex].pdfReadingPosition = documentState.pdfReadingPosition
@@ -799,7 +805,26 @@ final class AppModel: ObservableObject {
     }
 
     func resetPreviewZoom() {
-        setPreviewZoom(1.0)
+        guard let activeTab else { return }
+        setPreviewZoom(defaultZoom(for: activeTab.kind), customized: false)
+    }
+
+    func setDefaultMarkdownZoom(_ value: Double) {
+        let normalizedValue = normalizedZoom(value)
+        guard defaultMarkdownZoom != normalizedValue else { return }
+        defaultMarkdownZoom = normalizedValue
+        appState.global.defaultMarkdownZoom = normalizedValue
+        applyDefaultZoom(normalizedValue, to: .markdown)
+        persistState()
+    }
+
+    func setDefaultLatexZoom(_ value: Double) {
+        let normalizedValue = normalizedZoom(value)
+        guard defaultLatexZoom != normalizedValue else { return }
+        defaultLatexZoom = normalizedValue
+        appState.global.defaultLatexZoom = normalizedValue
+        applyDefaultZoom(normalizedValue, to: .latex)
+        persistState()
     }
 
     func setLatexShellEscapeMode(_ mode: LatexShellEscapeMode) {
@@ -820,15 +845,38 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
-    private func setPreviewZoom(_ value: Double) {
-        let normalizedValue = min(max(value, 0.7), 2.0)
+    private func setPreviewZoom(_ value: Double, customized: Bool = true) {
+        let normalizedValue = normalizedZoom(value)
         previewZoom = normalizedValue
         guard let activeTabID,
               let index = tabs.firstIndex(where: { $0.id == activeTabID }) else {
             return
         }
         tabs[index].previewZoom = normalizedValue
+        tabs[index].isPreviewZoomCustomized = customized
         persistState()
+    }
+
+    private func defaultZoom(for kind: DocumentKind) -> Double {
+        switch kind {
+        case .markdown:
+            return defaultMarkdownZoom
+        case .latex:
+            return defaultLatexZoom
+        case .other:
+            return 1.0
+        }
+    }
+
+    private func applyDefaultZoom(_ value: Double, to kind: DocumentKind) {
+        for index in tabs.indices where tabs[index].kind == kind && !tabs[index].isPreviewZoomCustomized {
+            tabs[index].previewZoom = value
+        }
+        syncPreviewZoomToActiveTab()
+    }
+
+    private func normalizedZoom(_ value: Double) -> Double {
+        min(max(value, 0.7), 2.0)
     }
 
     private func applyTreeFilter() {
@@ -1021,7 +1069,7 @@ final class AppModel: ObservableObject {
         for tab in tabs {
             let key = documentKey(for: tab.url)
             appState.documentStates[key] = DocumentState(
-                zoom: tab.previewZoom,
+                zoom: tab.isPreviewZoomCustomized ? tab.previewZoom : nil,
                 outlineVisible: tab.isOutlineVisible,
                 markdownReadingPosition: tab.markdownReadingPosition,
                 pdfReadingPosition: tab.pdfReadingPosition
@@ -1072,7 +1120,8 @@ final class AppModel: ObservableObject {
                 contextURL: contextURL,
                 status: kind == .markdown || kind == .latex ? .idle : .unavailable,
                 isOutlineVisible: documentState.outlineVisible,
-                previewZoom: documentState.zoom,
+                previewZoom: documentState.zoom ?? defaultZoom(for: kind),
+                isPreviewZoomCustomized: documentState.zoom != nil,
                 previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,
                 markdownReadingPosition: documentState.markdownReadingPosition,
                 pdfReadingPosition: documentState.pdfReadingPosition

@@ -63,6 +63,11 @@ struct BPViewerApp: App {
                 }
             }
         }
+
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+        }
     }
 }
 

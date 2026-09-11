@@ -62,6 +62,7 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 - A topbar deve incluir um botão para alternar manualmente entre tema claro e escuro.
 - A pesquisa (`⌘F`) deve atuar apenas sobre o conteúdo renderizado da tab atual.
 - O preview deve permitir aumentar, diminuir e repor o zoom através da topbar e dos atalhos `⌘+`, `⌘-` e `⌘0`.
+- As Definições da app, acessíveis pelo comando macOS `⌘,`, devem permitir configurar separadamente o zoom predefinido de Markdown e LaTeX/PDF.
 - O utilizador deve poder navegar por um índice/outline do documento quando essa estrutura estiver disponível.
 - Ao abrir uma raiz nova, a árvore deve expandir automaticamente uma cadeia de
   diretórios com uma única subpasta, parando no primeiro nível com zero ou mais

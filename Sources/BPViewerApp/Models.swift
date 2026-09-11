@@ -95,6 +95,7 @@ struct DocumentTab: Identifiable, Hashable {
     var markdownOutline: [MarkdownOutlineEntry] = []
     var isOutlineVisible = false
     var previewZoom: Double = 1.0
+    var isPreviewZoomCustomized = false
     var previewPageIndex: Int = 0
     var markdownReadingPosition: MarkdownReadingPosition?
     var pdfReadingPosition: PDFReadingPosition?

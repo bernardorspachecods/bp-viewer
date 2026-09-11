@@ -40,6 +40,12 @@ Para gerar uma build `.app` local com associação a Markdown e LaTeX, usa:
 ./scripts/build-app.sh
 ```
 
+Para fechar instâncias antigas, recompilar e abrir uma instância nova:
+
+```bash
+./scripts/restart-app.sh
+```
+
 O script não empacota o TeX Live: a app continua a usar a instalação LaTeX
 local do Mac.
 

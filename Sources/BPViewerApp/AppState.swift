@@ -34,9 +34,12 @@ struct GlobalState: Codable {
     var sidebarVisible = true
     var sidebarWidth = 280.0
     var latexShellEscapeMode = "disabled"
+    var defaultMarkdownZoom = 1.0
+    var defaultLatexZoom = 1.0
 
     private enum CodingKeys: String, CodingKey {
         case theme, sidebarVisible, sidebarWidth, latexShellEscapeMode
+        case defaultMarkdownZoom, defaultLatexZoom
     }
 
     init() {}
@@ -47,11 +50,13 @@ struct GlobalState: Codable {
         sidebarVisible = try container.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         sidebarWidth = try container.decodeIfPresent(Double.self, forKey: .sidebarWidth) ?? 280
         latexShellEscapeMode = try container.decodeIfPresent(String.self, forKey: .latexShellEscapeMode) ?? "disabled"
+        defaultMarkdownZoom = try container.decodeIfPresent(Double.self, forKey: .defaultMarkdownZoom) ?? 1.0
+        defaultLatexZoom = try container.decodeIfPresent(Double.self, forKey: .defaultLatexZoom) ?? 1.0
     }
 }
 
 struct DocumentState: Codable {
-    var zoom = 1.0
+    var zoom: Double?
     var outlineVisible = false
     var markdownReadingPosition: MarkdownReadingPosition?
     var pdfReadingPosition: PDFReadingPosition?
@@ -63,7 +68,7 @@ struct DocumentState: Codable {
     init() {}
 
     init(
-        zoom: Double,
+        zoom: Double?,
         outlineVisible: Bool,
         markdownReadingPosition: MarkdownReadingPosition?,
         pdfReadingPosition: PDFReadingPosition?
