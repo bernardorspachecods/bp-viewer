@@ -24,8 +24,10 @@ struct BPViewerContractRunner {
             baseURL: URL(fileURLWithPath: "/tmp/project/chapter-1")
         )
 
-        expect(result.html.contains("<h1 id=\"heading\">Heading</h1>"), "heading")
-        expect(result.html.contains("<h1 id=\"heading-2\">Heading</h1>"), "duplicate heading id")
+        expect(result.html.contains("<h1 id=\"heading\""), "heading")
+        expect(result.blocks.first?.kind == .heading, "render result exposes editable blocks")
+        expect(result.html.contains("data-bp-block-id=\"markdown-block-1\""), "rendered blocks expose stable edit IDs")
+        expect(result.html.contains("<h1 id=\"heading-2\""), "duplicate heading id")
         expect(result.outline.map(\.title) == ["Heading", "Heading"], "Markdown outline titles")
         expect(result.outline.map(\.level) == [1, 1], "Markdown outline levels")
         expect(result.outline.map(\.id) == ["heading", "heading-2"], "Markdown outline IDs")

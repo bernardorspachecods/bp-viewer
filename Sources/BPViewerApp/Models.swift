@@ -83,6 +83,46 @@ struct PDFReadingPosition: Codable, Hashable {
     let y: Double?
 }
 
+enum MarkdownEditingMode: String, Hashable {
+    case visual
+    case markdown
+}
+
+enum MarkdownSaveState: String, Hashable {
+    case saved
+    case unsaved
+    case saving
+    case conflict
+    case failed
+
+    var label: String {
+        switch self {
+        case .saved: "Guardado"
+        case .unsaved: "Alterações por guardar"
+        case .saving: "A guardar…"
+        case .conflict: "Conflito externo"
+        case .failed: "Erro ao guardar"
+        }
+    }
+}
+
+struct MarkdownConflict: Hashable {
+    let localSource: String
+    let externalSource: String
+    let blockIDs: [String]
+}
+
+struct MarkdownEditSession: Hashable {
+    var mode: MarkdownEditingMode = .visual
+    var isEditing = true
+    var baseSource: String
+    var currentSource: String
+    var saveState: MarkdownSaveState = .saved
+    var undoSources: [String] = []
+    var redoSources: [String] = []
+    var conflict: MarkdownConflict?
+}
+
 struct DocumentTab: Identifiable, Hashable {
     let id: String
     let url: URL
@@ -104,6 +144,9 @@ struct DocumentTab: Identifiable, Hashable {
     var previewDependencies: [URL] = []
     var previewExternalDependencies: [URL] = []
     var errorMessage: String?
+    var markdownSource: String?
+    var markdownBlocks: [MarkdownEditableBlock] = []
+    var markdownEditSession: MarkdownEditSession?
 
     var title: String { url.deletingPathExtension().lastPathComponent }
     var subtitle: String {

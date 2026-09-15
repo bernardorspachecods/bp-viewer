@@ -17,14 +17,15 @@ Cada afirmação usa uma destas categorias:
 
 As referências apontam primeiro para a síntese. Os reports individuais são citados apenas onde suportam um detalhe material: [desktop e filesystem](research/reports/desktop-filesystem.md), [Markdown → HTML](research/reports/markdown-html.md), [LaTeX → preview](research/reports/latex-preview.md) e [preview, segurança e distribuição](research/reports/preview-security-distribution.md).
 
-## Estado de implementação — 2026-09-10
+## Estado de implementação — 2026-09-11
 
 O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 
 - `swift-markdown` é o parser provisório;
 - o adapter gera HTML próprio, com escaping de texto/atributos e rejeição de esquemas de URL perigosos;
 - raw HTML é omitido nesta primeira versão até existir uma política de sanitização testada;
-- o HTML é apresentado num `WKWebView` com JavaScript de conteúdo desligado;
+- o HTML é apresentado num `WKWebView`; a Fase 2 acrescenta apenas um script
+  app-owned e um message bridge controlado para a edição Markdown inline;
 - a tab Markdown lê o ficheiro fora da UI, publica apenas a geração mais recente e observa alterações do ficheiro ativo e das suas dependências;
 - a árvore observa a raiz e os diretórios conhecidos para detetar alterações externas e recarrega o snapshot; expansões persistidas voltam a carregar automaticamente depois do arranque;
 - erros mantêm o último preview disponível e mostram o diagnóstico;
@@ -35,6 +36,29 @@ O shell nativo e o primeiro vertical slice de Markdown já estão implementados:
 - a janela nativa de Definições (`⌘,`) guarda zooms predefinidos separados para Markdown e LaTeX/PDF; um zoom individual de documento tem precedência;
 - imagens locais do Markdown são embutidas no HTML quando existem, mas continuam nas dependências observadas para atualização automática;
 - o adapter Markdown vive num módulo core partilhado com um contract runner executável;
+- o módulo core mantém um mapeamento interno de regiões Markdown editáveis,
+  preserva os intervalos de source não editados e faz merge em três vias sem
+  expor blocos como unidade da UI;
+- a Fase 2 foi refatorada para uma única superfície de edição integrada no
+  `WKWebView`: parágrafos, headings e listas são editáveis visualmente,
+  `Editar como Markdown` representa o ficheiro inteiro, e conteúdo ainda não
+  suportado fica protegido no modo visual; autosave, undo/redo e resolução de
+  conflitos continuam a operar sobre o mesmo estado de documento;
+- o incremento seguinte da Fase 2 já permite editar inline Markdown existente
+  em parágrafos, headings e listas, preservando links e formatos fortes,
+  itálicos, rasurados e código inline; a toolbar visual expõe negrito e
+  itálico, citações e separadores, mantendo a mesma fonte de verdade do
+  documento e o mesmo histórico undo/redo;
+- listas de tarefas Markdown usam checkboxes interativas no preview visual;
+  alternar uma checkbox preserva a sintaxe `[ ]`/`[x]` e passa pelo mesmo
+  autosave, undo/redo e deteção de conflitos;
+- blocos de código fenced podem ser editados como texto monoespaçado, mantendo
+  a linguagem e os delimitadores Markdown;
+- imagens abrem um editor especializado de alt text, origem e título; tabelas
+  permitem editar células e são serializadas de volta para Markdown;
+- fórmulas inline e em bloco, HTML inline e em bloco, e front matter YAML
+  abrem editores especializados seguros no preview, sempre através do mesmo
+  histórico, autosave e merge do documento;
 - as fundações de filesystem, árvore lazy, filtros, pesquisa, tabs e restauração vivem num módulo core partilhado com um foundation runner executável;
 - o núcleo inicial LaTeX já descobre roots, usa `ProcessRunner`, executa o
   compiler com cwd no workspace temporário e paths de pesquisa controlados, e
@@ -69,7 +93,10 @@ Esta implementação é deliberadamente provisória: a escolha do parser, a pol�
 
 O shell nativo e o vertical slice Markdown foram validados manualmente no Mac
 atual, incluindo navegação, filtro, tabs, atualização externa, links, imagens
-locais e matemática comum. O vertical slice LaTeX está agora em progresso:
+locais e matemática comum. A primeira integração do editor Markdown compila e
+passa os contratos puros; a validação gráfica do duplo clique, edição no
+`WKWebView`, autosave e conflitos ainda precisa de uma ronda num Mac com
+display disponível. O vertical slice LaTeX está agora em progresso:
 descoberta de root, escolha manual persistida e compilação mínima já passam,
 incluindo o `pdflatex` instalado no Mac atual;
 as lacunas automáticas abaixo continuam a ser dívida de testes e não devem ser
@@ -83,8 +110,9 @@ Existem dois runners executáveis que podem ser corridos sem abrir uma janela:
   LaTeX/process runner, incluindo root discovery, workspace temporário, logs,
   filtragem de artefactos runtime,
   fallback `pdflatex` e roots ambíguos;
-- `BPViewerFoundationRunner`: 45 contratos de scanner, árvore lazy, filtro,
-  pesquisa, tabs e restauração/persistência em formato puro.
+- `BPViewerFoundationRunner`: contratos de scanner, árvore lazy, filtro,
+  pesquisa, tabs, restauração/persistência, blocos Markdown e merge de
+  conflitos em formato puro.
 
 Os 93 contratos base passam quando existe um compilador LaTeX local; quando o
 corpus local `developer-cv` existe, o runner acrescenta uma verificação real de
@@ -100,7 +128,7 @@ através do adapter: três passagens `pdflatex` produziram um PDF A4 de 2 págin
 num workspace isolado, sem deixar artefactos na pasta raw.
 
 Continuam sem cobertura automática de integração: SwiftUI/AppKit, entrega de
-eventos de UI, WKWebView, atalhos, ciclo de vida assíncrono da `AppModel`,
+eventos de edição no `WKWebView`, atalhos, ciclo de vida assíncrono da `AppModel`,
 `UserDefaults` real, callbacks dos watchers, renames concorrentes e performance
 em árvores grandes. Alguns foram exercitados manualmente, mas isso não
 substitui testes reproduzíveis; os casos determinísticos de watchers e gerações

@@ -4,7 +4,11 @@
 
 Definir a estrutura visual, o modelo de estado e as fronteiras entre a UI e os módulos de filesystem/renderização do `bp-viewer`.
 
-Esta arquitetura deve suportar o MVP viewer-only e permitir acrescentar, no futuro, um editor raw à esquerda do preview sem reconstruir o workspace.
+Esta arquitetura deve suportar o MVP viewer-only e permitir acrescentar, no
+futuro, edição visual de Markdown diretamente dentro do preview sem reconstruir
+o workspace. O modo raw representa o ficheiro inteiro e as regiões ainda não
+suportadas ficam protegidas no modo visual; não há uma coluna de editor
+permanente nesta fase.
 
 O shell atual já usa SwiftUI com pontes AppKit onde necessário. As interfaces
 abaixo descrevem a arquitetura-alvo e os contratos de UI; não obrigam os nomes
@@ -33,25 +37,18 @@ MainWindow
 │   └── DocumentWorkspace
 │       ├── TabBar
 │       └── DocumentSurface
-│           ├── EditorPane       (futuro)
 │           └── PreviewPane
+│               └── MarkdownDocumentEditor (Fase 2)
 └── GlobalOverlays
     ├── ErrorDetails
     ├── RootSelection
     └── PermissionPrompt
 ```
 
-No MVP, o `EditorPane` não está presente e o `PreviewPane` ocupa todo o `DocumentSurface`.
-
-Quando o editor for adicionado, o workspace passa a suportar:
-
-```text
-DocumentWorkspace
-├── TabBar
-└── DocumentSurface
-    ├── EditorPane
-    └── PreviewPane
-```
+No MVP, o `MarkdownDocumentEditor` não está presente e o `PreviewPane` ocupa
+todo o `DocumentSurface`. Na Fase 2, o documento Markdown entra numa única
+superfície de edição integrada dentro do preview após duplo clique; os limites
+internos usados para mapear o source não são expostos na UI.
 
 A `ProjectSidebar` continua a ser a navegação do projeto; não deve ser confundida com o editor.
 
@@ -113,7 +110,9 @@ Quando duas tabs tiverem o mesmo nome, apresentam contexto da pasta-pai. Para La
 
 É o ponto de extensão do workspace para superfícies de documento.
 
-No MVP, renderiza apenas `PreviewPane`. No futuro, compõe editor e preview sem obrigar a mudar o modelo de tabs, sessão ou coordenação de renderização.
+No MVP, renderiza apenas `PreviewPane`. Na Fase 2, o `PreviewPane` compõe o
+conteúdo renderizado com um estado transitório de edição do documento inteiro,
+sem obrigar a mudar o modelo de tabs, sessão ou coordenação de renderização.
 
 ### `PreviewPane`
 
@@ -127,6 +126,35 @@ Recebe um estado de preview aprovado pelo `WorkspaceCoordinator`:
 - posição de leitura e zoom.
 
 Não deve saber se o artefacto veio de Markdown, LaTeX ou de um teste fake.
+
+### `MarkdownDocumentEditor`
+
+É a superfície transitória para editar um documento Markdown dentro do próprio
+preview.
+
+Deve suportar:
+
+- edição visual de parágrafos, headings, listas e checkboxes de listas de
+  tarefas na primeira entrega;
+- edição de blocos de código fenced como texto monoespaçado, preservando a
+  linguagem e os delimitadores;
+- edição de células de tabelas e editor especializado de imagens com alt text,
+  origem e título;
+- editores especializados inline para fórmulas, HTML raw e front matter;
+- edição inline segura de links, negrito, itálico, rasurado e código inline;
+- modo `Editar como Markdown` para o ficheiro inteiro;
+- toolbar fixa com modo, undo/redo, negrito, itálico, citação, separador,
+  estado de gravação e conclusão, com `⌘B`/`⌘I` como atalhos visuais;
+- criação, combinação e remoção de elementos através do teclado, sem expor
+  fronteiras de blocos;
+- atualização renderizada com debounce sem interromper o cursor;
+- publicação de comandos de gravação, undo/redo e resolução de conflitos, sem
+  escrever diretamente no filesystem.
+
+O conteúdo especializado mantém a aparência renderizada ou um placeholder
+seguro no preview e abre a sua própria superfície de edição no duplo clique.
+O mapeamento interno por blocos continua permitido para preservar source e
+fazer merge, mas não é uma unidade visual da edição.
 
 ### `GlobalOverlays`
 
@@ -161,6 +189,18 @@ O estado deve ser separado por responsabilidade, mesmo que a implementação ini
 O conteúdo raw, HTML e PDF não pertencem ao estado persistido. Um capítulo
 LaTeX aberto é contexto da tab do `main.tex`, não um segundo documento de
 leitura.
+
+### `MarkdownEditingState`
+
+É estado transitório por tab e não deve ser tratado como conteúdo persistido.
+Inclui, conforme necessário:
+
+- posição e regiões internas relevantes no Markdown;
+- modo visual ou raw;
+- draft local e estado de gravação;
+- versão base usada para detetar alterações externas;
+- histórico undo/redo;
+- conflito pendente e escolhas de resolução.
 
 ### `WorkspaceState`
 

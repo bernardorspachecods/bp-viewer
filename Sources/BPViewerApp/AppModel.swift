@@ -74,6 +74,7 @@ final class AppModel: ObservableObject {
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
     private var latexRenderTasks: [String: Task<Void, Never>] = [:]
+    private var markdownSaveTasks: [String: Task<Void, Never>] = [:]
     private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedDirectoryURLs: Set<URL> = []
     private var treeRefreshGeneration = 0
@@ -123,6 +124,32 @@ final class AppModel: ObservableObject {
             if flags == [.control], event.keyCode == 48 {
                 Task { @MainActor [weak self] in
                     self?.selectNextTab()
+                }
+                return nil
+            }
+
+            if flags == [.command],
+               event.charactersIgnoringModifiers?.lowercased() == "s",
+               let tabID = self?.activeTabID,
+               let session = self?.activeTab?.markdownEditSession,
+               session.currentSource != session.baseSource {
+                Task { @MainActor [weak self] in
+                    await self?.saveMarkdownEdit(tabID: tabID)
+                }
+                return nil
+            }
+
+            if flags.contains(.command),
+               event.charactersIgnoringModifiers?.lowercased() == "z",
+               let session = self?.activeTab?.markdownEditSession,
+               (flags.contains(.shift) ? !session.redoSources.isEmpty : !session.undoSources.isEmpty) {
+                let redo = flags.contains(.shift)
+                Task { @MainActor [weak self] in
+                    if redo {
+                        self?.redoMarkdownEdit()
+                    } else {
+                        self?.undoMarkdownEdit()
+                    }
                 }
                 return nil
             }
@@ -563,6 +590,8 @@ final class AppModel: ObservableObject {
         guard tabs.contains(tab) else { return }
         latexRenderTasks[tab.id]?.cancel()
         latexRenderTasks.removeValue(forKey: tab.id)
+        markdownSaveTasks[tab.id]?.cancel()
+        markdownSaveTasks.removeValue(forKey: tab.id)
         previewGenerations[tab.id, default: 0] += 1
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
@@ -657,6 +686,228 @@ final class AppModel: ObservableObject {
             tabs[index].errorMessage = nil
         }
         persistState()
+    }
+
+    func beginMarkdownEditing(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .markdown else { return }
+
+        let source = tabs[index].markdownSource
+            ?? (try? String(contentsOf: tabs[index].url, encoding: .utf8))
+            ?? ""
+
+        tabs[index].markdownSource = source
+        tabs[index].markdownEditSession = MarkdownEditSession(
+            baseSource: source,
+            currentSource: source
+        )
+    }
+
+    func updateMarkdownEditing(
+        tabID: String,
+        text: String,
+        mode: MarkdownEditingMode,
+        visualEntries: [MarkdownVisualEntry] = [],
+        visualInsertions: [MarkdownVisualInsertion] = [],
+        specialEdits: [MarkdownSpecialEdit] = []
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].markdownEditSession else { return }
+
+        let document = MarkdownBlockDocument(source: session.currentSource)
+        let updated = mode == .markdown
+            ? MarkdownBlockDocument(source: text)
+            : document
+                .replacingSpecialEdits(specialEdits)
+                .replacingVisualEntries(visualEntries, insertions: visualInsertions)
+        guard updated.source != session.currentSource else { return }
+
+        let structureChanged = document.blocks.map(\.kind) != updated.blocks.map(\.kind)
+        let specialContentChanged = !specialEdits.isEmpty
+
+        session.undoSources.append(session.currentSource)
+        session.redoSources.removeAll()
+        session.mode = mode
+        session.currentSource = updated.source
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].markdownSource = updated.source
+        tabs[index].markdownBlocks = updated.blocks
+        tabs[index].markdownEditSession = session
+        scheduleMarkdownSave(for: tabID)
+        if mode == .visual && (structureChanged || specialContentChanged) {
+            renderMarkdown(tabID: tabID, sourceOverride: updated.source)
+        }
+    }
+
+    func endMarkdownEditing(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        tabs[index].markdownEditSession?.isEditing = false
+        if tabs[index].markdownEditSession?.currentSource == tabs[index].markdownEditSession?.baseSource {
+            renderMarkdown(tabID: tabID)
+        } else {
+            scheduleMarkdownSave(for: tabID)
+        }
+    }
+
+    func toggleMarkdownEditingMode(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        guard var session = tabs[index].markdownEditSession else { return }
+        let previousMode = session.mode
+        session.mode = previousMode == .visual ? .markdown : .visual
+        tabs[index].markdownEditSession = session
+        if previousMode == .markdown {
+            renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
+        }
+    }
+
+    @discardableResult
+    func undoMarkdownEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].markdownEditSession,
+              let previous = session.undoSources.popLast() else { return false }
+
+        let currentDocument = MarkdownBlockDocument(source: session.currentSource)
+        let previousDocument = MarkdownBlockDocument(source: previous)
+        let structureChanged = currentDocument.blocks.map(\.kind) != previousDocument.blocks.map(\.kind)
+        let specialContentChanged = currentDocument.specialRegions != previousDocument.specialRegions
+        session.redoSources.append(session.currentSource)
+        session.currentSource = previous
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].markdownSource = previous
+        tabs[index].markdownBlocks = MarkdownBlockDocument(source: previous).blocks
+        tabs[index].markdownEditSession = session
+        scheduleMarkdownSave(for: tabID)
+        if session.mode == .visual && (structureChanged || specialContentChanged) {
+            renderMarkdown(tabID: tabID, sourceOverride: previous)
+        }
+        return true
+    }
+
+    @discardableResult
+    func redoMarkdownEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].markdownEditSession,
+              let next = session.redoSources.popLast() else { return false }
+
+        let currentDocument = MarkdownBlockDocument(source: session.currentSource)
+        let nextDocument = MarkdownBlockDocument(source: next)
+        let structureChanged = currentDocument.blocks.map(\.kind) != nextDocument.blocks.map(\.kind)
+        let specialContentChanged = currentDocument.specialRegions != nextDocument.specialRegions
+        session.undoSources.append(session.currentSource)
+        session.currentSource = next
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].markdownSource = next
+        tabs[index].markdownBlocks = MarkdownBlockDocument(source: next).blocks
+        tabs[index].markdownEditSession = session
+        scheduleMarkdownSave(for: tabID)
+        if session.mode == .visual && (structureChanged || specialContentChanged) {
+            renderMarkdown(tabID: tabID, sourceOverride: next)
+        }
+        return true
+    }
+
+    func keepLocalMarkdownEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].markdownEditSession else { return }
+        commitMarkdownSource(session.currentSource, forTabAt: index, baseSource: session.currentSource)
+    }
+
+    func useExternalMarkdownEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].markdownEditSession,
+              let conflict = session.conflict else { return }
+        session.baseSource = conflict.externalSource
+        session.currentSource = conflict.externalSource
+        session.undoSources.removeAll()
+        session.redoSources.removeAll()
+        session.saveState = .saved
+        session.conflict = nil
+        session.isEditing = false
+        tabs[index].markdownSource = conflict.externalSource
+        tabs[index].markdownBlocks = MarkdownBlockDocument(source: conflict.externalSource).blocks
+        tabs[index].markdownEditSession = session
+        renderMarkdown(tabID: tabID)
+    }
+
+    private func scheduleMarkdownSave(for tabID: String) {
+        markdownSaveTasks[tabID]?.cancel()
+        markdownSaveTasks[tabID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self else { return }
+            await self.saveMarkdownEdit(tabID: tabID)
+        }
+    }
+
+    private func saveMarkdownEdit(tabID: String) async {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].markdownEditSession,
+              session.currentSource != session.baseSource else { return }
+
+        let url = tabs[index].url
+        let baseSource = session.baseSource
+        let localSource = session.currentSource
+        tabs[index].markdownEditSession?.saveState = .saving
+
+        do {
+            let externalSource = try await Task.detached {
+                try String(contentsOf: url, encoding: .utf8)
+            }.value
+            let outcome = MarkdownThreeWayMerge.resolve(
+                base: baseSource,
+                local: localSource,
+                external: externalSource
+            )
+
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].markdownEditSession?.currentSource == localSource else { return }
+
+            switch outcome {
+            case let .merged(mergedSource):
+                try mergedSource.write(to: url, atomically: true, encoding: .utf8)
+                tabs[currentIndex].markdownSource = mergedSource
+                tabs[currentIndex].markdownBlocks = MarkdownBlockDocument(source: mergedSource).blocks
+                tabs[currentIndex].markdownEditSession?.baseSource = mergedSource
+                tabs[currentIndex].markdownEditSession?.currentSource = mergedSource
+                tabs[currentIndex].markdownEditSession?.saveState = .saved
+                tabs[currentIndex].markdownEditSession?.conflict = nil
+                if tabs[currentIndex].markdownEditSession?.isEditing != true {
+                    renderMarkdown(tabID: tabID)
+                }
+            case let .conflict(_, local, external, blockIDs):
+                tabs[currentIndex].markdownEditSession?.saveState = .conflict
+                tabs[currentIndex].markdownEditSession?.conflict = MarkdownConflict(
+                    localSource: local,
+                    externalSource: external,
+                    blockIDs: blockIDs
+                )
+            }
+        } catch {
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            tabs[currentIndex].markdownEditSession?.saveState = .failed
+            tabs[currentIndex].errorMessage = error.localizedDescription
+        }
+    }
+
+    private func commitMarkdownSource(_ source: String, forTabAt index: Int, baseSource: String) {
+        let tabID = tabs[index].id
+        do {
+            try source.write(to: tabs[index].url, atomically: true, encoding: .utf8)
+            tabs[index].markdownSource = source
+            tabs[index].markdownBlocks = MarkdownBlockDocument(source: source).blocks
+            tabs[index].markdownEditSession?.baseSource = baseSource
+            tabs[index].markdownEditSession?.currentSource = source
+            tabs[index].markdownEditSession?.saveState = .saved
+            tabs[index].markdownEditSession?.conflict = nil
+            renderMarkdown(tabID: tabID)
+        } catch {
+            tabs[index].markdownEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
+        }
     }
 
     func showFindBar() {
@@ -1337,11 +1588,66 @@ final class AppModel: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
             guard let self, self.fileRefreshGeneration == generation else { return }
+            if let tab = self.tabs.first(where: { $0.id == activeTabID }),
+               let session = tab.markdownEditSession,
+               session.isEditing,
+               session.currentSource == session.baseSource {
+                // The active contenteditable owns the cursor while its latest
+                // version is already on disk. Reconcile the next external
+                // event after the user leaves the block.
+                return
+            }
             if self.tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
                 self.renderLatex(tabID: activeTabID)
             } else {
-                self.renderMarkdown(tabID: activeTabID)
+                if self.tabs.first(where: { $0.id == activeTabID })?.markdownEditSession?.currentSource
+                    != self.tabs.first(where: { $0.id == activeTabID })?.markdownEditSession?.baseSource {
+                    self.handleExternalMarkdownChange(tabID: activeTabID)
+                } else {
+                    self.renderMarkdown(tabID: activeTabID)
+                }
             }
+        }
+    }
+
+    private func handleExternalMarkdownChange(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].markdownEditSession,
+              session.currentSource != session.baseSource else {
+            renderMarkdown(tabID: tabID)
+            return
+        }
+
+        let url = tabs[index].url
+        do {
+            let externalSource = try String(contentsOf: url, encoding: .utf8)
+            switch MarkdownThreeWayMerge.resolve(
+                base: session.baseSource,
+                local: session.currentSource,
+                external: externalSource
+            ) {
+            case let .merged(mergedSource):
+                try mergedSource.write(to: url, atomically: true, encoding: .utf8)
+                tabs[index].markdownSource = mergedSource
+                tabs[index].markdownBlocks = MarkdownBlockDocument(source: mergedSource).blocks
+                tabs[index].markdownEditSession?.baseSource = mergedSource
+                tabs[index].markdownEditSession?.currentSource = mergedSource
+                tabs[index].markdownEditSession?.saveState = .saved
+                tabs[index].markdownEditSession?.conflict = nil
+                if tabs[index].markdownEditSession?.isEditing != true {
+                    renderMarkdown(tabID: tabID)
+                }
+            case let .conflict(_, local, external, blockIDs):
+                tabs[index].markdownEditSession?.saveState = .conflict
+                tabs[index].markdownEditSession?.conflict = MarkdownConflict(
+                    localSource: local,
+                    externalSource: external,
+                    blockIDs: blockIDs
+                )
+            }
+        } catch {
+            tabs[index].markdownEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
         }
     }
 
@@ -1543,7 +1849,7 @@ final class AppModel: ObservableObject {
         "\(projectRoot.standardizedFileURL.path)\n\(rootURL.standardizedFileURL.path)"
     }
 
-    private func renderMarkdown(tabID: String) {
+    private func renderMarkdown(tabID: String, sourceOverride: String? = nil) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }), tabs[index].kind == .markdown else { return }
 
         let tabURL = tabs[index].url
@@ -1555,23 +1861,28 @@ final class AppModel: ObservableObject {
         let adapter = markdownAdapter
         Task { [weak self] in
             do {
-                let result = try await Task.detached(priority: .userInitiated) {
-                    let source = try String(contentsOf: tabURL, encoding: .utf8)
-                    return try adapter.render(
+                let rendered = try await Task.detached(priority: .userInitiated) {
+                    let source = try sourceOverride
+                        ?? String(contentsOf: tabURL, encoding: .utf8)
+                    let result = try adapter.render(
                         source: source,
                         baseURL: tabURL.deletingLastPathComponent()
                     )
+                    return (source, result)
                 }.value
 
                 guard let self,
                       self.previewGenerations[tabID] == generation,
                       let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
 
+                let (source, result) = rendered
                 self.tabs[index].previewHTML = result.html
                 self.tabs[index].previewUpdatedAt = Date()
                 self.tabs[index].previewBaseURL = result.baseURL
                 self.tabs[index].previewDependencies = result.dependencies
                 self.tabs[index].markdownOutline = result.outline
+                self.tabs[index].markdownSource = source
+                self.tabs[index].markdownBlocks = result.blocks
                 self.tabs[index].status = .ready
                 self.tabs[index].isStale = false
                 self.tabs[index].errorMessage = nil

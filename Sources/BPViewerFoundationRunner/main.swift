@@ -22,6 +22,7 @@ private struct Runner {
         runScannerContracts(root: fixture)
         runTabContracts(root: fixture)
         runPathCopyContracts(root: fixture)
+        runMarkdownEditingContracts()
 
         print("Foundation contracts: " + String(passed) + " passed, " + String(failed) + " failed")
         if failed > 0 {
@@ -141,6 +142,212 @@ private struct Runner {
             FilePathCopy.string(for: path) == root.appendingPathComponent("working.md").path,
             "copy path is normalized and absolute"
         )
+    }
+
+    private mutating func runMarkdownEditingContracts() {
+        let source = """
+        # Title
+
+        First paragraph.
+        It keeps its second line.
+
+        - One
+        - Two
+
+        ## Final heading
+        """
+        let document = MarkdownBlockDocument(source: source)
+
+        expect(document.blocks.map(\.kind) == [.heading, .paragraph, .unorderedList, .heading], "Markdown blocks preserve top-level structure")
+        expect(document.blocks[1].source == "First paragraph.\nIt keeps its second line.", "paragraph block keeps its exact source")
+        let formatted = MarkdownBlockDocument(source: "A **formatted** paragraph")
+        expect(formatted.blocks[0].supportsVisualEditing, "supported inline Markdown remains visually editable")
+
+        let updated = document.replacingBlock(id: document.blocks[1].id, withSource: "Edited paragraph.")
+        expect(updated.source.contains("# Title\n\nEdited paragraph.\n\n- One"), "editing a block preserves surrounding Markdown")
+
+        let visualDocument = document.replacingVisualEntries([
+            MarkdownVisualEntry(id: document.blocks[1].id, text: "Visual paragraph."),
+            MarkdownVisualEntry(id: document.blocks[2].id, text: "First visual\nSecond visual")
+        ])
+        expect(
+            visualDocument.source.contains("Visual paragraph.\n\n- First visual\n- Second visual"),
+            "document visual editing serializes supported regions without exposing blocks"
+        )
+
+        let structural = MarkdownBlockDocument(source: "Before\n\n> Existing quote\n> continues\n\n---")
+        expect(
+            structural.blocks.map(\.kind) == [.paragraph, .blockquote, .thematicBreak],
+            "blockquote and separator regions remain part of the document model"
+        )
+        let quoted = MarkdownBlockDocument(source: "Plain text").replacingVisualEntries([
+            MarkdownVisualEntry(id: "markdown-block-1", text: "Quoted text", kind: .blockquote)
+        ])
+        expect(quoted.source == "> Quoted text", "visual quote transformation preserves Markdown syntax")
+        let withSeparator = MarkdownBlockDocument(source: "Plain text").insertingVisualBlock(
+            MarkdownVisualInsertion(afterID: "markdown-block-1", kind: .thematicBreak)
+        )
+        expect(withSeparator.source == "Plain text\n\n---", "visual separator insertion preserves document order")
+
+        let editedHeading = updated.replacingBlock(id: updated.blocks[3].id, withVisualText: "Closing heading")
+        expect(editedHeading.source.contains("## Closing heading"), "visual heading edits preserve heading syntax")
+
+        let base = MarkdownBlockDocument(source: "# Title\n\nFirst\n\nSecond")
+        let local = base.replacingBlock(id: base.blocks[1].id, withVisualText: "Local first")
+        let external = base.replacingBlock(id: base.blocks[2].id, withVisualText: "External second")
+        let merged = MarkdownThreeWayMerge.resolve(
+            base: base.source,
+            local: local.source,
+            external: external.source
+        )
+        expect(
+            merged == .merged("# Title\n\nLocal first\n\nExternal second"),
+            "non-overlapping Markdown edits merge automatically"
+        )
+
+        let conflictingExternal = base.replacingBlock(id: base.blocks[1].id, withVisualText: "External first")
+        let conflict = MarkdownThreeWayMerge.resolve(
+            base: base.source,
+            local: local.source,
+            external: conflictingExternal.source
+        )
+        expect(conflict.isConflict, "overlapping Markdown edits become an explicit conflict")
+
+        let rendered = try? SwiftMarkdownAdapter().render(
+            source: "# Title\n\nParagraph\n\n- One\n- Two",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(rendered?.html.contains("data-bp-block-id=\"markdown-block-2\"") == true, "paragraph HTML exposes its block ID")
+        expect(rendered?.html.contains("data-bp-block-id=\"markdown-block-3\"") == true, "list HTML exposes its block ID")
+        expect(rendered?.html.contains("data-bp-editable=\"true\"") == true, "supported Markdown regions are visually editable")
+
+        let linked = try? SwiftMarkdownAdapter().render(
+            source: "A [link](notes.md) and **strong** text.",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(linked?.html.contains("data-bp-editable=\"true\"") == true, "inline links and formatting stay visually editable")
+        expect(linked?.html.contains("data-bp-markdown-href=\"notes.md\"") == true, "rendered links preserve their Markdown destination")
+
+        let tasks = MarkdownBlockDocument(source: "- [ ] Draft\n- [x] Done")
+        let taskEdited = tasks.replacingVisualEntries([
+            MarkdownVisualEntry(
+                id: tasks.blocks[0].id,
+                text: "[x] Draft\n[ ] Done",
+                kind: .unorderedList
+            )
+        ])
+        expect(taskEdited.source == "- [x] Draft\n- [ ] Done", "visual task list edits preserve checkbox markers")
+
+        let renderedTasks = try? SwiftMarkdownAdapter().render(
+            source: "- [ ] Draft\n- [x] Done",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedTasks?.html.contains("data-bp-task-checkbox=\"true\"") == true, "task list checkboxes expose an editing hook")
+
+        let codeSource = "Before\n\n```swift\nlet value = 1\n```\n\nAfter"
+        let codeDocument = MarkdownBlockDocument(source: codeSource)
+        expect(codeDocument.blocks.map(\.kind) == [.paragraph, .codeBlock, .paragraph], "fenced code blocks remain distinct document regions")
+        expect(codeDocument.blocks[1].visualText == "let value = 1", "code block visual text omits its fence")
+        let editedCode = codeDocument.replacingVisualEntries([
+            MarkdownVisualEntry(id: codeDocument.blocks[1].id, text: "let value = 2", kind: .codeBlock)
+        ])
+        expect(editedCode.source.contains("```swift\nlet value = 2\n```"), "visual code edits preserve fence and language")
+        let renderedCode = try? SwiftMarkdownAdapter().render(
+            source: codeSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedCode?.html.contains("data-bp-editable=\"true\"") == true, "fenced code blocks expose an editing hook")
+
+        let tableSource = "| Name | Value |\n| --- | --- |\n| One | 1 |\n| Two | 2 |"
+        let tableDocument = MarkdownBlockDocument(source: tableSource)
+        expect(tableDocument.blocks.map(\.kind) == [.table], "Markdown tables remain distinct document regions")
+        let editedTable = tableDocument.replacingVisualEntries([
+            MarkdownVisualEntry(
+                id: tableDocument.blocks[0].id,
+                text: "| Name | Value |\n| --- | --- |\n| One | 10 |\n| Two | 2 |",
+                kind: .table
+            )
+        ])
+        expect(editedTable.source.contains("| One | 10 |"), "visual table edits preserve Markdown rows")
+        let renderedTable = try? SwiftMarkdownAdapter().render(
+            source: tableSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedTable?.html.contains("<table data-bp-block-id=\"markdown-block-1\"") == true, "tables expose an editing hook")
+
+        let imageSource = "![Old label](images/figure.png \"Old title\")"
+        let imageDocument = MarkdownBlockDocument(source: imageSource)
+        let imageRegion = imageDocument.specialRegions.first
+        expect(imageRegion?.kind == .image, "images expose specialized source regions")
+        let editedImage = imageRegion.map {
+            imageDocument.replacingSpecialEdits([
+                MarkdownSpecialEdit(
+                    id: $0.id,
+                    kind: .image,
+                    replacement: "![New label](images/figure.png \"New title\")"
+                )
+            ])
+        }
+        expect(editedImage?.source == "![New label](images/figure.png \"New title\")", "visual image edits preserve Markdown image syntax")
+        let renderedImage = try? SwiftMarkdownAdapter().render(
+            source: imageSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedImage?.html.contains("data-bp-special-kind=\"image\"") == true, "images expose a specialized editing hook")
+
+        let mathSource = "$$\na + b\n$$"
+        let mathDocument = MarkdownBlockDocument(source: mathSource)
+        expect(mathDocument.specialRegions.first?.kind == .math, "block formulas expose specialized source regions")
+        let editedMath = mathDocument.specialRegions.first.map {
+            mathDocument.replacingSpecialEdits([
+                MarkdownSpecialEdit(id: $0.id, kind: .math, replacement: "$$\na - b\n$$")
+            ])
+        }
+        expect(editedMath?.source == "$$\na - b\n$$", "visual formula edits preserve delimiters")
+        let renderedMath = try? SwiftMarkdownAdapter().render(
+            source: mathSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedMath?.html.contains("data-bp-special-kind=\"math\"") == true, "block formulas expose a specialized editing hook")
+        let inlineMath = try? SwiftMarkdownAdapter().render(
+            source: "Inline $a+b$ formula",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(
+            inlineMath?.html.contains("class=\"math-inline bp-special-placeholder\"") == true
+                && inlineMath?.html.contains("data-bp-special-kind=\"math\"") == true,
+            "inline formulas expose a specialized editing hook"
+        )
+
+        let htmlSource = "<div class=\"note\">Raw HTML</div>"
+        let htmlDocument = MarkdownBlockDocument(source: htmlSource)
+        expect(htmlDocument.specialRegions.first?.kind == .html, "raw HTML exposes specialized source regions")
+        let renderedHTML = try? SwiftMarkdownAdapter().render(
+            source: htmlSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedHTML?.html.contains("data-bp-special-kind=\"html\"") == true, "raw HTML exposes a specialized editing hook")
+        let inlineHTML = try? SwiftMarkdownAdapter().render(
+            source: "Text <span>raw</span>",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(inlineHTML?.html.contains("data-bp-special-kind=\"html\"") == true, "inline HTML exposes a specialized editing hook")
+
+        let frontMatterSource = "---\ntitle: Draft\n---\n\n# Body"
+        let frontMatterDocument = MarkdownBlockDocument(source: frontMatterSource)
+        expect(frontMatterDocument.blocks.first?.kind == .frontMatter, "front matter remains a distinct document region")
+        expect(frontMatterDocument.specialRegions.first?.kind == .frontMatter, "front matter exposes specialized source regions")
+        let renderedFrontMatter = try? SwiftMarkdownAdapter().render(
+            source: frontMatterSource,
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(renderedFrontMatter?.html.contains("data-bp-special-kind=\"frontMatter\"") == true, "front matter exposes a specialized editing hook")
+
+        let protected = try? SwiftMarkdownAdapter().render(
+            source: "![image](photo.png)",
+            baseURL: URL(fileURLWithPath: "/tmp/project")
+        )
+        expect(protected?.html.contains("data-bp-editable=\"false\"") == true, "unsupported Markdown regions remain protected")
     }
 
     private mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {

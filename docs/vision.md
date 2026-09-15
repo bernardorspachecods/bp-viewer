@@ -123,9 +123,85 @@ Durante a escrita de uma tese, um LLM ou outra ferramenta pode alterar diretamen
 
 ### Evolução futura
 
-- Uma versão futura poderá combinar um editor raw à esquerda com o viewer renderizado à direita.
-- A separação entre edição e preview deve ser preservada na arquitetura, apesar de o editor estar fora do MVP.
 - Abrir o ficheiro no editor predefinido é apenas uma ponte no MVP; não substitui o editor integrado previsto para o futuro.
+
+### Fase 2 confirmada — Editor visual de Markdown
+
+A segunda grande fase começa por permitir corrigir ficheiros Markdown sem sair
+do `bp-viewer`. O objetivo final é editar todos os elementos Markdown, mas a
+implementação será dividida em fases para validar primeiro a experiência e o
+modelo de blocos.
+
+#### Princípios visuais
+
+- O preview continua a ser a superfície principal e apresenta o documento com
+  aparência renderizada quando está parado.
+- A edição acontece diretamente no preview, como uma única superfície visual do
+  documento; não existe uma coluna de editor permanente nesta fase.
+- Um clique simples mantém o comportamento normal de leitura, seleção e
+  navegação.
+- Um duplo clique entra em edição visual do documento e posiciona o cursor no
+  local clicado.
+- O documento mantém o seu layout renderizado durante a edição, com uma
+  indicação subtil de que a superfície está editável.
+- `Esc` sai da edição e regressa ao preview.
+- O resto do documento continua visível e não deve saltar desnecessariamente.
+
+#### Edição e conteúdo
+
+- A primeira fase visual suporta parágrafos, headings e listas ordenadas ou não
+  ordenadas dentro do documento inteiro.
+- `Enter`, `Backspace` e `Delete` devem funcionar naturalmente entre elementos
+  editáveis, sem expor fronteiras de blocos na interface.
+- Uma toolbar fixa no topo do preview apresenta o modo atual, undo/redo,
+  negrito, itálico, citação, separador, estado de gravação e a ação `Concluir`;
+  `⌘B` e `⌘I` oferecem os atalhos equivalentes no modo visual.
+- O toggle `Editar como Markdown` aplica-se sempre ao ficheiro inteiro.
+- Ao trocar de modo, a app mostra o mesmo estado em memória, incluindo
+  alterações ainda não gravadas; nenhum dos modos relê o ficheiro do disco.
+- Imagens, tabelas, fórmulas, HTML raw e front matter têm editores
+  especializados dentro do modo visual. As checkboxes de listas de tarefas e
+  os blocos de código fenced também podem ser editados diretamente no preview.
+  Para os alterar, o utilizador usa o modo Markdown do ficheiro inteiro.
+- O mapeamento interno pode usar blocos para merge, undo e preservação do
+  source, mas essa divisão não faz parte da experiência do utilizador.
+- A aplicação deve preservar o Markdown original e alterar apenas o mínimo
+  necessário, sem normalizar conteúdo não editado.
+
+#### Gravação, atualização e conflitos
+
+- As alterações são gravadas automaticamente depois de uma pequena pausa
+  (debounce), com estados visíveis `A guardar…`, `Guardado` e equivalente de
+  erro.
+- `⌘S` força a gravação; `⌘Z` desfaz sempre alterações locais e `⌘⇧Z` refaz.
+- O preview atualiza-se durante a edição com debounce curto, sem interromper o
+  cursor nem reposicionar a leitura.
+- A app regista a versão base do ficheiro no início da edição.
+- Uma alteração externa sem alterações locais pendentes atualiza o documento
+  normalmente.
+- Alterações externas e locais em regiões diferentes podem ser combinadas
+  automaticamente através do mapeamento interno.
+- Quando ambas atingem a mesma região, a app não sobrescreve nenhuma versão:
+  preserva a edição local e apresenta uma resolução inline com as opções
+  `Manter as minhas alterações`, `Usar a versão externa` e `Comparar e
+  resolver`.
+- O undo não deve apagar silenciosamente alterações externas; se a versão no
+  disco já tiver mudado, a gravação resultante exige confirmação.
+
+#### Sequência de entrega
+
+1. Infraestrutura de mapeamento preview–Markdown, undo/redo, autosave e deteção
+   de conflitos.
+2. Superfície única de edição visual para parágrafos, headings e listas.
+3. Formatação contextual, links, citações e separadores — concluída na primeira
+   integração visual da Fase 2.
+4. Editores visuais para imagens, tabelas, listas de tarefas e blocos de código
+   fenced — concluída.
+5. Editores especializados para fórmulas, HTML raw e front matter — concluída
+   para fórmulas inline e em bloco, HTML inline e em bloco, e front matter YAML.
+
+O editor LaTeX não faz parte desta fase. A forma de o editar será decidida
+separadamente depois de a experiência Markdown estar validada.
 
 ## Escopo do MVP
 

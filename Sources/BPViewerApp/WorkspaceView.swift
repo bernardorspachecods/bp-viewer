@@ -256,8 +256,53 @@ struct PreviewPane: View {
                                 html: html,
                                 baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
                                 documentID: tab.id,
+                                previewRevision: tab.previewUpdatedAt,
                                 outline: tab.markdownOutline,
+                                editableBlocks: tab.markdownBlocks,
+                                editingSession: tab.markdownEditSession?.isEditing == true
+                                    || tab.markdownEditSession?.conflict != nil
+                                    ? tab.markdownEditSession
+                                    : nil,
                                 onNavigate: model.openPreviewURL,
+                                onMarkdownEditEvent: { event in
+                                    switch event.kind {
+                                    case .begin:
+                                        model.beginMarkdownEditing(tabID: tab.id)
+                                    case .change:
+                                        model.updateMarkdownEditing(
+                                            tabID: tab.id,
+                                            text: event.text,
+                                            mode: event.mode,
+                                            visualEntries: event.visualEntries,
+                                            visualInsertions: event.visualInsertions,
+                                            specialEdits: event.specialEdits
+                                        )
+                                    case .end:
+                                        model.endMarkdownEditing(tabID: tab.id)
+                                    case .undo:
+                                        _ = model.undoMarkdownEdit()
+                                    case .redo:
+                                        _ = model.redoMarkdownEdit()
+                                    }
+                                },
+                                onUndo: {
+                                    _ = model.undoMarkdownEdit()
+                                },
+                                onRedo: {
+                                    _ = model.redoMarkdownEdit()
+                                },
+                                onToggleMarkdownMode: {
+                                    model.toggleMarkdownEditingMode(tabID: tab.id)
+                                },
+                                onEndMarkdownEditing: {
+                                    model.endMarkdownEditing(tabID: tab.id)
+                                },
+                                onKeepLocalMarkdownEdit: {
+                                    model.keepLocalMarkdownEdit(tabID: tab.id)
+                                },
+                                onUseExternalMarkdownEdit: {
+                                    model.useExternalMarkdownEdit(tabID: tab.id)
+                                },
                                 zoom: tab.previewZoom,
                                 findQuery: model.findQuery,
                                 findRequestID: model.findRequestID,
