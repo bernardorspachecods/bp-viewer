@@ -1,7 +1,7 @@
 # Relatório de investigação: Markdown → HTML
 
 Data da investigação: 2026-09-09  
-Repositório consultado: [bp-viewer/docs/research/README.md](/Users/bernardopacheco/bp-viewer/docs/research/README.md), [markdown-html.md](/Users/bernardopacheco/bp-viewer/docs/research/markdown-html.md), [vision.md](/Users/bernardopacheco/bp-viewer/docs/vision.md)
+Repositório consultado: [mapa da pesquisa](../CONTEXT.md), [brief Markdown](../markdown-html.md) e [visão](../../vision.md).
 
 ## 1. Resumo executivo
 

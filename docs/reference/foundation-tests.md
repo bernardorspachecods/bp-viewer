@@ -4,8 +4,7 @@ Status: `historical_record`
 
 Este ficheiro preserva o registo da primeira integração dos testes de
 fundação. Os números e commits abaixo são evidência histórica dessa ronda; a
-cobertura atual está em [`technical-plan.md`](../technical-plan.md) e no
-[`README.md` da raiz](../../README.md).
+cobertura atual está em [`technical-plan.md`](../technical-plan.md).
 
 ## Objective
 

@@ -43,4 +43,4 @@ Pode comparar tecnologias concretas, mas deve começar pelos requisitos e não p
 
 Entregar uma comparação das opções de shell e integração local, uma recomendação condicional para o MVP, os contratos necessários entre componentes e os testes de filesystem que devem ser feitos antes de congelar a arquitetura.
 
-Usar o [formato comum do plano](README.md#formato-de-entrega). Remeter segurança detalhada e distribuição para o brief próprio, evitando duplicação.
+Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega). Remeter segurança detalhada e distribuição para o brief próprio, evitando duplicação.

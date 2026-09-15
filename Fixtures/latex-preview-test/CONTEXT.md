@@ -1,4 +1,4 @@
-# Fixture LaTeX para teste manual
+# Contexto da fixture LaTeX
 
 Abra `main.tex` no `bp-viewer`. O documento deve produzir várias páginas e
 inclui índice, referências cruzadas, equação, tabela, listas, links, um

@@ -44,4 +44,4 @@ Deve indicar claramente que partes dependem do viewer e da arquitetura envolvent
 
 Entregar uma comparação das estratégias descobertas, uma recomendação condicional para o MVP, pré-requisitos locais, principais riscos e um plano de testes com documentos LaTeX representativos.
 
-Usar o [formato comum do plano](README.md#formato-de-entrega) e separar capacidade documentada de adequação inferida ao `bp-viewer`.
+Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega) e separar capacidade documentada de adequação inferida ao `bp-viewer`.

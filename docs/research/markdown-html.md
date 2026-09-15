@@ -42,4 +42,4 @@ Pode registar dependências da WebView ou do desktop quando forem materialmente 
 
 Entregar uma comparação de abordagens descobertas, uma recomendação condicional para o MVP, os requisitos que a podem alterar e uma lista curta de testes locais necessários para validar a escolha.
 
-Usar o [formato comum do plano](README.md#formato-de-entrega) e não apresentar uma preferência como facto.
+Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega) e não apresentar uma preferência como facto.

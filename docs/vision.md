@@ -265,7 +265,8 @@ Os artefactos temporários de compilação não devem poluir a pasta do projeto 
 - Os ficheiros raw permanecem fora do controlo de edição da aplicação.
 - A app deve ser independente do LLM que altera os ficheiros.
 - A app não deve impor restrições artificiais ao acesso dos ficheiros pessoais; as permissões efetivas continuam a ser controladas pelo macOS.
-- A estrutura documental começa com um `README.md` na raiz e documentos relacionados em `docs/`.
+- A estrutura documental mantém o contexto da repo na raiz e documentos
+  relacionados em `docs/`.
 
 ## Hipóteses ainda abertas
 

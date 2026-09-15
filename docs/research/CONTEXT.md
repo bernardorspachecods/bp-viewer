@@ -1,4 +1,4 @@
-# Plano de pesquisa técnica
+# Contexto de pesquisa técnica
 
 ## Objetivo
 
@@ -26,6 +26,9 @@ Os relatórios completos dos agentes ficam separados dos briefs para preservar a
 - [Relatório: desktop e filesystem](reports/desktop-filesystem.md)
 - [Relatório: preview, segurança e distribuição](reports/preview-security-distribution.md)
 - [Síntese técnica para decisão humana](synthesis.md)
+
+O mapa de responsabilidade dos relatórios está em
+[`reports/CONTEXT.md`](reports/CONTEXT.md).
 
 Todos os agentes devem ler [a visão e o plano atual](../vision.md) antes de pesquisar e devem tratar as suas decisões técnicas como recomendações condicionais, não como requisitos já aprovados.
 

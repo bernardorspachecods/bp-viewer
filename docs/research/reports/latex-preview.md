@@ -1,7 +1,7 @@
 # Relatório de investigação: LaTeX → preview
 
 Data de acesso: 2026-09-09.  
-Repositório consultado: [docs/research/README.md](/Users/bernardopacheco/bp-viewer/docs/research/README.md), [latex-preview.md](/Users/bernardopacheco/bp-viewer/docs/research/latex-preview.md), [vision.md](/Users/bernardopacheco/bp-viewer/docs/vision.md).
+Repositório consultado: [mapa da pesquisa](../CONTEXT.md), [brief LaTeX](../latex-preview.md) e [visão](../../vision.md).
 
 Não foram alterados ficheiros. A working tree está limpa.
 

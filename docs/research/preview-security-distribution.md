@@ -43,4 +43,4 @@ Deve distinguir riscos teóricos, riscos plausíveis no fluxo do MVP e requisito
 
 Entregar uma comparação das opções de preview e das medidas de isolamento, uma recomendação condicional para o MVP pessoal, requisitos de distribuição e uma lista de riscos que devem ser aceites, mitigados ou adiados explicitamente.
 
-Usar o [formato comum do plano](README.md#formato-de-entrega). Não classificar uma opção como “segura” sem delimitar o modelo de ameaça e a evidência que sustenta a afirmação.
+Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega). Não classificar uma opção como “segura” sem delimitar o modelo de ameaça e a evidência que sustenta a afirmação.

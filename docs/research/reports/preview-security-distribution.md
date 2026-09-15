@@ -1,7 +1,7 @@
 # Relatório de investigação: preview, segurança e distribuição
 
 Data de acesso web: 09-09-2026  
-Repositório verificado: [docs/research/README.md](/Users/bernardopacheco/bp-viewer/docs/research/README.md), [preview-security-distribution.md](/Users/bernardopacheco/bp-viewer/docs/research/preview-security-distribution.md), [docs/vision.md](/Users/bernardopacheco/bp-viewer/docs/vision.md)  
+Repositório verificado: [mapa da pesquisa](../CONTEXT.md), [brief de preview](../preview-security-distribution.md) e [visão](../../vision.md)
 Estado da repo no momento da investigação: sem alterações.
 
 ## 1. Resumo executivo
@@ -449,7 +449,7 @@ Estes pontos requerem protótipo ou teste local:
 
 | Query | Caminho de descoberta | Resultado |
 |---|---|---|
-| Q1 | Documentação local → README, brief, vision | Escopo, formato e modelo de ameaça |
+| Q1 | Documentação local → contextos, brief, vision | Escopo, formato e modelo de ameaça |
 | Q2 | Apple Developer → WebKit/WKWebView | Capacidades de HTML local, JS, navegação e processos |
 | Q3 | Apple Developer → PDFKit/Quick Look | Superfícies e limitações de leitura |
 | Q4 | Apple Developer → App Sandbox | Ficheiros escolhidos, bookmarks e entitlements |
