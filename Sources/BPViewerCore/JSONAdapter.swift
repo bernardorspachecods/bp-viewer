@@ -68,7 +68,7 @@ public struct JSONPreviewAdapter: Sendable {
             guard !entries.isEmpty else { return "{}" }
             let lines = entries.enumerated().map { index, entry in
                 let suffix = index == entries.count - 1 ? "" : ","
-                return "\(childIndentation)\(entry.key) : \(render(entry.value, indent: indent + 1))\(suffix)"
+                return "\(childIndentation)\(entry.key): \(render(entry.value, indent: indent + 1))\(suffix)"
             }
             return "{\n\(lines.joined(separator: "\n"))\n\(indentation)}"
         case let .array(values):

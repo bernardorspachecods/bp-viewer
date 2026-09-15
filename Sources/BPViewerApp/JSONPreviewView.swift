@@ -34,14 +34,7 @@ private enum JSONPreviewJavaScript {
     """#
 
     static func document(source: String, isDark: Bool) -> String {
-        let backgroundColor = isDark ? "#1E1E1E" : "#FFFFFF"
-        let foregroundColor = isDark ? "#F5F5F5" : "#1F1F1F"
-        let punctuationColor = isDark ? "#BDBDBD" : "#555555"
-        let keyColor = isDark ? "#9CDCFE" : "#005CC5"
-        let stringColor = isDark ? "#CE9178" : "#A31515"
-        let numberColor = isDark ? "#B5CEA8" : "#098658"
-        let literalColor = isDark ? "#C586C0" : "#AF00DB"
-        let invalidColor = isDark ? "#FF6B6B" : "#C00000"
+        let palette = JSONSyntaxColorPalette(isDark: isDark)
         let highlightedSource = highlightedSource(source)
 
         return """
@@ -52,8 +45,8 @@ private enum JSONPreviewJavaScript {
             <style>
               :root {
                 color-scheme: \(isDark ? "dark" : "light");
-                --json-background: \(backgroundColor);
-                --json-foreground: \(foregroundColor);
+                --json-background: \(palette.background);
+                --json-foreground: \(palette.foreground);
               }
             </style>
             <style>
@@ -66,28 +59,31 @@ private enum JSONPreviewJavaScript {
               body {
                 margin: 0 auto;
                 min-height: 100vh;
-                max-width: 860px;
+                max-width: \(SourceEditorLayout.contentMaxWidth + (SourceEditorLayout.horizontalPadding * 2))px;
                 padding: 40px 52px;
                 box-sizing: border-box;
                 color: var(--json-foreground);
                 background: var(--json-background);
-                font: ui-monospace, SFMono-Regular, Menlo, monospace;
-                line-height: 1.35;
+                font-family: \(SourceEditorLayout.codeFontFamily), Menlo, monospace;
+                font-size: \(SourceEditorLayout.codeFontSize)px;
+                font-weight: 400;
+                line-height: \(SourceEditorLayout.codeLineHeight)px;
               }
               pre {
                 margin: 0;
+                font: inherit;
                 white-space: pre-wrap;
                 overflow-wrap: anywhere;
                 user-select: text;
               }
-              .json-punctuation { color: \(punctuationColor); }
-              .json-key { color: \(keyColor); }
-              .json-string { color: \(stringColor); }
-              .json-number { color: \(numberColor); }
-              .json-boolean, .json-null { color: \(literalColor); }
+              .json-punctuation { color: \(palette.punctuation); }
+              .json-key { color: \(palette.key); }
+              .json-string { color: \(palette.string); }
+              .json-number { color: \(palette.number); }
+              .json-boolean, .json-null { color: \(palette.literal); }
               .json-invalid {
-                color: \(invalidColor);
-                text-decoration: underline wavy \(invalidColor);
+                color: \(palette.invalid);
+                text-decoration: underline wavy \(palette.invalid);
               }
             </style>
           </head>
@@ -183,7 +179,7 @@ struct JSONPreviewView: View {
                     source: editingSession.currentSource,
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
-                    syntaxHighlightJSON: true,
+                    syntaxHighlightPalette: JSONSyntaxColorPalette(isDark: colorScheme == .dark),
                     onSourceChanged: { text in
                         editorSource = text
                         onSourceChanged(text)
@@ -294,7 +290,7 @@ private struct JSONSourceEditor: View {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
-    let syntaxHighlightJSON: Bool
+    let syntaxHighlightPalette: JSONSyntaxColorPalette
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
 
@@ -306,7 +302,7 @@ private struct JSONSourceEditor: View {
                 zoom: zoom,
                 cursorUTF8Offset: cursorUTF8Offset,
                 monospaced: true,
-                syntaxHighlightJSON: syntaxHighlightJSON,
+                syntaxHighlightPalette: syntaxHighlightPalette,
                 onSourceChanged: onSourceChanged,
                 onEndEditing: onEndEditing
             )

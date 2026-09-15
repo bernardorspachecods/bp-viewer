@@ -243,6 +243,10 @@ private struct MarkdownEditToolbar: View {
 enum SourceEditorLayout {
     static let contentMaxWidth: CGFloat = 860
     static let horizontalPadding: CGFloat = 52
+    static let codeFontFamily = "SFMono-Regular"
+    static let codeFontSize: CGFloat = 13
+    static let codeLineHeight: CGFloat = 24
+    static let lineHeightMultiple: CGFloat = 1.55
 }
 
 private struct MarkdownSourceEditor: View {
@@ -261,7 +265,7 @@ private struct MarkdownSourceEditor: View {
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
                     monospaced: false,
-                    syntaxHighlightJSON: false,
+                    syntaxHighlightPalette: nil,
                     onSourceChanged: onSourceChanged,
                     onEndEditing: { _ in onEndEditing() }
                 )
@@ -285,11 +289,9 @@ struct SourceTextView: NSViewRepresentable {
     let zoom: Double
     let cursorUTF8Offset: Int?
     let monospaced: Bool
-    let syntaxHighlightJSON: Bool
+    let syntaxHighlightPalette: JSONSyntaxColorPalette?
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
-
-    private static let bodyLineHeightMultiple: CGFloat = 1.55
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onSourceChanged: onSourceChanged, onEndEditing: onEndEditing)
@@ -313,9 +315,8 @@ struct SourceTextView: NSViewRepresentable {
             textView.isAutomaticSpellingCorrectionEnabled = false
         }
         textView.usesFindPanel = true
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
-        textView.textColor = .textColor
+        textView.drawsBackground = syntaxHighlightPalette == nil
+        applyBaseColors(to: textView)
         textView.insertionPointColor = .controlAccentColor
         textView.string = source
         applyTypography(to: textView)
@@ -339,8 +340,8 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = true
-        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.drawsBackground = syntaxHighlightPalette == nil
+        scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
         DispatchQueue.main.async { [weak textView] in
             guard let textView, let window = textView.window else { return }
@@ -360,6 +361,9 @@ struct SourceTextView: NSViewRepresentable {
             }
         }
 
+        applyBaseColors(to: textView)
+        scrollView.drawsBackground = syntaxHighlightPalette == nil
+        scrollView.backgroundColor = textView.backgroundColor
         if textView.string != source {
             let selectedRange = textView.selectedRange()
             textView.string = source
@@ -387,17 +391,26 @@ struct SourceTextView: NSViewRepresentable {
 
     private func applyTypography(to textView: NSTextView) {
         let bodyFont = monospaced
-            ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            ? (NSFont(
+                name: SourceEditorLayout.codeFontFamily,
+                size: SourceEditorLayout.codeFontSize
+            ) ?? NSFont.monospacedSystemFont(ofSize: SourceEditorLayout.codeFontSize, weight: .regular))
             : NSFont.preferredFont(forTextStyle: .body)
         let font = bodyFont.withSize(bodyFont.pointSize * zoom)
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineHeightMultiple = Self.bodyLineHeightMultiple
+        if monospaced {
+            let lineHeight = SourceEditorLayout.codeLineHeight * zoom
+            paragraphStyle.minimumLineHeight = lineHeight
+            paragraphStyle.maximumLineHeight = lineHeight
+        } else {
+            paragraphStyle.lineHeightMultiple = SourceEditorLayout.lineHeightMultiple
+        }
 
         textView.font = font
         textView.defaultParagraphStyle = paragraphStyle
         textView.typingAttributes = [
             .font: font,
-            .foregroundColor: NSColor.textColor,
+            .foregroundColor: textView.textColor ?? NSColor.textColor,
             .paragraphStyle: paragraphStyle
         ]
 
@@ -412,28 +425,29 @@ struct SourceTextView: NSViewRepresentable {
         let textLength = (textView.string as NSString).length
         guard textLength > 0 else { return }
         let range = NSRange(location: 0, length: textLength)
-        textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
-        guard syntaxHighlightJSON else { return }
+        textView.textStorage?.addAttribute(.foregroundColor, value: textView.textColor ?? NSColor.textColor, range: range)
+        guard let syntaxHighlightPalette else { return }
 
-        let colors: [JSONSyntaxTokenKind: NSColor] = [
-            .punctuation: .secondaryLabelColor,
-            .key: .systemBlue,
-            .string: .systemOrange,
-            .number: .systemGreen,
-            .boolean: .systemPurple,
-            .null: .systemPurple,
-            .invalid: .systemRed
-        ]
         for token in JSONSyntaxHighlighter().tokenize(source) {
             let start = utf16Offset(in: source, utf8Offset: token.utf8Offset)
             let end = utf16Offset(in: source, utf8Offset: token.utf8End)
-            guard end > start, let color = colors[token.kind] else { continue }
+            guard end > start else { continue }
             textView.textStorage?.addAttribute(
                 .foregroundColor,
-                value: color,
+                value: NSColor(jsonHex: syntaxHighlightPalette.color(for: token.kind)),
                 range: NSRange(location: start, length: end - start)
             )
         }
+    }
+
+    private func applyBaseColors(to textView: NSTextView) {
+        guard let syntaxHighlightPalette else {
+            textView.backgroundColor = .textBackgroundColor
+            textView.textColor = .textColor
+            return
+        }
+        textView.backgroundColor = .clear
+        textView.textColor = NSColor(jsonHex: syntaxHighlightPalette.foreground)
     }
 
     private func focus(
@@ -486,6 +500,18 @@ struct SourceTextView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             onSourceChanged(textView.string)
         }
+    }
+}
+
+private extension NSColor {
+    convenience init(jsonHex hex: String) {
+        let value = UInt64(hex.dropFirst(), radix: 16) ?? 0
+        self.init(
+            calibratedRed: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }
 

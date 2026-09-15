@@ -93,7 +93,7 @@ private struct Runner {
 
         do {
             let formatted = try JSONPreviewAdapter().format(source: "{\"z\": 1, \"a\": [true, null]}")
-            expect(formatted == "{\n  \"z\" : 1,\n  \"a\" : [\n    true,\n    null\n  ]\n}", "JSON is validated and formatted")
+            expect(formatted == "{\n  \"z\": 1,\n  \"a\": [\n    true,\n    null\n  ]\n}", "JSON is validated and formatted")
         } catch {
             expect(false, "JSON is validated and formatted")
         }
@@ -139,7 +139,7 @@ private struct Runner {
                 source: "{\"z\":0,\"a\":1,\"middle\":2,\"nested\":{\"last\":3,\"first\":4}}"
             )
             expect(
-                formatted == "{\n  \"z\" : 0,\n  \"a\" : 1,\n  \"middle\" : 2,\n  \"nested\" : {\n    \"last\" : 3,\n    \"first\" : 4\n  }\n}",
+                formatted == "{\n  \"z\": 0,\n  \"a\": 1,\n  \"middle\": 2,\n  \"nested\": {\n    \"last\": 3,\n    \"first\": 4\n  }\n}",
                 "JSON preview preserves source key order"
             )
         } catch {
