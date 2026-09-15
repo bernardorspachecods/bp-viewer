@@ -5,7 +5,7 @@ Esta síntese reúne os quatro relatórios de investigação recebidos para o `b
 **Estado de uso:** este é um registo de evidência e comparação, não a fonte de
 verdade do produto. O MVP atual já adotou SwiftUI/AppKit nativo para uso pessoal
 no macOS; as alternativas abaixo permanecem úteis para contexto e para decisões
-técnicas ainda abertas, mas não devem substituir `docs/vision.md`.
+técnicas ainda abertas, mas não são fonte do estado atual da app.
 
 ## 1. Resumo executivo
 
@@ -69,7 +69,8 @@ Os quatro documentos são resultados de agentes de pesquisa. As suas fontes prim
 
 ## 3. Decisões acionáveis sem preferência pessoal: contratos, invariantes, testes e guardrails que podem orientar o MVP
 
-Estas não escolhem uma tecnologia. São o menor conjunto de regras que os reports sugerem ser necessário para o fluxo descrito em `docs/vision.md`.
+Estas não escolhem uma tecnologia. São um registo histórico das regras que os
+reports sugeriram para o fluxo então descrito.
 
 ### 3.1 Contratos mínimos entre componentes
 
@@ -371,7 +372,7 @@ Fixar versões; repetir builds offline; verificar compatibilidade `rehype-katex`
 17. A app deve funcionar sem qualquer rede depois de instalada, incluindo pacotes/fontes TeX?
 18. Qual o tempo de atualização aceitável para um capítulo pequeno, médio e grande?
 19. Qual o comportamento desejado para uma compilação que exceda timeout ou consuma recursos excessivos?
-20. O editor futuro muda algum contrato do viewer agora, além da separação arquitetural já prevista em `vision.md`?
+20. O editor futuro muda algum contrato do viewer agora, além da separação arquitetural então prevista?
 
 ## 9. Claims que ainda exigem validação local
 

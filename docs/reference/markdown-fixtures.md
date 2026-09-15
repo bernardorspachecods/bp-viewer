@@ -2,9 +2,7 @@
 
 Status: `validated_by_manual_test`
 
-> This is a validation record, not a product decision. The current automated
-> contract count and remaining gaps are maintained in
-> [`technical-plan.md`](../technical-plan.md).
+> This is a historical validation record, not a source of current behavior.
 
 ## Objective
 
@@ -22,7 +20,7 @@ the LaTeX phase.
 
 ## Work performed
 
-- Read `docs/vision.md` and `docs/technical-plan.md`.
+- Read `docs/current-state.md` and `docs/technical/architecture.md`.
 - Inspected `Sources/BPViewerCore/MarkdownAdapter.swift` and
   `Sources/BPViewerCore/MathMLRenderer.swift`.
 - Created two Markdown fixtures and one local SVG asset. No production files

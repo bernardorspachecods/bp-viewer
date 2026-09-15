@@ -1,4 +1,4 @@
-# Contexto de `docs/research/reports/`
+# Contexto de `docs/reference/research/reports/`
 
 Esta pasta contém os quatro relatórios concluídos da pesquisa técnica. São
 evidência e recomendações condicionais, não decisões aprovadas do produto.
@@ -13,5 +13,5 @@ evidência e recomendações condicionais, não decisões aprovadas do produto.
 
 O processo comum, o formato dos relatórios e a síntese ficam no
 [`CONTEXT.md` pai](../CONTEXT.md). A consolidação está em
-[`../synthesis.md`](../synthesis.md); se um relatório contradizer a visão do
-produto, a visão continua a ser a autoridade para decisões já confirmadas.
+[`../synthesis.md`](../synthesis.md). Nenhum relatório desta pasta é fonte
+ativa da app.

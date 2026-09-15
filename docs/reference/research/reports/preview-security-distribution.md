@@ -1,7 +1,7 @@
 # Relatório de investigação: preview, segurança e distribuição
 
 Data de acesso web: 09-09-2026  
-Repositório verificado: [mapa da pesquisa](../CONTEXT.md), [brief de preview](../preview-security-distribution.md) e [visão](../../vision.md)
+Repositório verificado: [arquivo da pesquisa](../CONTEXT.md), [brief de preview](../preview-security-distribution.md) e [estado atual](../../../current-state.md)
 Estado da repo no momento da investigação: sem alterações.
 
 ## 1. Resumo executivo

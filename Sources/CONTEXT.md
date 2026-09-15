@@ -14,7 +14,7 @@ Este diretório contém os targets Swift definidos em [Package.swift](../Package
   isolados de comportamento de tabs; não são a app principal.
 
 Os runners e protótipos não devem criar uma segunda implementação da app:
-extraem ou exercitam seams do core quando isso for possível. A arquitetura
-alvo e o estado de implementação estão em
-[`docs/ui-architecture.md`](../docs/ui-architecture.md) e
-[`docs/technical-plan.md`](../docs/technical-plan.md).
+extraem ou exercitam seams do core quando isso for possível. O estado atual e a
+arquitetura estão em [`docs/current-state.md`](../docs/current-state.md),
+[`docs/technical/architecture.md`](../docs/technical/architecture.md) e
+[`docs/technical/ui-architecture.md`](../docs/technical/ui-architecture.md).

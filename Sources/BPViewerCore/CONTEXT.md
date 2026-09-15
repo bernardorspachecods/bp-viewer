@@ -16,5 +16,6 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
   persistência de contexto e preview LaTeX/PDF.
 
 Contratos públicos e comportamento devem continuar alinhados com o
-[plano técnico](../../docs/technical-plan.md). Alterações neste módulo devem
-ser verificadas pelos runners relevantes antes de depender da UI.
+[estado atual](../../docs/current-state.md) e a
+[arquitetura técnica](../../docs/technical/architecture.md). Alterações neste
+módulo devem ser verificadas pelos runners relevantes antes de depender da UI.

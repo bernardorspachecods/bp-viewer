@@ -15,5 +15,6 @@ definições e snapshots.
   tokens/controles, preferências e snapshots flutuantes.
 
 Lógica que não precisa de frameworks de UI deve permanecer em
-[`BPViewerCore`](../BPViewerCore/CONTEXT.md). Requisitos de comportamento e
-fronteiras da UI estão em [`docs/ui-architecture.md`](../../docs/ui-architecture.md).
+[`BPViewerCore`](../BPViewerCore/CONTEXT.md). O comportamento atual está em
+[`docs/current-state.md`](../../docs/current-state.md) e as fronteiras da UI
+em [`docs/technical/ui-architecture.md`](../../docs/technical/ui-architecture.md).

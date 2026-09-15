@@ -1,7 +1,7 @@
 # Relatório de investigação: Markdown → HTML
 
 Data da investigação: 2026-09-09  
-Repositório consultado: [mapa da pesquisa](../CONTEXT.md), [brief Markdown](../markdown-html.md) e [visão](../../vision.md).
+Repositório consultado: [arquivo da pesquisa](../CONTEXT.md), [brief Markdown](../markdown-html.md) e [estado atual](../../../current-state.md).
 
 ## 1. Resumo executivo
 

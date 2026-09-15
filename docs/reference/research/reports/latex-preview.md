@@ -1,7 +1,7 @@
 # Relatório de investigação: LaTeX → preview
 
 Data de acesso: 2026-09-09.  
-Repositório consultado: [mapa da pesquisa](../CONTEXT.md), [brief LaTeX](../latex-preview.md) e [visão](../../vision.md).
+Repositório consultado: [arquivo da pesquisa](../CONTEXT.md), [brief LaTeX](../latex-preview.md) e [estado atual](../../../current-state.md).
 
 Não foram alterados ficheiros. A working tree está limpa.
 
