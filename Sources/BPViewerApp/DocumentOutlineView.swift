@@ -10,6 +10,17 @@ struct DocumentOutlineItem: Identifiable, Hashable {
 struct DocumentOutlineToolbar: View {
     let isVisible: Bool
     let onToggle: () -> Void
+    let onSnapshot: (() -> Void)?
+
+    init(
+        isVisible: Bool,
+        onToggle: @escaping () -> Void,
+        onSnapshot: (() -> Void)? = nil
+    ) {
+        self.isVisible = isVisible
+        self.onToggle = onToggle
+        self.onSnapshot = onSnapshot
+    }
 
     var body: some View {
         HStack {
@@ -21,6 +32,17 @@ struct DocumentOutlineToolbar: View {
             }
             .buttonStyle(.borderless)
             Spacer()
+            if let onSnapshot {
+                Button(action: onSnapshot) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(BPTokens.Typography.body)
+                        .foregroundStyle(BPTokens.Color.muted)
+                }
+                .buttonStyle(.borderless)
+                .focusable(false)
+                .contentShape(Rectangle())
+                .help("Criar snapshot do preview")
+            }
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)

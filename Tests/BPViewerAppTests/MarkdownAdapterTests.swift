@@ -84,3 +84,16 @@ func producesNormalizedAbsolutePathForCopyActions() {
 
     #expect(FilePathCopy.string(for: url) == "/tmp/project/working.md")
 }
+
+@Test("recognizes Word documents as supported preview files")
+func recognizesWordDocuments() {
+    #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/report.docx")) == .docx)
+    #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/REPORT.DOCX")) == .docx)
+    #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/report.doc")) == .other)
+}
+
+@Test("Markdown editing exposes source and split modes")
+func exposesMarkdownEditingModes() {
+    #expect(MarkdownEditingMode.allCases == [.markdown, .split])
+    #expect(MarkdownEditingMode(rawValue: "visual") == nil)
+}

@@ -1,6 +1,11 @@
 import Foundation
 import Markdown
 
+public enum MarkdownEditingMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case markdown
+    case split
+}
+
 public enum MarkdownBlockKind: String, Codable, Hashable, Sendable {
     case paragraph
     case heading
@@ -123,6 +128,57 @@ public struct MarkdownEditableBlock: Identifiable, Hashable, Sendable {
             && !text.contains("![")
             && !text.contains("$$")
             && !text.contains("<")
+    }
+
+    public func sourceOffset(forRenderedTextOffset offset: Int) -> Int {
+        let renderedText = renderedTextForCursor
+        let rawCharacters = Array(source)
+        let renderedCharacters = Array(renderedText)
+        guard !rawCharacters.isEmpty, !renderedCharacters.isEmpty else { return 0 }
+
+        var rawIndex = 0
+        var matchingRawIndexes: [Int] = []
+        for renderedCharacter in renderedCharacters {
+            while rawIndex < rawCharacters.count, rawCharacters[rawIndex] != renderedCharacter {
+                rawIndex += 1
+            }
+            guard rawIndex < rawCharacters.count else { break }
+            matchingRawIndexes.append(rawIndex)
+            rawIndex += 1
+        }
+
+        guard let firstMatch = matchingRawIndexes.first else { return 0 }
+        let clampedOffset = max(offset, 0)
+        let rawCharacterOffset: Int
+        if clampedOffset < matchingRawIndexes.count {
+            rawCharacterOffset = matchingRawIndexes[clampedOffset]
+        } else {
+            rawCharacterOffset = (matchingRawIndexes.last ?? firstMatch) + 1
+        }
+        let sourceIndex = source.index(
+            source.startIndex,
+            offsetBy: min(rawCharacterOffset, source.count)
+        )
+        return source.utf8.distance(from: source.utf8.startIndex, to: sourceIndex)
+    }
+
+    private var renderedTextForCursor: String {
+        var text = visualText
+        text = text.replacingOccurrences(
+            of: #"!\[[^\]]*\]\([^)]+\)"#,
+            with: "",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(
+            of: #"\[([^\]]+)\]\([^)]+\)"#,
+            with: "$1",
+            options: .regularExpression
+        )
+        return text.replacingOccurrences(
+            of: #"(\*\*|__|~~|`|\*|_)"#,
+            with: "",
+            options: .regularExpression
+        )
     }
 }
 

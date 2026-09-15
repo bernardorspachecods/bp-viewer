@@ -8,6 +8,8 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
 
 - `FileSystemFoundation.swift` — tipos de documento, scanner lazy/recursivo e
   estado de tabs.
+- `JSONAdapter.swift` — validação e formatação determinística de JSON para
+  preview.
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,
   `MarkdownPreviewLink.swift` e `MathMLRenderer.swift` — renderização,
   edição/merge e resolução de links Markdown.

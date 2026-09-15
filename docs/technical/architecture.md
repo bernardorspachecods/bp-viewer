@@ -8,7 +8,9 @@ BPViewerApp
 ├── RootView / WorkspaceView  composição da janela
 ├── SidebarView               árvore e navegação do workspace
 ├── MarkdownPreviewView       preview e edição Markdown
+├── JSONPreviewView           preview JSON formatado
 ├── PDFPreviewView            preview LaTeX/PDF
+├── DocxPreviewView           preview Word através de HTML/WebKit
 ├── SettingsView              preferências da app
 └── SnapshotSupport           seleção e janelas de snapshots
 
@@ -41,8 +43,8 @@ O fluxo principal é:
 ação da UI
   → AppModel
     → scanner / watcher / adapter / process runner
-      → DocumentTab e estado SwiftUI
-        → preview Markdown ou PDF
+        → DocumentTab e estado SwiftUI
+        → preview Markdown, JSON, PDF ou Quick Look
 ```
 
 ## Filesystem e atualização

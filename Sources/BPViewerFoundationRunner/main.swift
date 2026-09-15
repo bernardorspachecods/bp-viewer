@@ -41,10 +41,13 @@ private struct Runner {
         )
 
         try write("# README", to: root.appendingPathComponent("README.md"))
+        try write("{\"name\":\"bp-viewer\"}", to: root.appendingPathComponent("config.json"))
+        try write("%PDF-1.7", to: root.appendingPathComponent("sample.pdf"))
         try write("plain", to: root.appendingPathComponent("zeta.txt"))
         try write("hidden", to: root.appendingPathComponent(".hidden.md"))
         try write("# Inside", to: docs.appendingPathComponent("inside.md"))
         try write("\\documentclass{article}", to: nested.appendingPathComponent("deep.tex"))
+        try write("docx fixture", to: root.appendingPathComponent("report.docx"))
     }
 
     private func write(_ content: String, to url: URL) throws {
@@ -55,13 +58,13 @@ private struct Runner {
         let scanner = FileSystemScanner()
         let topLevel = scanner.scanTopLevel(root: root)
 
-        expect(topLevel.map(\.title) == ["docs", "empty", "README.md", "zeta.txt"], "top-level order and hidden-file omission")
+        expect(topLevel.map(\.title) == ["docs", "empty", "config.json", "README.md", "report.docx", "sample.pdf", "zeta.txt"], "top-level order and hidden-file omission")
         expect(topLevel.first?.isDirectory == true, "directories precede files")
         expect(topLevel.first(where: { $0.title == "docs" })?.childrenLoaded == false, "top-level scan is lazy")
         expect(topLevel.first(where: { $0.title == "empty" })?.children.isEmpty == true, "empty directory has no eager children")
 
         let compatible = scanner.filter(topLevel, compatibleOnly: true, query: "")
-        expect(compatible.map(\.title) == ["docs", "empty", "README.md"], "compatible filter keeps unknown lazy directories")
+        expect(compatible.map(\.title) == ["docs", "empty", "config.json", "README.md", "report.docx", "sample.pdf"], "compatible filter keeps unknown lazy directories")
 
         let docsURL = root.appendingPathComponent("docs", isDirectory: true)
         let docsChildren = scanner.scanChildren(of: docsURL, root: root)
@@ -78,9 +81,52 @@ private struct Runner {
         expect(search.first?.children.first?.title == "nested", "search preserves matching ancestor chain")
         expect(search.first?.children.first?.children.first?.title == "deep.tex", "search reaches nested compatible file")
 
+        let topLevelSearch = scanner.filterTopLevel(complete, compatibleOnly: true, query: "  DOCS  ")
+        expect(topLevelSearch.map(\.title) == ["docs"], "top-level search matches only root entries")
+        expect(topLevelSearch.first?.children.isEmpty == true, "top-level search does not return descendants")
+        expect(scanner.filterTopLevel(complete, compatibleOnly: true, query: "DEEP").isEmpty, "top-level search ignores nested entries")
+
         let allFiles = scanner.filter(topLevel, compatibleOnly: false, query: "")
-        expect(allFiles.map(\.title) == ["docs", "empty", "README.md", "zeta.txt"], "unfiltered tree keeps all visible entries")
+        expect(allFiles.map(\.title) == ["docs", "empty", "config.json", "README.md", "report.docx", "sample.pdf", "zeta.txt"], "unfiltered tree keeps all visible entries")
         expect(scanner.scan(root: root.appendingPathComponent("missing")) .isEmpty, "missing root is non-fatal")
+        expect(DocumentKind(url: root.appendingPathComponent("sample.PDF")) == .pdf, "PDF files are recognized case-insensitively")
+
+        do {
+            let formatted = try JSONPreviewAdapter().format(source: "{\"z\": 1, \"a\": [true, null]}")
+            expect(formatted == "{\n  \"z\" : 1,\n  \"a\" : [\n    true,\n    null\n  ]\n}", "JSON is validated and formatted")
+        } catch {
+            expect(false, "JSON is validated and formatted")
+        }
+
+        do {
+            _ = try JSONPreviewAdapter().format(source: "{\"missing\": }")
+            expect(false, "invalid JSON is rejected for editing")
+        } catch is JSONPreviewError {
+            expect(true, "invalid JSON is rejected for editing")
+        } catch {
+            expect(false, "invalid JSON is rejected for editing")
+        }
+
+        let originalJSON = "{\"title\":\"A\",\"value\":1}"
+        let formattedJSON = (try? JSONPreviewAdapter().format(source: originalJSON)) ?? ""
+        if let valueRange = formattedJSON.range(of: "\"value\"") {
+            let formattedOffset = formattedJSON.utf8.distance(
+                from: formattedJSON.utf8.startIndex,
+                to: valueRange.lowerBound.samePosition(in: formattedJSON.utf8)!
+            )
+            let originalOffset = JSONPreviewAdapter().sourceOffset(
+                forFormattedUTF8Offset: formattedOffset,
+                source: originalJSON,
+                formattedSource: formattedJSON
+            )
+            let expectedOffset = originalJSON.utf8.distance(
+                from: originalJSON.utf8.startIndex,
+                to: originalJSON.range(of: "\"value\"")!.lowerBound.samePosition(in: originalJSON.utf8)!
+            )
+            expect(originalOffset == expectedOffset, "JSON preview clicks map to raw source offsets")
+        } else {
+            expect(false, "JSON preview clicks map to raw source offsets")
+        }
     }
 
     private mutating func runTabContracts(root: URL) {
@@ -145,6 +191,13 @@ private struct Runner {
     }
 
     private mutating func runMarkdownEditingContracts() {
+        expect(MarkdownEditingMode.allCases == [.markdown, .split], "Markdown editing exposes source and split modes")
+        expect(MarkdownEditingMode(rawValue: "visual") == nil, "visual Markdown editing mode is no longer supported")
+
+        let positioned = MarkdownBlockDocument(source: "# Title\n\nBody **strong**.")
+        expect(positioned.blocks[0].sourceOffset(forRenderedTextOffset: 0) == 2, "heading cursor skips Markdown marker")
+        expect(positioned.blocks[1].sourceOffset(forRenderedTextOffset: 5) == 7, "inline formatting cursor skips Markdown markers")
+
         let source = """
         # Title
 

@@ -3,6 +3,7 @@ import BPViewerCore
 import Combine
 import Darwin
 import Foundation
+@preconcurrency import PDFKit
 import UniformTypeIdentifiers
 
 extension Notification.Name {
@@ -64,17 +65,17 @@ final class AppModel: ObservableObject {
     }
     private let markdownAdapter: any MarkdownAdapter = SwiftMarkdownAdapter()
     private var completeNodes: [FileNode] = []
-    private var fullyIndexedNodes: [FileNode]?
-    private var fullIndexTask: Task<[FileNode], Never>?
     private var treeScanGeneration = 0
     private var treeFilterGeneration = 0
     private var treeFilterTask: Task<Void, Never>?
+    private var treeScrollPersistenceTask: Task<Void, Never>?
     private var automaticSingleChildExpansionPending = false
     private var automaticSingleChildExpansionBasePath: String?
     private var childLoadGenerations: [String: Int] = [:]
     private var previewGenerations: [String: Int] = [:]
     private var latexRenderTasks: [String: Task<Void, Never>] = [:]
     private var markdownSaveTasks: [String: Task<Void, Never>] = [:]
+    private var jsonSaveTasks: [String: Task<Void, Never>] = [:]
     private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedDirectoryURLs: Set<URL> = []
     private var treeRefreshGeneration = 0
@@ -139,6 +140,17 @@ final class AppModel: ObservableObject {
                 return nil
             }
 
+            if flags == [.command],
+               event.charactersIgnoringModifiers?.lowercased() == "s",
+               let tabID = self?.activeTabID,
+               let session = self?.activeTab?.jsonEditSession,
+               session.currentSource != session.baseSource {
+                Task { @MainActor [weak self] in
+                    await self?.saveJSONEdit(tabID: tabID)
+                }
+                return nil
+            }
+
             if flags.contains(.command),
                event.charactersIgnoringModifiers?.lowercased() == "z",
                let session = self?.activeTab?.markdownEditSession,
@@ -149,6 +161,21 @@ final class AppModel: ObservableObject {
                         self?.redoMarkdownEdit()
                     } else {
                         self?.undoMarkdownEdit()
+                    }
+                }
+                return nil
+            }
+
+            if flags.contains(.command),
+               event.charactersIgnoringModifiers?.lowercased() == "z",
+               let session = self?.activeTab?.jsonEditSession,
+               (flags.contains(.shift) ? !session.redoSources.isEmpty : !session.undoSources.isEmpty) {
+                let redo = flags.contains(.shift)
+                Task { @MainActor [weak self] in
+                    if redo {
+                        self?.redoJSONEdit()
+                    } else {
+                        self?.undoJSONEdit()
                     }
                 }
                 return nil
@@ -232,6 +259,8 @@ final class AppModel: ObservableObject {
 
     func openRoot(_ url: URL) {
         snapshotWindowManager.closeAllPreservingRecords()
+        treeScrollPersistenceTask?.cancel()
+        treeScrollPersistenceTask = nil
         persistState()
         latexRenderTasks.values.forEach { $0.cancel() }
         latexRenderTasks.removeAll()
@@ -239,9 +268,6 @@ final class AppModel: ObservableObject {
         stopWatchingDirectories()
         stopWatchingActiveFiles()
         treeFilterTask?.cancel()
-        fullIndexTask?.cancel()
-        fullIndexTask = nil
-        fullyIndexedNodes = nil
         let standardizedRoot = url.standardizedFileURL
         rootURL = standardizedRoot
         tabs = []
@@ -288,7 +314,6 @@ final class AppModel: ObservableObject {
 
     func updateTreeQuery(_ query: String) {
         treeQuery = query
-        applyTreeFilter()
     }
 
     func updateCompatibleOnly(_ value: Bool) {
@@ -319,7 +344,12 @@ final class AppModel: ObservableObject {
         let normalizedOffset = max(offset, 0)
         guard abs(treeScrollOffset - normalizedOffset) > 0.5 else { return }
         treeScrollOffset = normalizedOffset
-        persistState()
+        treeScrollPersistenceTask?.cancel()
+        treeScrollPersistenceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            self?.persistState()
+        }
     }
 
     func updateMarkdownReadingPosition(
@@ -366,7 +396,9 @@ final class AppModel: ObservableObject {
 
     var canCaptureActivePreview: Bool {
         guard let activeTab else { return false }
-        return activeTab.previewHTML != nil || activeTab.previewPDFData != nil
+        return activeTab.previewHTML != nil
+            || activeTab.previewJSON != nil
+            || activeTab.previewPDFData != nil
     }
 
     func startSnapshotCapture() {
@@ -452,7 +484,9 @@ final class AppModel: ObservableObject {
         let files = urls
             .filter(\.isFileURL)
             .map { $0.resolvingSymlinksInPath().standardizedFileURL }
-            .filter { DocumentKind(url: $0) == .markdown || DocumentKind(url: $0) == .latex }
+            .filter {
+                return isPreviewableDocument($0)
+            }
         guard let first = files.first else { return }
 
         let desiredRoot = DocumentKind(url: first) == .latex
@@ -503,7 +537,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if DocumentKind(url: standardizedURL) == .other {
+        if !isPreviewableDocument(standardizedURL) {
             NSWorkspace.shared.open(standardizedURL)
         } else {
             openDocument(url: standardizedURL)
@@ -515,7 +549,7 @@ final class AppModel: ObservableObject {
         guard FileManager.default.fileExists(atPath: standardizedURL.path) else { return }
 
         let kind = DocumentKind(url: standardizedURL)
-        guard kind != .other else {
+        guard isPreviewableDocument(standardizedURL) else {
             NSWorkspace.shared.open(standardizedURL)
             return
         }
@@ -554,7 +588,7 @@ final class AppModel: ObservableObject {
             url: documentURL,
             kind: kind,
             contextURL: contextURL,
-            status: kind == .markdown || kind == .latex ? .updating : .unavailable,
+            status: kind == .docx ? .ready : (isPreviewableDocument(standardizedURL) ? .updating : .unavailable),
             isOutlineVisible: documentState.outlineVisible,
             previewZoom: documentState.zoom ?? defaultZoom(for: kind),
             isPreviewZoomCustomized: documentState.zoom != nil,
@@ -592,6 +626,8 @@ final class AppModel: ObservableObject {
         latexRenderTasks.removeValue(forKey: tab.id)
         markdownSaveTasks[tab.id]?.cancel()
         markdownSaveTasks.removeValue(forKey: tab.id)
+        jsonSaveTasks[tab.id]?.cancel()
+        jsonSaveTasks.removeValue(forKey: tab.id)
         previewGenerations[tab.id, default: 0] += 1
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
@@ -681,6 +717,12 @@ final class AppModel: ObservableObject {
             renderMarkdown(tabID: activeTabID)
         } else if tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
             renderLatex(tabID: activeTabID, force: true)
+        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .json {
+            renderJSON(tabID: activeTabID)
+        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .pdf {
+            renderPDF(tabID: activeTabID)
+        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .docx {
+            refreshDocx(tabID: activeTabID)
         } else if let index = tabs.firstIndex(where: { $0.id == activeTabID }) {
             tabs[index].status = .unavailable
             tabs[index].errorMessage = nil
@@ -705,38 +747,24 @@ final class AppModel: ObservableObject {
 
     func updateMarkdownEditing(
         tabID: String,
-        text: String,
-        mode: MarkdownEditingMode,
-        visualEntries: [MarkdownVisualEntry] = [],
-        visualInsertions: [MarkdownVisualInsertion] = [],
-        specialEdits: [MarkdownSpecialEdit] = []
+        text: String
     ) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               var session = tabs[index].markdownEditSession else { return }
 
-        let document = MarkdownBlockDocument(source: session.currentSource)
-        let updated = mode == .markdown
-            ? MarkdownBlockDocument(source: text)
-            : document
-                .replacingSpecialEdits(specialEdits)
-                .replacingVisualEntries(visualEntries, insertions: visualInsertions)
-        guard updated.source != session.currentSource else { return }
-
-        let structureChanged = document.blocks.map(\.kind) != updated.blocks.map(\.kind)
-        let specialContentChanged = !specialEdits.isEmpty
+        guard text != session.currentSource else { return }
 
         session.undoSources.append(session.currentSource)
         session.redoSources.removeAll()
-        session.mode = mode
-        session.currentSource = updated.source
+        session.currentSource = text
         session.saveState = .unsaved
         session.conflict = nil
-        tabs[index].markdownSource = updated.source
-        tabs[index].markdownBlocks = updated.blocks
+        tabs[index].markdownSource = text
+        tabs[index].markdownBlocks = MarkdownBlockDocument(source: text).blocks
         tabs[index].markdownEditSession = session
         scheduleMarkdownSave(for: tabID)
-        if mode == .visual && (structureChanged || specialContentChanged) {
-            renderMarkdown(tabID: tabID, sourceOverride: updated.source)
+        if session.mode == .split {
+            renderMarkdown(tabID: tabID, sourceOverride: text)
         }
     }
 
@@ -750,13 +778,209 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func beginJSONEditing(tabID: String, previewUTF8Offset: Int = 0) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .json else { return }
+
+        let source = tabs[index].jsonSource
+            ?? (try? String(contentsOf: tabs[index].url, encoding: .utf8))
+            ?? ""
+        let formattedSource = tabs[index].previewJSON ?? source
+        let rawOffset = JSONPreviewAdapter().sourceOffset(
+            forFormattedUTF8Offset: previewUTF8Offset,
+            source: source,
+            formattedSource: formattedSource
+        )
+
+        tabs[index].jsonSource = source
+        tabs[index].jsonCursorUTF8Offset = rawOffset
+        tabs[index].jsonEditSession = MarkdownEditSession(
+            baseSource: source,
+            currentSource: source
+        )
+    }
+
+    func updateJSONEditing(tabID: String, text: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].jsonEditSession,
+              tabs[index].kind == .json,
+              text != session.currentSource else { return }
+
+        session.undoSources.append(session.currentSource)
+        session.redoSources.removeAll()
+        session.currentSource = text
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].jsonSource = text
+        tabs[index].jsonEditSession = session
+        scheduleJSONSave(for: tabID)
+    }
+
+    func endJSONEditing(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .json,
+              var session = tabs[index].jsonEditSession else { return }
+
+        if session.currentSource == session.baseSource {
+            session.isEditing = false
+            tabs[index].jsonEditSession = session
+            renderJSON(tabID: tabID)
+        } else {
+            session.isEditing = false
+            tabs[index].jsonEditSession = session
+            scheduleJSONSave(for: tabID)
+        }
+    }
+
+    @discardableResult
+    func undoJSONEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].jsonEditSession,
+              let previous = session.undoSources.popLast() else { return false }
+
+        session.redoSources.append(session.currentSource)
+        session.currentSource = previous
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].jsonSource = previous
+        tabs[index].jsonEditSession = session
+        scheduleJSONSave(for: tabID)
+        return true
+    }
+
+    @discardableResult
+    func redoJSONEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].jsonEditSession,
+              let next = session.redoSources.popLast() else { return false }
+
+        session.undoSources.append(session.currentSource)
+        session.currentSource = next
+        session.saveState = .unsaved
+        session.conflict = nil
+        tabs[index].jsonSource = next
+        tabs[index].jsonEditSession = session
+        scheduleJSONSave(for: tabID)
+        return true
+    }
+
+    func keepLocalJSONEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].jsonEditSession else { return }
+        commitJSONSource(session.currentSource, forTabAt: index)
+    }
+
+    func useExternalJSONEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].jsonEditSession,
+              let conflict = session.conflict else { return }
+
+        session.baseSource = conflict.externalSource
+        session.currentSource = conflict.externalSource
+        session.undoSources.removeAll()
+        session.redoSources.removeAll()
+        session.saveState = .saved
+        session.conflict = nil
+        session.isEditing = false
+        tabs[index].jsonSource = conflict.externalSource
+        tabs[index].jsonEditSession = session
+        renderJSON(tabID: tabID)
+    }
+
+    private func scheduleJSONSave(for tabID: String) {
+        jsonSaveTasks[tabID]?.cancel()
+        jsonSaveTasks[tabID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self else { return }
+            await self.saveJSONEdit(tabID: tabID)
+        }
+    }
+
+    private func saveJSONEdit(tabID: String) async {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].jsonEditSession,
+              session.currentSource != session.baseSource else { return }
+
+        let localSource = session.currentSource
+        do {
+            _ = try JSONPreviewAdapter().format(source: localSource)
+        } catch {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].jsonEditSession?.isEditing = true
+            tabs[index].errorMessage = error.localizedDescription
+            return
+        }
+
+        let url = tabs[index].url
+        let baseSource = session.baseSource
+        tabs[index].jsonEditSession?.saveState = .saving
+
+        do {
+            let externalSource = try await Task.detached {
+                try String(contentsOf: url, encoding: .utf8)
+            }.value
+
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].jsonEditSession?.currentSource == localSource else { return }
+
+            guard externalSource == baseSource else {
+                tabs[currentIndex].jsonEditSession?.saveState = .conflict
+                tabs[currentIndex].jsonEditSession?.isEditing = true
+                tabs[currentIndex].jsonEditSession?.conflict = MarkdownConflict(
+                    localSource: localSource,
+                    externalSource: externalSource,
+                    blockIDs: []
+                )
+                return
+            }
+
+            try localSource.write(to: url, atomically: true, encoding: .utf8)
+            tabs[currentIndex].jsonSource = localSource
+            tabs[currentIndex].jsonEditSession?.baseSource = localSource
+            tabs[currentIndex].jsonEditSession?.currentSource = localSource
+            tabs[currentIndex].jsonEditSession?.saveState = .saved
+            tabs[currentIndex].jsonEditSession?.conflict = nil
+            tabs[currentIndex].errorMessage = nil
+            if tabs[currentIndex].jsonEditSession?.isEditing != true {
+                renderJSON(tabID: tabID)
+            }
+        } catch {
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            tabs[currentIndex].jsonEditSession?.saveState = .failed
+            tabs[currentIndex].jsonEditSession?.isEditing = true
+            tabs[currentIndex].errorMessage = error.localizedDescription
+        }
+    }
+
+    private func commitJSONSource(_ source: String, forTabAt index: Int) {
+        let tabID = tabs[index].id
+        do {
+            _ = try JSONPreviewAdapter().format(source: source)
+            try source.write(to: tabs[index].url, atomically: true, encoding: .utf8)
+            tabs[index].jsonSource = source
+            tabs[index].jsonEditSession?.baseSource = source
+            tabs[index].jsonEditSession?.currentSource = source
+            tabs[index].jsonEditSession?.saveState = .saved
+            tabs[index].jsonEditSession?.conflict = nil
+            tabs[index].jsonEditSession?.isEditing = false
+            tabs[index].errorMessage = nil
+            renderJSON(tabID: tabID)
+        } catch {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].jsonEditSession?.isEditing = true
+            tabs[index].errorMessage = error.localizedDescription
+        }
+    }
+
     func toggleMarkdownEditingMode(tabID: String) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         guard var session = tabs[index].markdownEditSession else { return }
         let previousMode = session.mode
-        session.mode = previousMode == .visual ? .markdown : .visual
+        session.mode = previousMode == .markdown ? .split : .markdown
         tabs[index].markdownEditSession = session
-        if previousMode == .markdown {
+        if session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
         }
     }
@@ -768,10 +992,6 @@ final class AppModel: ObservableObject {
               var session = tabs[index].markdownEditSession,
               let previous = session.undoSources.popLast() else { return false }
 
-        let currentDocument = MarkdownBlockDocument(source: session.currentSource)
-        let previousDocument = MarkdownBlockDocument(source: previous)
-        let structureChanged = currentDocument.blocks.map(\.kind) != previousDocument.blocks.map(\.kind)
-        let specialContentChanged = currentDocument.specialRegions != previousDocument.specialRegions
         session.redoSources.append(session.currentSource)
         session.currentSource = previous
         session.saveState = .unsaved
@@ -780,7 +1000,7 @@ final class AppModel: ObservableObject {
         tabs[index].markdownBlocks = MarkdownBlockDocument(source: previous).blocks
         tabs[index].markdownEditSession = session
         scheduleMarkdownSave(for: tabID)
-        if session.mode == .visual && (structureChanged || specialContentChanged) {
+        if session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: previous)
         }
         return true
@@ -793,10 +1013,6 @@ final class AppModel: ObservableObject {
               var session = tabs[index].markdownEditSession,
               let next = session.redoSources.popLast() else { return false }
 
-        let currentDocument = MarkdownBlockDocument(source: session.currentSource)
-        let nextDocument = MarkdownBlockDocument(source: next)
-        let structureChanged = currentDocument.blocks.map(\.kind) != nextDocument.blocks.map(\.kind)
-        let specialContentChanged = currentDocument.specialRegions != nextDocument.specialRegions
         session.undoSources.append(session.currentSource)
         session.currentSource = next
         session.saveState = .unsaved
@@ -805,7 +1021,7 @@ final class AppModel: ObservableObject {
         tabs[index].markdownBlocks = MarkdownBlockDocument(source: next).blocks
         tabs[index].markdownEditSession = session
         scheduleMarkdownSave(for: tabID)
-        if session.mode == .visual && (structureChanged || specialContentChanged) {
+        if session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: next)
         }
         return true
@@ -911,7 +1127,7 @@ final class AppModel: ObservableObject {
     }
 
     func showFindBar() {
-        guard activeTab?.kind == .markdown || activeTab?.kind == .latex else { return }
+        guard activeTab?.kind == .markdown || activeTab?.kind == .latex || activeTab?.kind == .pdf else { return }
         isFindBarVisible = true
     }
 
@@ -1112,15 +1328,17 @@ final class AppModel: ObservableObject {
         switch kind {
         case .markdown:
             return defaultMarkdownZoom
-        case .latex:
+        case .latex, .pdf:
             return defaultLatexZoom
-        case .other:
+        case .json, .docx, .other:
             return 1.0
         }
     }
 
     private func applyDefaultZoom(_ value: Double, to kind: DocumentKind) {
-        for index in tabs.indices where tabs[index].kind == kind && !tabs[index].isPreviewZoomCustomized {
+        for index in tabs.indices where
+            (tabs[index].kind == kind || (kind == .latex && tabs[index].kind == .pdf))
+                && !tabs[index].isPreviewZoomCustomized {
             tabs[index].previewZoom = value
         }
         syncPreviewZoomToActiveTab()
@@ -1136,8 +1354,6 @@ final class AppModel: ObservableObject {
         let scanner = scanner
         let completeNodes = completeNodes
         let compatibleOnly = compatibleOnly
-        let query = treeQuery
-        let rootURL = rootURL
 
         treeFilterTask?.cancel()
         isFilteringTree = true
@@ -1145,50 +1361,17 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(for: .milliseconds(90))
             guard !Task.isCancelled else { return }
 
-            var sourceNodes = completeNodes
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               let rootURL {
-                let fullIndexTask = self?.fullIndexTaskForSearch(rootURL: rootURL, scanner: scanner)
-                sourceNodes = await fullIndexTask?.value ?? completeNodes
-            }
-
             let filteredNodes = await Task.detached(priority: .userInitiated) {
-                scanner.filter(
-                    sourceNodes,
-                    compatibleOnly: compatibleOnly,
-                    query: query
-                )
+                scanner.filter(completeNodes, compatibleOnly: compatibleOnly, query: "")
             }.value
 
             guard let self,
                   self.treeFilterGeneration == generation,
                   self.rootURL != nil else { return }
 
-            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                self.fullyIndexedNodes = sourceNodes
-                self.completeNodes = sourceNodes
-            }
             self.nodes = filteredNodes
             self.isFilteringTree = false
         }
-    }
-
-    private func fullIndexTaskForSearch(
-        rootURL: URL,
-        scanner: FileSystemScanner
-    ) -> Task<[FileNode], Never> {
-        if let fullyIndexedNodes {
-            return Task { fullyIndexedNodes }
-        }
-        if let fullIndexTask {
-            return fullIndexTask
-        }
-
-        let task = Task.detached(priority: .userInitiated) {
-            scanner.scan(root: rootURL)
-        }
-        fullIndexTask = task
-        return task
     }
 
     private func loadChildrenIfNeeded(for path: String) {
@@ -1371,7 +1554,7 @@ final class AppModel: ObservableObject {
                 url: url,
                 kind: kind,
                 contextURL: contextURL,
-                status: kind == .markdown || kind == .latex ? .idle : .unavailable,
+                status: kind == .docx ? .ready : (isPreviewableDocument(url) ? .idle : .unavailable),
                 isOutlineVisible: documentState.outlineVisible,
                 previewZoom: documentState.zoom ?? defaultZoom(for: kind),
                 isPreviewZoomCustomized: documentState.zoom != nil,
@@ -1458,7 +1641,7 @@ final class AppModel: ObservableObject {
     private func renderActiveTabIfNeeded() {
         guard let activeTabID,
               let tab = tabs.first(where: { $0.id == activeTabID }),
-              tab.kind == .markdown || tab.kind == .latex else {
+              tab.kind == .markdown || tab.kind == .latex || tab.kind == .json || tab.kind == .pdf || tab.kind == .docx else {
             stopWatchingActiveFiles()
             return
         }
@@ -1466,14 +1649,30 @@ final class AppModel: ObservableObject {
         startWatchingActiveFiles(
             [tab.url] + tab.previewDependencies + tab.previewExternalDependencies
         )
-        let hasPreview = tab.kind == .markdown
-            ? tab.previewHTML != nil
-            : tab.previewPDFData != nil
+        let hasPreview: Bool
+        switch tab.kind {
+        case .markdown:
+            hasPreview = tab.previewHTML != nil
+        case .latex:
+            hasPreview = tab.previewPDFData != nil
+        case .pdf:
+            hasPreview = tab.previewPDFData != nil
+        case .json:
+            hasPreview = tab.previewJSON != nil
+        case .docx:
+            return
+        case .other:
+            hasPreview = false
+        }
         if !hasPreview || tab.status != .ready {
             if tab.kind == .markdown {
                 renderMarkdown(tabID: activeTabID)
-            } else {
+            } else if tab.kind == .latex {
                 renderLatex(tabID: activeTabID)
+            } else if tab.kind == .json {
+                renderJSON(tabID: activeTabID)
+            } else if tab.kind == .pdf {
+                renderPDF(tabID: activeTabID)
             }
         }
     }
@@ -1592,13 +1791,31 @@ final class AppModel: ObservableObject {
                let session = tab.markdownEditSession,
                session.isEditing,
                session.currentSource == session.baseSource {
-                // The active contenteditable owns the cursor while its latest
+                // The active source editor owns the cursor while its latest
                 // version is already on disk. Reconcile the next external
-                // event after the user leaves the block.
+                // event after the user leaves the editor.
                 return
             }
-            if self.tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
+            if let tab = self.tabs.first(where: { $0.id == activeTabID }),
+               let session = tab.jsonEditSession,
+               session.isEditing,
+               session.currentSource == session.baseSource {
+                return
+            }
+            let activeKind = self.tabs.first(where: { $0.id == activeTabID })?.kind
+            if activeKind == .latex {
                 self.renderLatex(tabID: activeTabID)
+            } else if activeKind == .json {
+                if self.tabs.first(where: { $0.id == activeTabID })?.jsonEditSession?.currentSource
+                    != self.tabs.first(where: { $0.id == activeTabID })?.jsonEditSession?.baseSource {
+                    self.handleExternalJSONChange(tabID: activeTabID)
+                } else {
+                    self.renderJSON(tabID: activeTabID)
+                }
+            } else if activeKind == .pdf {
+                self.renderPDF(tabID: activeTabID)
+            } else if activeKind == .docx {
+                self.refreshDocx(tabID: activeTabID)
             } else {
                 if self.tabs.first(where: { $0.id == activeTabID })?.markdownEditSession?.currentSource
                     != self.tabs.first(where: { $0.id == activeTabID })?.markdownEditSession?.baseSource {
@@ -1647,6 +1864,37 @@ final class AppModel: ObservableObject {
             }
         } catch {
             tabs[index].markdownEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
+        }
+    }
+
+    private func handleExternalJSONChange(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].jsonEditSession,
+              session.currentSource != session.baseSource else {
+            renderJSON(tabID: tabID)
+            return
+        }
+
+        do {
+            let externalSource = try String(contentsOf: tabs[index].url, encoding: .utf8)
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].jsonEditSession?.currentSource == session.currentSource else { return }
+
+            if externalSource == session.baseSource {
+                scheduleJSONSave(for: tabID)
+            } else {
+                tabs[currentIndex].jsonEditSession?.saveState = .conflict
+                tabs[currentIndex].jsonEditSession?.isEditing = true
+                tabs[currentIndex].jsonEditSession?.conflict = MarkdownConflict(
+                    localSource: session.currentSource,
+                    externalSource: externalSource,
+                    blockIDs: []
+                )
+            }
+        } catch {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].jsonEditSession?.isEditing = true
             tabs[index].errorMessage = error.localizedDescription
         }
     }
@@ -1904,6 +2152,122 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func refreshDocx(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .docx else { return }
+
+        tabs[index].status = .ready
+        tabs[index].isStale = false
+        tabs[index].errorMessage = nil
+        tabs[index].previewUpdatedAt = Date()
+    }
+
+    private func renderJSON(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }), tabs[index].kind == .json else { return }
+
+        let tabURL = tabs[index].url
+        let generation = (previewGenerations[tabID] ?? 0) + 1
+        previewGenerations[tabID] = generation
+        tabs[index].status = .updating
+        tabs[index].errorMessage = nil
+
+        Task { [weak self] in
+            do {
+                let rendered = try await Task.detached(priority: .userInitiated) {
+                    let source = try String(contentsOf: tabURL, encoding: .utf8)
+                    return (source, try JSONPreviewAdapter().format(source: source))
+                }.value
+
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].previewJSON = rendered.1
+                self.tabs[index].jsonSource = rendered.0
+                self.tabs[index].previewUpdatedAt = Date()
+                self.tabs[index].status = .ready
+                self.tabs[index].isStale = false
+                self.tabs[index].errorMessage = nil
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles([tabURL])
+                }
+            } catch {
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].status = .failed
+                self.tabs[index].isStale = self.tabs[index].previewJSON != nil
+                self.tabs[index].errorMessage = error.localizedDescription
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles([tabURL])
+                }
+            }
+        }
+    }
+
+    private func renderPDF(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .pdf else { return }
+
+        let tabURL = tabs[index].url
+        let generation = (previewGenerations[tabID] ?? 0) + 1
+        previewGenerations[tabID] = generation
+        tabs[index].status = .updating
+        tabs[index].errorMessage = nil
+
+        Task { [weak self] in
+            do {
+                let data = try await Task.detached(priority: .userInitiated) {
+                    let data = try Data(contentsOf: tabURL)
+                    guard data.starts(with: Data("%PDF".utf8)), PDFDocument(data: data) != nil else {
+                        throw PDFPreviewError.invalidDocument
+                    }
+                    return data
+                }.value
+
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].previewPDFData = data
+                self.tabs[index].previewHTML = nil
+                self.tabs[index].previewJSON = nil
+                self.tabs[index].previewUpdatedAt = Date()
+                self.tabs[index].previewDependencies = []
+                self.tabs[index].previewExternalDependencies = []
+                self.tabs[index].status = .ready
+                self.tabs[index].isStale = false
+                self.tabs[index].errorMessage = nil
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles([tabURL])
+                }
+            } catch {
+                guard let self,
+                      self.previewGenerations[tabID] == generation,
+                      let index = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+                self.tabs[index].status = .failed
+                self.tabs[index].isStale = self.tabs[index].previewPDFData != nil
+                self.tabs[index].errorMessage = error.localizedDescription
+                if self.activeTabID == tabID {
+                    self.restartWatchingActiveFiles([tabURL])
+                }
+            }
+        }
+    }
+
+    private enum PDFPreviewError: LocalizedError, Sendable {
+        case invalidDocument
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidDocument:
+                "O ficheiro não contém um PDF válido."
+            }
+        }
+    }
+
     private func isRegularFile(_ url: URL) -> Bool {
         let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey])
         return values?.isRegularFile == true && values?.isDirectory != true
@@ -1930,6 +2294,13 @@ final class AppModel: ObservableObject {
         let candidatePath = url.resolvingSymlinksInPath().standardizedFileURL.path
         let projectPath = project.resolvingSymlinksInPath().standardizedFileURL.path
         return candidatePath == projectPath || candidatePath.hasPrefix(projectPath + "/")
+    }
+
+    private func isPreviewableDocument(_ url: URL) -> Bool {
+        switch DocumentKind(url: url) {
+        case .markdown, .latex, .json, .docx, .pdf: true
+        case .other: false
+        }
     }
 
     private func isDirectory(_ url: URL) -> Bool {

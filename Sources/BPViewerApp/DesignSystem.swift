@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+enum PreviewCanvasStyle {
+    static let backgroundColor = NSColor.windowBackgroundColor
+}
+
 enum BPTokens {
     enum Spacing {
         static let xxs: CGFloat = 4
@@ -26,7 +30,7 @@ enum BPTokens {
     }
 
     enum Color {
-        static let canvas = SwiftUI.Color(nsColor: .windowBackgroundColor)
+        static let canvas = SwiftUI.Color(nsColor: PreviewCanvasStyle.backgroundColor)
         static let surface = SwiftUI.Color(nsColor: .controlBackgroundColor)
         static let elevated = SwiftUI.Color(nsColor: .textBackgroundColor)
         static let separator = SwiftUI.Color(nsColor: .separatorColor)

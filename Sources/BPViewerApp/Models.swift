@@ -83,11 +83,6 @@ struct PDFReadingPosition: Codable, Hashable {
     let y: Double?
 }
 
-enum MarkdownEditingMode: String, Hashable {
-    case visual
-    case markdown
-}
-
 enum MarkdownSaveState: String, Hashable {
     case saved
     case unsaved
@@ -113,7 +108,7 @@ struct MarkdownConflict: Hashable {
 }
 
 struct MarkdownEditSession: Hashable {
-    var mode: MarkdownEditingMode = .visual
+    var mode: MarkdownEditingMode = .markdown
     var isEditing = true
     var baseSource: String
     var currentSource: String
@@ -131,6 +126,7 @@ struct DocumentTab: Identifiable, Hashable {
     var status: PreviewStatus = .idle
     var isStale: Bool = false
     var previewHTML: String?
+    var previewJSON: String?
     var previewPDFData: Data?
     var markdownOutline: [MarkdownOutlineEntry] = []
     var isOutlineVisible = false
@@ -147,6 +143,9 @@ struct DocumentTab: Identifiable, Hashable {
     var markdownSource: String?
     var markdownBlocks: [MarkdownEditableBlock] = []
     var markdownEditSession: MarkdownEditSession?
+    var jsonSource: String?
+    var jsonEditSession: MarkdownEditSession?
+    var jsonCursorUTF8Offset: Int?
 
     var title: String { url.deletingPathExtension().lastPathComponent }
     var subtitle: String {

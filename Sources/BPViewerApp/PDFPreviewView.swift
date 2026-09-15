@@ -13,6 +13,7 @@ struct PDFPreviewView: View {
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
     @Binding var isOutlineVisible: Bool
     let isSnapshotCaptureActive: Bool
+    let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
     @State private var requestedPageIndex: Int?
@@ -35,10 +36,12 @@ struct PDFPreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !outlineItems.isEmpty {
-                DocumentOutlineToolbar(isVisible: isOutlineVisible) {
-                    isOutlineVisible.toggle()
-                }
+            if !outlineItems.isEmpty || onSnapshot != nil {
+                DocumentOutlineToolbar(
+                    isVisible: isOutlineVisible,
+                    onToggle: { isOutlineVisible.toggle() },
+                    onSnapshot: onSnapshot
+                )
             }
 
             HStack(spacing: 0) {
@@ -151,7 +154,8 @@ private struct PDFKitPreviewView: NSViewRepresentable {
         view.displayDirection = .vertical
         view.displaysPageBreaks = true
         view.autoScales = false
-        view.backgroundColor = .windowBackgroundColor
+        view.backgroundColor = PreviewCanvasStyle.backgroundColor
+        view.pageShadowsEnabled = true
         view.delegate = context.coordinator
         context.coordinator.observe(view)
         return view

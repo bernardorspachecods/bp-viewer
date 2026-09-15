@@ -1,7 +1,8 @@
 # Estado atual da app
 
 `bp-viewer` é uma aplicação macOS nativa para abrir uma pasta local, navegar
-pelos ficheiros Markdown e LaTeX e apresentar o resultado renderizado.
+pelos ficheiros Markdown, LaTeX, JSON e PDF e apresentar o resultado renderizado
+ou formatado.
 
 ## Janela e navegação
 
@@ -10,13 +11,17 @@ pelos ficheiros Markdown e LaTeX e apresentar o resultado renderizado.
 - A sidebar abre uma pasta como raiz, mostra a árvore por pastas e ficheiros e
   ignora ficheiros ocultos.
 - A árvore carrega o primeiro nível e expande pastas sob pedido. A pesquisa por
-  nome ou caminho carrega o índice completo quando necessário.
-- O filtro de compatibilidade mostra Markdown e LaTeX por defeito; pode ser
+  nome ou caminho procura apenas pastas diretamente dentro da raiz, faz scroll
+  automático até à primeira correspondência e aplica um highlight, sem filtrar
+  a árvore nem percorrer descendentes.
+- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, Word e PDF por defeito; pode ser
   desligado para mostrar todos os ficheiros.
 - A árvore mantém expansão, scroll e filtro por workspace.
 - A abertura de uma nova raiz pede confirmação quando já existe um workspace
   aberto.
-- Ficheiros `.md`, `.markdown`, `.tex` e `.latex` podem ser abertos em tabs.
+- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.json`, `.docx` e `.pdf` podem ser
+  abertos em tabs. Documentos Word são convertidos localmente para HTML rico e
+  visualizados numa página com fundo e zoom responsivo.
   Outros ficheiros são abertos pela aplicação predefinida do macOS.
 
 ## Markdown
@@ -31,14 +36,16 @@ pelos ficheiros Markdown e LaTeX e apresentar o resultado renderizado.
   ficheiros usam o macOS; links externos abrem no browser.
 - O preview mantém o último resultado quando uma atualização falha e mostra o
   diagnóstico.
-- O documento Markdown pode ser editado na própria superfície visual ou no
-  modo de Markdown integral. A edição tem autosave, undo/redo, deteção de
-  alterações externas e resolução de conflitos.
-- Parágrafos, headings, listas, formatação inline, citações, separadores,
-  checkboxes, blocos de código, imagens, tabelas, fórmulas, HTML e front matter
-  usam o modelo de edição existente em `BPViewerCore`.
+- Um duplo clique no preview abre diretamente o editor de source Markdown.
+  A edição tem autosave, undo/redo, deteção de alterações externas e resolução
+  de conflitos.
+- O editor pode ocupar a superfície inteira ou funcionar em split view, com o
+  source Markdown à esquerda e o preview live à direita.
 
 ## LaTeX e PDF
+
+- Ficheiros PDF existentes podem ser abertos diretamente em tabs e apresentados
+  com a mesma superfície PDFKit usada pelo preview LaTeX.
 
 - Ao abrir um ficheiro LaTeX, a app procura roots dentro do workspace. Uma root
   única é escolhida automaticamente; zero ou várias roots abrem uma seleção.
@@ -54,6 +61,19 @@ pelos ficheiros Markdown e LaTeX e apresentar o resultado renderizado.
   e conserva o PDF anterior quando a compilação atual falha.
 - O PDF suporta outline, pesquisa, cópia, impressão, links tratados pela app,
   zoom e restauração da posição de leitura.
+
+## JSON
+
+- Ficheiros `.json` são validados, formatados com indentação estável e
+  apresentados numa superfície de leitura monoespaçada.
+- Um duplo clique entra num editor raw monoespaçado, com undo/redo, autosave e
+  resolução de conflitos externos, sem split view.
+- O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
+  automática quando o ficheiro muda.
+- Rascunhos JSON inválidos podem permanecer abertos no editor, mas não são
+  gravados até voltarem a ser válidos.
+- JSON inválido mantém o último preview válido, quando existe, e mostra o
+  diagnóstico da validação.
 
 ## Tabs, preferências e snapshots
 

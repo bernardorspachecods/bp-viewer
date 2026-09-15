@@ -252,7 +252,11 @@ struct TopBarView: View {
 
             Spacer()
 
-            if model.activeTab?.kind == .markdown || model.activeTab?.kind == .latex {
+            if model.activeTab?.kind == .markdown
+                || model.activeTab?.kind == .latex
+                || model.activeTab?.kind == .json
+                || model.activeTab?.kind == .pdf
+                || model.activeTab?.kind == .docx {
                 if model.activeTab?.kind == .latex {
                     ToolbarIconButton(systemName: "list.bullet.rectangle", help: "Escolher documento principal LaTeX") {
                         model.changeLatexRoot()
@@ -273,8 +277,10 @@ struct TopBarView: View {
                     .menuStyle(.borderlessButton)
                     .help("Configuração avançada LaTeX")
                 }
-                ToolbarIconButton(systemName: "magnifyingglass", help: "Pesquisar no preview") {
-                    model.showFindBar()
+                if model.activeTab?.kind == .markdown || model.activeTab?.kind == .latex || model.activeTab?.kind == .pdf {
+                    ToolbarIconButton(systemName: "magnifyingglass", help: "Pesquisar no preview") {
+                        model.showFindBar()
+                    }
                 }
                 ToolbarIconButton(systemName: "minus.magnifyingglass", help: "Diminuir zoom") {
                     model.zoomOut()

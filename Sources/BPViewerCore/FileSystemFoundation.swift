@@ -9,12 +9,18 @@ public enum FilePathCopy {
 public enum DocumentKind: String, Hashable, Sendable {
     case markdown
     case latex
+    case json
+    case docx
+    case pdf
     case other
 
     public init(url: URL) {
         switch url.pathExtension.lowercased() {
         case "md", "markdown": self = .markdown
         case "tex", "latex": self = .latex
+        case "json": self = .json
+        case "docx": self = .docx
+        case "pdf": self = .pdf
         default: self = .other
         }
     }
@@ -23,6 +29,9 @@ public enum DocumentKind: String, Hashable, Sendable {
         switch self {
         case .markdown: "Markdown"
         case .latex: "LaTeX"
+        case .json: "JSON"
+        case .docx: "Word"
+        case .pdf: "PDF"
         case .other: "Não suportado"
         }
     }
@@ -77,6 +86,34 @@ public struct FileSystemScanner: Sendable {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return nodes.compactMap {
             filterNode($0, compatibleOnly: compatibleOnly, normalizedQuery: normalizedQuery)
+        }
+    }
+
+    /// Filters only the entries directly inside the scanned root. It never
+    /// inspects or returns descendants, even when a directory was expanded.
+    public func filterTopLevel(
+        _ nodes: [FileNode],
+        compatibleOnly: Bool,
+        query: String
+    ) -> [FileNode] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return nodes.compactMap { node in
+            let matchesQuery = normalizedQuery.isEmpty
+                || node.title.lowercased().contains(normalizedQuery)
+                || node.relativePath.lowercased().contains(normalizedQuery)
+            guard matchesQuery else { return nil }
+            guard node.isDirectory || !compatibleOnly || node.kind != .other else { return nil }
+
+            guard node.isDirectory else { return node }
+            return FileNode(
+                id: node.id,
+                url: node.url,
+                relativePath: node.relativePath,
+                isDirectory: true,
+                kind: .other,
+                children: [],
+                childrenLoaded: true
+            )
         }
     }
 

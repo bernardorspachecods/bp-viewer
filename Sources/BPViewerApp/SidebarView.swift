@@ -3,8 +3,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var treeScrollPosition = ScrollPosition()
-    @State private var isRestoringTreeScroll = false
+    @State private var highlightedSearchNodeIDs: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -25,20 +24,20 @@ struct SidebarView: View {
             .padding(.top, BPTokens.Spacing.md)
             .padding(.bottom, BPTokens.Spacing.sm)
 
-            TextField("Pesquisar ficheiros", text: Binding(
-                get: { model.treeQuery },
-                set: { model.updateTreeQuery($0) }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .padding(.horizontal, BPTokens.Spacing.md)
-            .padding(.bottom, BPTokens.Spacing.sm)
-
-            Toggle("Apenas Markdown e LaTeX", isOn: Binding(
+            Toggle("Apenas ficheiros suportados", isOn: Binding(
                 get: { model.compatibleOnly },
                 set: { model.updateCompatibleOnly($0) }
             ))
             .font(BPTokens.Typography.caption)
             .toggleStyle(.checkbox)
+            .padding(.horizontal, BPTokens.Spacing.md)
+            .padding(.bottom, BPTokens.Spacing.sm)
+
+            TextField("Pesquisar ficheiros", text: Binding(
+                get: { model.treeQuery },
+                set: { model.updateTreeQuery($0) }
+            ))
+            .textFieldStyle(.roundedBorder)
             .padding(.horizontal, BPTokens.Spacing.md)
             .padding(.bottom, BPTokens.Spacing.sm)
 
@@ -62,41 +61,58 @@ struct SidebarView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.nodes) { node in
-                            FileTreeRow(node: node, level: 0)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(model.nodes) { node in
+                                FileTreeRow(
+                                    node: node,
+                                    level: 0,
+                                    highlightedNodeIDs: highlightedSearchNodeIDs
+                                )
+                                .id(node.id)
+                            }
                         }
+                        .padding(.vertical, BPTokens.Spacing.xs)
                     }
-                    .padding(.vertical, BPTokens.Spacing.xs)
-                }
-                .id(model.rootURL?.standardizedFileURL.path ?? "no-root")
-                .scrollPosition($treeScrollPosition)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y
-                } action: { _, newOffset in
-                    if isRestoringTreeScroll {
-                        if abs(Double(newOffset) - model.treeScrollOffset) <= 1 {
-                            isRestoringTreeScroll = false
-                        }
-                        return
+                    .onChange(of: model.treeQuery) { _, _ in
+                        focusSearchResult(using: proxy)
                     }
-                    model.updateTreeScrollOffset(Double(newOffset))
+                    .onChange(of: model.nodes.map(\.id)) { _, _ in
+                        focusSearchResult(using: proxy)
+                    }
+                    .onAppear {
+                        focusSearchResult(using: proxy)
+                    }
                 }
             }
         }
         .background(BPTokens.Color.surface)
-        .onAppear {
-            restoreTreeScrollPosition()
-        }
-        .onChange(of: model.rootURL?.standardizedFileURL.path) { _, _ in
-            restoreTreeScrollPosition()
-        }
     }
 
-    private func restoreTreeScrollPosition() {
-        isRestoringTreeScroll = true
-        treeScrollPosition = ScrollPosition(y: CGFloat(model.treeScrollOffset))
+    private func focusSearchResult(using proxy: ScrollViewProxy) {
+        let normalizedQuery = model.treeQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedQuery.isEmpty else {
+            highlightedSearchNodeIDs = []
+            return
+        }
+
+        let matches = model.nodes.filter { node in
+            node.isDirectory
+                && (node.title.lowercased().contains(normalizedQuery)
+                    || node.relativePath.lowercased().contains(normalizedQuery))
+        }
+        guard let firstMatch = matches.first else {
+            highlightedSearchNodeIDs = []
+            return
+        }
+
+        highlightedSearchNodeIDs = Set(matches.map(\.id))
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(firstMatch.id, anchor: .center)
+            }
+        }
     }
 }
 
@@ -104,6 +120,7 @@ struct FileTreeRow: View {
     @EnvironmentObject private var model: AppModel
     let node: FileNode
     let level: Int
+    let highlightedNodeIDs: Set<String>
 
     var body: some View {
         if node.isDirectory {
@@ -113,7 +130,11 @@ struct FileTreeRow: View {
                 if model.expandedPaths.contains(node.id) {
                     if node.childrenLoaded {
                         ForEach(node.children) { child in
-                            FileTreeRow(node: child, level: level + 1)
+                            FileTreeRow(
+                                node: child,
+                                level: level + 1,
+                                highlightedNodeIDs: highlightedNodeIDs
+                            )
                         }
                     } else {
                         HStack(spacing: BPTokens.Spacing.xs) {
@@ -162,6 +183,7 @@ struct FileTreeRow: View {
         .padding(.leading, BPTokens.Spacing.sm + CGFloat(level) * BPTokens.Spacing.md)
         .padding(.trailing, BPTokens.Spacing.sm)
         .frame(minHeight: BPTokens.Size.row)
+        .background(highlightedNodeIDs.contains(node.id) ? BPTokens.Color.selection : .clear)
         .contentShape(Rectangle())
         .overlay(alignment: .leading) {
             TreeGuides(level: level)
@@ -175,6 +197,9 @@ struct FileTreeRow: View {
         switch node.kind {
         case .markdown: return "doc.richtext"
         case .latex: return "doc.text"
+        case .json: return "curlybraces"
+        case .docx: return "doc.text.fill"
+        case .pdf: return "doc.fill"
         case .other: return "doc"
         }
     }
@@ -183,6 +208,9 @@ struct FileTreeRow: View {
         switch node.kind {
         case .markdown: .blue
         case .latex: .orange
+        case .json: .yellow
+        case .docx: .purple
+        case .pdf: .red
         case .other: BPTokens.Color.muted
         }
     }
