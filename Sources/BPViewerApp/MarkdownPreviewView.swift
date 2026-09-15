@@ -261,8 +261,9 @@ private struct MarkdownSourceEditor: View {
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
                     monospaced: false,
+                    syntaxHighlightJSON: false,
                     onSourceChanged: onSourceChanged,
-                    onEndEditing: onEndEditing
+                    onEndEditing: { _ in onEndEditing() }
                 )
                 .frame(
                     maxWidth: (
@@ -284,8 +285,9 @@ struct SourceTextView: NSViewRepresentable {
     let zoom: Double
     let cursorUTF8Offset: Int?
     let monospaced: Bool
+    let syntaxHighlightJSON: Bool
     let onSourceChanged: @MainActor @Sendable (String) -> Void
-    let onEndEditing: () -> Void
+    let onEndEditing: @MainActor @Sendable (String) -> Void
 
     private static let bodyLineHeightMultiple: CGFloat = 1.55
 
@@ -295,12 +297,21 @@ struct SourceTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownNSTextView()
-        textView.onEscape = { [weak coordinator = context.coordinator] in
-            coordinator?.onEndEditing()
+        textView.onEscape = { [weak textView, weak coordinator = context.coordinator] in
+            guard let textView else { return }
+            coordinator?.onEndEditing(textView.string)
         }
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
+        if monospaced {
+            // JSON syntax requires ASCII quotes; macOS smart quotes would turn
+            // a typed delimiter into a Unicode character such as U+201D.
+            textView.isAutomaticQuoteSubstitutionEnabled = false
+            textView.isAutomaticDashSubstitutionEnabled = false
+            textView.isAutomaticTextReplacementEnabled = false
+            textView.isAutomaticSpellingCorrectionEnabled = false
+        }
         textView.usesFindPanel = true
         textView.drawsBackground = true
         textView.backgroundColor = .textBackgroundColor
@@ -308,6 +319,7 @@ struct SourceTextView: NSViewRepresentable {
         textView.insertionPointColor = .controlAccentColor
         textView.string = source
         applyTypography(to: textView)
+        applySyntaxHighlighting(to: textView, source: source)
         textView.delegate = context.coordinator
         textView.textContainerInset = NSSize(
             width: SourceEditorLayout.horizontalPadding * CGFloat(zoom),
@@ -343,8 +355,9 @@ struct SourceTextView: NSViewRepresentable {
         context.coordinator.onEndEditing = onEndEditing
 
         if !context.coordinator.didRequestInitialFocus {
-            context.coordinator.didRequestInitialFocus = true
-            focus(textView, selection: nil)
+            focus(textView, selection: nil) {
+                context.coordinator.didRequestInitialFocus = true
+            }
         }
 
         if textView.string != source {
@@ -357,6 +370,7 @@ struct SourceTextView: NSViewRepresentable {
         }
 
         applyTypography(to: textView)
+        applySyntaxHighlighting(to: textView, source: source)
         textView.textContainerInset = NSSize(
             width: SourceEditorLayout.horizontalPadding * CGFloat(zoom),
             height: 40 * CGFloat(zoom)
@@ -394,14 +408,55 @@ struct SourceTextView: NSViewRepresentable {
         textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
     }
 
-    private func focus(_ textView: NSTextView, selection: NSRange?) {
+    private func applySyntaxHighlighting(to textView: NSTextView, source: String) {
+        let textLength = (textView.string as NSString).length
+        guard textLength > 0 else { return }
+        let range = NSRange(location: 0, length: textLength)
+        textView.textStorage?.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
+        guard syntaxHighlightJSON else { return }
+
+        let colors: [JSONSyntaxTokenKind: NSColor] = [
+            .punctuation: .secondaryLabelColor,
+            .key: .systemBlue,
+            .string: .systemOrange,
+            .number: .systemGreen,
+            .boolean: .systemPurple,
+            .null: .systemPurple,
+            .invalid: .systemRed
+        ]
+        for token in JSONSyntaxHighlighter().tokenize(source) {
+            let start = utf16Offset(in: source, utf8Offset: token.utf8Offset)
+            let end = utf16Offset(in: source, utf8Offset: token.utf8End)
+            guard end > start, let color = colors[token.kind] else { continue }
+            textView.textStorage?.addAttribute(
+                .foregroundColor,
+                value: color,
+                range: NSRange(location: start, length: end - start)
+            )
+        }
+    }
+
+    private func focus(
+        _ textView: NSTextView,
+        selection: NSRange?,
+        attempt: Int = 0,
+        onFocused: (() -> Void)? = nil
+    ) {
         DispatchQueue.main.async { [weak textView] in
-            guard let textView, let window = textView.window else { return }
+            guard let textView else { return }
+            guard let window = textView.window else {
+                guard attempt < 10 else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    focus(textView, selection: selection, attempt: attempt + 1, onFocused: onFocused)
+                }
+                return
+            }
             if let selection {
                 textView.setSelectedRange(selection)
                 textView.scrollRangeToVisible(selection)
             }
             window.makeFirstResponder(textView)
+            onFocused?()
         }
     }
 
@@ -415,13 +470,13 @@ struct SourceTextView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onSourceChanged: @MainActor @Sendable (String) -> Void
-        var onEndEditing: () -> Void
+        var onEndEditing: @MainActor @Sendable (String) -> Void
         var appliedCursorUTF8Offset: Int?
         var didRequestInitialFocus = false
 
         init(
             onSourceChanged: @escaping @MainActor @Sendable (String) -> Void,
-            onEndEditing: @escaping () -> Void
+            onEndEditing: @escaping @MainActor @Sendable (String) -> Void
         ) {
             self.onSourceChanged = onSourceChanged
             self.onEndEditing = onEndEditing

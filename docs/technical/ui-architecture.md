@@ -69,9 +69,10 @@ links.
 ### JSON
 
 `JSONPreviewView` apresenta o JSON validado e formatado numa superfície
-monoespaçada selecionável, com zoom e captura de snapshots. Um duplo clique
-troca para o editor raw monoespaçado, com undo/redo, autosave, validação antes
-de gravar e resolução de conflitos externos; não há split view.
+monoespaçada selecionável, preservando a ordem das propriedades do source, com
+zoom e captura de snapshots. Um duplo clique troca para o editor raw
+monoespaçado, com undo/redo, gravação explícita apenas para JSON válido,
+validação antes de gravar e resolução de conflitos externos; não há split view.
 
 ### Word
 

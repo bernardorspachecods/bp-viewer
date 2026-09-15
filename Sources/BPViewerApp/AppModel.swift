@@ -51,6 +51,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
     @Published var showingRootChangeConfirmation = false
+    @Published var pendingCloseRequest: PendingCloseRequest?
+    @Published var showingPendingCloseConfirmation = false
     @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
     @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
     @Published var isSnapshotCaptureActive = false
@@ -75,7 +77,6 @@ final class AppModel: ObservableObject {
     private var previewGenerations: [String: Int] = [:]
     private var latexRenderTasks: [String: Task<Void, Never>] = [:]
     private var markdownSaveTasks: [String: Task<Void, Never>] = [:]
-    private var jsonSaveTasks: [String: Task<Void, Never>] = [:]
     private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedDirectoryURLs: Set<URL> = []
     private var treeRefreshGeneration = 0
@@ -622,12 +623,83 @@ final class AppModel: ObservableObject {
 
     func closeTab(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
+        guard !hasUnsavedChanges(in: tab) else {
+            pendingCloseRequest = PendingCloseRequest(
+                id: tab.id,
+                tabID: tab.id,
+                title: tab.title
+            )
+            showingPendingCloseConfirmation = true
+            return
+        }
+        closeTabImmediately(tab)
+    }
+
+    func cancelPendingClose() {
+        if let request = pendingCloseRequest,
+           let index = tabs.firstIndex(where: { $0.id == request.tabID }) {
+            tabs[index].markdownEditSession?.isEditing = true
+            tabs[index].jsonEditSession?.isEditing = true
+        }
+        pendingCloseRequest = nil
+        showingPendingCloseConfirmation = false
+    }
+
+    var pendingCloseCanSave: Bool {
+        guard let request = pendingCloseRequest,
+              let tab = tabs.first(where: { $0.id == request.tabID }) else {
+            return false
+        }
+        guard tab.kind == .json else { return true }
+        return tab.jsonEditSession?.saveState != .failed && tab.errorMessage == nil
+    }
+
+    func discardPendingClose() {
+        guard let request = pendingCloseRequest,
+              let tab = tabs.first(where: { $0.id == request.tabID }) else {
+            pendingCloseRequest = nil
+            showingPendingCloseConfirmation = false
+            return
+        }
+        pendingCloseRequest = nil
+        showingPendingCloseConfirmation = false
+        closeTabImmediately(tab)
+    }
+
+    func savePendingClose() {
+        guard pendingCloseCanSave else { return }
+        guard let request = pendingCloseRequest,
+              let tab = tabs.first(where: { $0.id == request.tabID }) else {
+            pendingCloseRequest = nil
+            showingPendingCloseConfirmation = false
+            return
+        }
+        pendingCloseRequest = nil
+        showingPendingCloseConfirmation = false
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let saved: Bool
+            switch tab.kind {
+            case .markdown:
+                saved = await saveMarkdownEdit(tabID: tab.id)
+            case .json:
+                saved = await saveJSONEdit(tabID: tab.id)
+            default:
+                saved = true
+            }
+            guard saved,
+                  let currentTab = tabs.first(where: { $0.id == tab.id }) else { return }
+            closeTabImmediately(currentTab)
+        }
+    }
+
+    private func closeTabImmediately(_ tab: DocumentTab) {
+        guard tabs.contains(tab) else { return }
         latexRenderTasks[tab.id]?.cancel()
         latexRenderTasks.removeValue(forKey: tab.id)
         markdownSaveTasks[tab.id]?.cancel()
         markdownSaveTasks.removeValue(forKey: tab.id)
-        jsonSaveTasks[tab.id]?.cancel()
-        jsonSaveTasks.removeValue(forKey: tab.id)
         previewGenerations[tab.id, default: 0] += 1
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
@@ -645,6 +717,16 @@ final class AppModel: ObservableObject {
             renderActiveTabIfNeeded()
         }
         persistState()
+    }
+
+    private func hasUnsavedChanges(in tab: DocumentTab) -> Bool {
+        if let session = tab.markdownEditSession {
+            return session.currentSource != session.baseSource || session.saveState != .saved
+        }
+        if let session = tab.jsonEditSession {
+            return session.currentSource != session.baseSource || session.saveState != .saved
+        }
+        return false
     }
 
     func closeActiveTab() {
@@ -793,6 +875,7 @@ final class AppModel: ObservableObject {
         )
 
         tabs[index].jsonSource = source
+        tabs[index].errorMessage = nil
         tabs[index].jsonCursorUTF8Offset = rawOffset
         tabs[index].jsonEditSession = MarkdownEditSession(
             baseSource: source,
@@ -813,10 +896,22 @@ final class AppModel: ObservableObject {
         session.conflict = nil
         tabs[index].jsonSource = text
         tabs[index].jsonEditSession = session
-        scheduleJSONSave(for: tabID)
+        do {
+            _ = try JSONPreviewAdapter().format(source: text)
+            tabs[index].jsonEditSession?.saveState = .unsaved
+            tabs[index].errorMessage = nil
+        } catch {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
+        }
     }
 
-    func endJSONEditing(tabID: String) {
+    func endJSONEditing(tabID: String, source: String? = nil) {
+        if let source,
+           tabs.first(where: { $0.id == tabID })?.jsonEditSession?.currentSource != source {
+            updateJSONEditing(tabID: tabID, text: source)
+        }
+
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .json,
               var session = tabs[index].jsonEditSession else { return }
@@ -826,9 +921,10 @@ final class AppModel: ObservableObject {
             tabs[index].jsonEditSession = session
             renderJSON(tabID: tabID)
         } else {
-            session.isEditing = false
             tabs[index].jsonEditSession = session
-            scheduleJSONSave(for: tabID)
+            Task { @MainActor [weak self] in
+                _ = await self?.saveJSONEdit(tabID: tabID, finishEditing: true)
+            }
         }
     }
 
@@ -845,7 +941,7 @@ final class AppModel: ObservableObject {
         session.conflict = nil
         tabs[index].jsonSource = previous
         tabs[index].jsonEditSession = session
-        scheduleJSONSave(for: tabID)
+        validateJSONEdit(at: index)
         return true
     }
 
@@ -862,8 +958,20 @@ final class AppModel: ObservableObject {
         session.conflict = nil
         tabs[index].jsonSource = next
         tabs[index].jsonEditSession = session
-        scheduleJSONSave(for: tabID)
+        validateJSONEdit(at: index)
         return true
+    }
+
+    private func validateJSONEdit(at index: Int) {
+        guard let source = tabs[index].jsonEditSession?.currentSource else { return }
+        do {
+            _ = try JSONPreviewAdapter().format(source: source)
+            tabs[index].jsonEditSession?.saveState = .unsaved
+            tabs[index].errorMessage = nil
+        } catch {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
+        }
     }
 
     func keepLocalJSONEdit(tabID: String) {
@@ -885,23 +993,22 @@ final class AppModel: ObservableObject {
         session.conflict = nil
         session.isEditing = false
         tabs[index].jsonSource = conflict.externalSource
+        tabs[index].errorMessage = nil
         tabs[index].jsonEditSession = session
         renderJSON(tabID: tabID)
     }
 
-    private func scheduleJSONSave(for tabID: String) {
-        jsonSaveTasks[tabID]?.cancel()
-        jsonSaveTasks[tabID] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(450))
-            guard let self else { return }
-            await self.saveJSONEdit(tabID: tabID)
-        }
-    }
-
-    private func saveJSONEdit(tabID: String) async {
+    @discardableResult
+    private func saveJSONEdit(tabID: String, finishEditing: Bool = false) async -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].jsonEditSession,
-              session.currentSource != session.baseSource else { return }
+              session.currentSource != session.baseSource else {
+            if finishEditing, let index = tabs.firstIndex(where: { $0.id == tabID }) {
+                tabs[index].jsonEditSession?.isEditing = false
+                renderJSON(tabID: tabID)
+            }
+            return true
+        }
 
         let localSource = session.currentSource
         do {
@@ -910,7 +1017,7 @@ final class AppModel: ObservableObject {
             tabs[index].jsonEditSession?.saveState = .failed
             tabs[index].jsonEditSession?.isEditing = true
             tabs[index].errorMessage = error.localizedDescription
-            return
+            return false
         }
 
         let url = tabs[index].url
@@ -923,7 +1030,7 @@ final class AppModel: ObservableObject {
             }.value
 
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
-                  tabs[currentIndex].jsonEditSession?.currentSource == localSource else { return }
+                  tabs[currentIndex].jsonEditSession?.currentSource == localSource else { return false }
 
             guard externalSource == baseSource else {
                 tabs[currentIndex].jsonEditSession?.saveState = .conflict
@@ -933,7 +1040,7 @@ final class AppModel: ObservableObject {
                     externalSource: externalSource,
                     blockIDs: []
                 )
-                return
+                return false
             }
 
             try localSource.write(to: url, atomically: true, encoding: .utf8)
@@ -943,14 +1050,17 @@ final class AppModel: ObservableObject {
             tabs[currentIndex].jsonEditSession?.saveState = .saved
             tabs[currentIndex].jsonEditSession?.conflict = nil
             tabs[currentIndex].errorMessage = nil
-            if tabs[currentIndex].jsonEditSession?.isEditing != true {
+            if finishEditing {
+                tabs[currentIndex].jsonEditSession?.isEditing = false
                 renderJSON(tabID: tabID)
             }
+            return true
         } catch {
-            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
             tabs[currentIndex].jsonEditSession?.saveState = .failed
             tabs[currentIndex].jsonEditSession?.isEditing = true
             tabs[currentIndex].errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -1059,10 +1169,11 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func saveMarkdownEdit(tabID: String) async {
+    @discardableResult
+    private func saveMarkdownEdit(tabID: String) async -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].markdownEditSession,
-              session.currentSource != session.baseSource else { return }
+              session.currentSource != session.baseSource else { return true }
 
         let url = tabs[index].url
         let baseSource = session.baseSource
@@ -1080,7 +1191,7 @@ final class AppModel: ObservableObject {
             )
 
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
-                  tabs[currentIndex].markdownEditSession?.currentSource == localSource else { return }
+                  tabs[currentIndex].markdownEditSession?.currentSource == localSource else { return false }
 
             switch outcome {
             case let .merged(mergedSource):
@@ -1094,6 +1205,7 @@ final class AppModel: ObservableObject {
                 if tabs[currentIndex].markdownEditSession?.isEditing != true {
                     renderMarkdown(tabID: tabID)
                 }
+                return true
             case let .conflict(_, local, external, blockIDs):
                 tabs[currentIndex].markdownEditSession?.saveState = .conflict
                 tabs[currentIndex].markdownEditSession?.conflict = MarkdownConflict(
@@ -1101,11 +1213,13 @@ final class AppModel: ObservableObject {
                     externalSource: external,
                     blockIDs: blockIDs
                 )
+                return false
             }
         } catch {
-            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
             tabs[currentIndex].markdownEditSession?.saveState = .failed
             tabs[currentIndex].errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -1269,6 +1383,10 @@ final class AppModel: ObservableObject {
 
     func zoomOut() {
         setPreviewZoom(previewZoom - 0.1)
+    }
+
+    func setPreviewZoomFromGesture(_ value: Double) {
+        setPreviewZoom(value)
     }
 
     func resetPreviewZoom() {
@@ -1882,7 +2000,7 @@ final class AppModel: ObservableObject {
                   tabs[currentIndex].jsonEditSession?.currentSource == session.currentSource else { return }
 
             if externalSource == session.baseSource {
-                scheduleJSONSave(for: tabID)
+                tabs[currentIndex].jsonEditSession?.saveState = .unsaved
             } else {
                 tabs[currentIndex].jsonEditSession?.saveState = .conflict
                 tabs[currentIndex].jsonEditSession?.isEditing = true

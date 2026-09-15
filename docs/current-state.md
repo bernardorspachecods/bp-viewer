@@ -66,12 +66,15 @@ ou formatado.
 
 - Ficheiros `.json` são validados, formatados com indentação estável e
   apresentados numa superfície de leitura monoespaçada.
-- Um duplo clique entra num editor raw monoespaçado, com undo/redo, autosave e
-  resolução de conflitos externos, sem split view.
+- Um duplo clique entra num editor raw monoespaçado, com undo/redo, gravação
+  explícita apenas para JSON válido e resolução de conflitos externos, sem
+  split view.
 - O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
   automática quando o ficheiro muda.
 - Rascunhos JSON inválidos podem permanecer abertos no editor, mas não são
-  gravados até voltarem a ser válidos.
+  gravados até voltarem a ser válidos; o editor mostra o estado “Não guardado”.
+- Ao fechar uma tab com alterações por guardar, a app permite editar, guardar
+  ou fechar sem guardar.
 - JSON inválido mantém o último preview válido, quando existe, e mostra o
   diagnóstico da validação.
 

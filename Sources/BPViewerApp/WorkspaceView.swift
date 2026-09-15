@@ -352,8 +352,8 @@ struct PreviewPane: View {
                                 onRedo: {
                                     _ = model.redoJSONEdit()
                                 },
-                                onEndEditing: {
-                                    model.endJSONEditing(tabID: tab.id)
+                                onEndEditing: { source in
+                                    model.endJSONEditing(tabID: tab.id, source: source)
                                 },
                                 onKeepLocalEdit: {
                                     model.keepLocalJSONEdit(tabID: tab.id)
@@ -361,6 +361,7 @@ struct PreviewPane: View {
                                 onUseExternalEdit: {
                                     model.useExternalJSONEdit(tabID: tab.id)
                                 },
+                                onSnapshot: snapshotAction,
                                 isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
                                 onSnapshotCancel: model.cancelSnapshotCapture,
                                 onSnapshotCapture: { image in
@@ -400,7 +401,10 @@ struct PreviewPane: View {
                         DocxPreviewView(
                             url: tab.url,
                             zoom: tab.previewZoom,
-                            previewRevision: tab.previewUpdatedAt
+                            previewRevision: tab.previewUpdatedAt,
+                            onZoomChanged: { value in
+                                model.setPreviewZoomFromGesture(value)
+                            }
                         )
                     } else {
                         VStack(spacing: 0) {
@@ -420,14 +424,25 @@ struct PreviewPane: View {
     @ViewBuilder
     private func previewErrorOverlay(showingStalePreview: Bool) -> some View {
         if let errorMessage = tab.errorMessage {
-            PreviewErrorBanner(
-                message: errorMessage,
-                showingStalePreview: showingStalePreview,
-                onRetry: model.refreshActiveTab
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, BPTokens.Spacing.md)
-            .padding(.vertical, BPTokens.Spacing.xs)
+            if tab.kind == .json && tab.jsonEditSession?.isEditing == true {
+                PreviewErrorBanner(
+                    message: errorMessage,
+                    showingStalePreview: showingStalePreview,
+                    title: "JSON inválido — não guardado"
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, BPTokens.Spacing.md)
+                .padding(.vertical, BPTokens.Spacing.xs)
+            } else {
+                PreviewErrorBanner(
+                    message: errorMessage,
+                    showingStalePreview: showingStalePreview,
+                    onRetry: model.refreshActiveTab
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, BPTokens.Spacing.md)
+                .padding(.vertical, BPTokens.Spacing.xs)
+            }
         }
     }
 
@@ -503,8 +518,21 @@ struct PreviewFindBar: View {
 struct PreviewErrorBanner: View {
     let message: String
     let showingStalePreview: Bool
-    let onRetry: () -> Void
+    let title: String?
+    let onRetry: (() -> Void)?
     @State private var didCopy = false
+
+    init(
+        message: String,
+        showingStalePreview: Bool,
+        title: String? = nil,
+        onRetry: (() -> Void)? = nil
+    ) {
+        self.message = message
+        self.showingStalePreview = showingStalePreview
+        self.title = title
+        self.onRetry = onRetry
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
@@ -512,7 +540,7 @@ struct PreviewErrorBanner: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(BPTokens.Color.warning)
                 VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                    Text(showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview")
+                    Text(title ?? (showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview"))
                         .font(BPTokens.Typography.caption.weight(.semibold))
                 }
                 Text(message)
@@ -530,8 +558,10 @@ struct PreviewErrorBanner: View {
                 .buttonStyle(.borderless)
                 .help(didCopy ? "Copiado" : "Copiar mensagem")
                 Spacer()
-                Button("Tentar novamente", action: onRetry)
-                    .buttonStyle(.borderless)
+                if let onRetry {
+                    Button("Tentar novamente", action: onRetry)
+                        .buttonStyle(.borderless)
+                }
             }
         }
         .padding(.horizontal, BPTokens.Spacing.md)

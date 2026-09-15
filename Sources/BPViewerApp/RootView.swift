@@ -39,6 +39,22 @@ struct RootView: View {
         } message: {
             Text("As tabs atuais serão fechadas e a nova pasta passará a ser a raiz do projeto.")
         }
+        .alert(
+            "Alterações por guardar",
+            isPresented: $model.showingPendingCloseConfirmation
+        ) {
+            Button("Editar", role: .cancel, action: model.cancelPendingClose)
+            if model.pendingCloseCanSave {
+                Button("Guardar", action: model.savePendingClose)
+            }
+            Button("Não guardar", role: .destructive, action: model.discardPendingClose)
+        } message: {
+            if model.pendingCloseCanSave {
+                Text("\(model.pendingCloseRequest?.title ?? "Este ficheiro") tem alterações por guardar. Quer editar, guardar ou fechar sem guardar?")
+            } else {
+                Text("\(model.pendingCloseRequest?.title ?? "Este ficheiro") tem JSON inválido. Corrija o conteúdo antes de guardar ou feche sem guardar.")
+            }
+        }
         .sheet(item: $model.pendingLatexRootSelection) { request in
             LatexRootSelectionView(request: request)
                 .environmentObject(model)

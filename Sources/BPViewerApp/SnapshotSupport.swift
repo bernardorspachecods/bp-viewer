@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import PDFKit
 import SwiftUI
 
 struct SnapshotArtifactStore {
@@ -58,17 +59,19 @@ final class SnapshotWindowManager: NSObject, NSWindowDelegate {
         }
 
         let imageSize = image.size
-        let scale = min(
-            1,
-            min(720 / max(imageSize.width, 1), 620 / max(imageSize.height, 1))
+        let imageWidth = max(imageSize.width, 1)
+        let imageHeight = max(imageSize.height, 1)
+        let scale = max(
+            min(1, min(720 / imageWidth, 620 / imageHeight)),
+            max(180 / imageWidth, 120 / imageHeight)
         )
         let contentSize = NSSize(
-            width: max(220, imageSize.width * scale),
-            height: max(160, imageSize.height * scale)
+            width: imageWidth * scale,
+            height: imageHeight * scale
         )
         let panel = SnapshotPanel(
             contentRect: NSRect(origin: .zero, size: contentSize),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -77,6 +80,9 @@ final class SnapshotWindowManager: NSObject, NSWindowDelegate {
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         panel.level = .normal
+        panel.styleMask.insert(.resizable)
+        panel.contentAspectRatio = NSSize(width: imageWidth, height: imageHeight)
+        panel.contentMinSize = NSSize(width: 180, height: 120)
         panel.minSize = NSSize(width: 180, height: 120)
 
         let imageView = NSImageView()
@@ -84,7 +90,12 @@ final class SnapshotWindowManager: NSObject, NSWindowDelegate {
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        imageView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        imageView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         panel.contentView = NSView()
+        panel.contentView?.autoresizingMask = [.width, .height]
         panel.contentView?.addSubview(imageView)
         if let contentView = panel.contentView {
             NSLayoutConstraint.activate([
@@ -345,7 +356,10 @@ final class SnapshotSelectionNSView: NSView {
         window.displayIfNeeded()
 
         let image: NSImage?
-        if let scrollView, documentRect.height > scrollView.contentView.bounds.height + 1 {
+        if let scrollView,
+           let pdfImage = SnapshotPDFCapture.image(of: documentRect, in: scrollView) {
+            image = pdfImage
+        } else if let scrollView, documentRect.height > scrollView.contentView.bounds.height + 1 {
             image = captureScrolled(documentRect: documentRect, in: scrollView)
         } else {
             image = SnapshotWindowCapture.image(of: selectionRect, in: self)
@@ -436,6 +450,87 @@ private enum SnapshotImageComposer {
         }
         image.unlockFocus()
         return image
+    }
+}
+
+@MainActor
+private enum SnapshotPDFCapture {
+    static func image(of documentRect: CGRect, in scrollView: NSScrollView) -> NSImage? {
+        guard let pdfView = ancestorPDFView(of: scrollView),
+              let document = pdfView.document,
+              let documentView = scrollView.documentView,
+              !documentRect.isNull,
+              documentRect.width > 1,
+              documentRect.height > 1 else {
+            return nil
+        }
+
+        let selectionInPDFView = documentView.convert(documentRect, to: pdfView)
+        guard !selectionInPDFView.isNull,
+              selectionInPDFView.width > 1,
+              selectionInPDFView.height > 1 else {
+            return nil
+        }
+
+        let image = NSImage(size: selectionInPDFView.size)
+        image.lockFocusFlipped(false)
+        NSColor.white.setFill()
+        CGRect(origin: .zero, size: selectionInPDFView.size).fill()
+
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            image.unlockFocus()
+            return nil
+        }
+
+        for index in 0..<document.pageCount {
+            guard let page = document.page(at: index) else { continue }
+
+            let pageBounds = page.bounds(for: .cropBox)
+            let pageRectInPDFView = pdfView.convert(pageBounds, from: page)
+            let intersection = selectionInPDFView.intersection(pageRectInPDFView)
+            guard !intersection.isNull,
+                  intersection.width > 0,
+                  intersection.height > 0,
+                  pageBounds.width > 0,
+                  pageBounds.height > 0 else {
+                continue
+            }
+
+            let destination = CGRect(
+                x: intersection.minX - selectionInPDFView.minX,
+                y: intersection.minY - selectionInPDFView.minY,
+                width: intersection.width,
+                height: intersection.height
+            )
+            let scaleX = pageRectInPDFView.width / pageBounds.width
+            let scaleY = pageRectInPDFView.height / pageBounds.height
+            guard scaleX > 0, scaleY > 0 else { continue }
+
+            context.saveGState()
+            context.clip(to: destination)
+            context.translateBy(
+                x: pageRectInPDFView.minX - selectionInPDFView.minX,
+                y: pageRectInPDFView.minY - selectionInPDFView.minY
+            )
+            context.scaleBy(x: scaleX, y: scaleY)
+            context.translateBy(x: -pageBounds.minX, y: -pageBounds.minY)
+            page.draw(with: .cropBox, to: context)
+            context.restoreGState()
+        }
+
+        image.unlockFocus()
+        return image
+    }
+
+    private static func ancestorPDFView(of view: NSView) -> PDFView? {
+        var candidate: NSView? = view
+        while let current = candidate {
+            if let pdfView = current as? PDFView {
+                return pdfView
+            }
+            candidate = current.superview
+        }
+        return nil
     }
 }
 

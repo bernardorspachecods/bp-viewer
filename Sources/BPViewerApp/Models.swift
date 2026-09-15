@@ -96,7 +96,7 @@ enum MarkdownSaveState: String, Hashable {
         case .unsaved: "Alterações por guardar"
         case .saving: "A guardar…"
         case .conflict: "Conflito externo"
-        case .failed: "Erro ao guardar"
+        case .failed: "Não guardado"
         }
     }
 }
@@ -105,6 +105,12 @@ struct MarkdownConflict: Hashable {
     let localSource: String
     let externalSource: String
     let blockIDs: [String]
+}
+
+struct PendingCloseRequest: Identifiable {
+    let id: String
+    let tabID: String
+    let title: String
 }
 
 struct MarkdownEditSession: Hashable {
