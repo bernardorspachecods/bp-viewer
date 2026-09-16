@@ -25,8 +25,8 @@ snapshots usam uma janela AppKit separada.
 ## Estado da UI
 
 `AppModel` é o `ObservableObject` principal e publica a raiz, árvore, tabs,
-tab ativa, pesquisa, filtro, expansão, sidebar, zoom, tema, estado de pesquisa,
-pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
+tab ativa, pesquisa, alvo da pesquisa, filtro, expansão, sidebar, zoom, tema,
+estado de pesquisa, pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
 e resolução de documentos vivem no Core; a árvore é mantida por
 `WorkspaceTreeSession`; pedidos de renderização e edição são tratados,
 respetivamente, por `DocumentRenderCoordinator` e
@@ -60,7 +60,8 @@ ações de fecho. A ordenação, unicidade e tab ativa são mantidas por
 ### Markdown
 
 `MarkdownPreviewView` compõe o HTML, a pesquisa, o outline, o zoom, o estado de
-renderização e os erros. `MarkdownWebPreview` contém a `WKWebView`, o
+renderização e os erros. A barra de pesquisa comum vive na superfície da tab e
+segue o foco entre o editor source e o preview em split view. `MarkdownWebPreview` contém a `WKWebView`, o
 JavaScript, a navegação e a posição de leitura. `SourceEditorView` contém o
 editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
 source Markdown, cujo syntax highlighting usa uma paleta própria para os temas
@@ -71,7 +72,7 @@ mantém o source à esquerda e o preview live à direita.
 
 `PDFPreviewView` apresenta PDFs locais e os artefactos LaTeX em `PDFView`,
 controla zoom, pesquisa, outline, posição de leitura, impressão e navegação de
-links.
+links. A pesquisa comum encaminha as operações para PDFKit.
 
 ### JSON
 
@@ -80,12 +81,13 @@ monoespaçada selecionável, preservando a ordem das propriedades do source, com
 zoom e captura de snapshots. Um duplo clique troca para o editor raw
 monoespaçado, com undo/redo, gravação explícita apenas para JSON válido,
 validação antes de gravar e resolução de conflitos externos; não há split view.
+Preview e editor usam a mesma barra de pesquisa e o foco define o alvo.
 
 ### Word
 
 `DocxPreviewView` converte o conteúdo rico do `.docx` para HTML local e
 apresenta-o numa `WKWebView` com canvas, página branca e magnificação ligada ao
-zoom da app.
+zoom da app. A pesquisa comum encaminha as queries para a WebKit.
 
 ### Sistema visual e preferências
 

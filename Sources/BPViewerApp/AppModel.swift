@@ -46,6 +46,8 @@ final class AppModel: ObservableObject {
     @Published var findQuery = ""
     @Published var findRequestID = 0
     @Published var findBackwards = false
+    @Published var findTarget: FindTarget = .preview
+    @Published var findMatchCount: Int?
     @Published private(set) var isScanningTree = false
     @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
@@ -1088,8 +1090,19 @@ final class AppModel: ObservableObject {
     }
 
     func showFindBar() {
-        guard activeTab?.kind == .markdown || activeTab?.kind == .latex || activeTab?.kind == .pdf else { return }
+        guard let kind = activeTab?.kind,
+              [.markdown, .latex, .pdf, .json, .docx].contains(kind) else { return }
         isFindBarVisible = true
+    }
+
+    func setFindTarget(_ target: FindTarget) {
+        guard findTarget != target else { return }
+        findTarget = target
+        findMatchCount = nil
+    }
+
+    func setFindMatchCount(_ count: Int) {
+        findMatchCount = count
     }
 
     func setOutlineVisible(_ visible: Bool, forTabID tabID: String) {
@@ -1209,6 +1222,8 @@ final class AppModel: ObservableObject {
         isFindBarVisible = false
         findQuery = ""
         findRequestID += 1
+        findTarget = .preview
+        findMatchCount = nil
     }
 
     func findNext() {
@@ -1339,6 +1354,7 @@ final class AppModel: ObservableObject {
     func selectNextTab() {
         var session = documentTabSession
         guard session.selectNext() else { return }
+        hideFindBar()
         applyDocumentTabSession(session)
         syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
@@ -1348,6 +1364,7 @@ final class AppModel: ObservableObject {
     func selectTab(id: String) {
         var session = documentTabSession
         guard session.select(id: id) else { return }
+        hideFindBar()
         applyDocumentTabSession(session)
         syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()

@@ -253,13 +253,13 @@ struct PreviewPane: View {
         VStack(spacing: 0) {
             previewHeader
             Divider()
+            if model.isFindBarVisible {
+                PreviewFindBar()
+            }
 
-            Group {
+            VStack(spacing: 0) {
                     if tab.kind == .markdown, let html = tab.previewHTML {
                         VStack(spacing: 0) {
-                            if model.isFindBarVisible {
-                                PreviewFindBar()
-                            }
                             MarkdownPreviewView(
                                 html: html,
                                 baseURL: tab.previewBaseURL ?? tab.url.deletingLastPathComponent(),
@@ -311,6 +311,9 @@ struct PreviewPane: View {
                                 findQuery: model.findQuery,
                                 findRequestID: model.findRequestID,
                                 findBackwards: model.findBackwards,
+                                findTarget: model.findTarget,
+                                onFindTargetChanged: model.setFindTarget,
+                                onFindMatchCount: model.setFindMatchCount,
                                 isOutlineVisible: Binding(
                                     get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
                                     set: { model.setOutlineVisible($0, forTabID: tab.id) }
@@ -366,20 +369,26 @@ struct PreviewPane: View {
                                 onSnapshotCancel: model.cancelSnapshotCapture,
                                 onSnapshotCapture: { image in
                                     model.finishSnapshotCapture(image, forTabID: tab.id)
-                                }
+                                },
+                                findQuery: model.findQuery,
+                                findRequestID: model.findRequestID,
+                                findBackwards: model.findBackwards,
+                                findTarget: model.findTarget,
+                                onFindTargetChanged: model.setFindTarget,
+                                onFindMatchCount: model.setFindMatchCount
                             )
                         }
                     } else if (tab.kind == .latex || tab.kind == .pdf), let pdfData = tab.previewPDFData {
                         VStack(spacing: 0) {
-                            if model.isFindBarVisible {
-                                PreviewFindBar()
-                            }
                             PDFPreviewView(
                                 data: pdfData,
                                 zoom: tab.previewZoom,
                                 findQuery: model.findQuery,
                                 findRequestID: model.findRequestID,
                                 findBackwards: model.findBackwards,
+                                isFindTarget: model.findTarget == .preview,
+                                onFindFocus: { model.setFindTarget(.preview) },
+                                onFindMatchCount: model.setFindMatchCount,
                                 pageIndex: tab.previewPageIndex,
                                 readingPosition: tab.pdfReadingPosition,
                                 onReadingPositionChanged: { position in
@@ -402,6 +411,12 @@ struct PreviewPane: View {
                             url: tab.url,
                             zoom: tab.previewZoom,
                             previewRevision: tab.previewUpdatedAt,
+                            findQuery: model.findQuery,
+                            findRequestID: model.findRequestID,
+                            findBackwards: model.findBackwards,
+                            isFindTarget: model.findTarget == .preview,
+                            onFindFocus: { model.setFindTarget(.preview) },
+                            onFindMatchCount: model.setFindMatchCount,
                             onZoomChanged: { value in
                                 model.setPreviewZoomFromGesture(value)
                             }
@@ -492,10 +507,36 @@ struct PreviewFindBar: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(BPTokens.Color.muted)
 
-            TextField("Find in Preview", text: $model.findQuery)
+            TextField(
+                "Find in Document",
+                text: Binding(
+                    get: { model.findQuery },
+                    set: {
+                        model.findQuery = $0
+                        model.findBackwards = false
+                        model.findMatchCount = nil
+                    }
+                )
+            )
                 .textFieldStyle(.roundedBorder)
                 .focused($isSearchFocused)
-                .onSubmit { model.findNext() }
+                .onKeyPress(phases: .down) { keyPress in
+                    guard keyPress.key == .return else { return .ignored }
+                    if keyPress.modifiers.contains(.shift) {
+                        model.findPrevious()
+                    } else {
+                        model.findNext()
+                    }
+                    return .handled
+                }
+
+            if let matchCount = model.findMatchCount,
+               !model.findQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(matchCount == 1 ? "1 encontrado" : "\(matchCount) encontrados")
+                    .font(BPTokens.Typography.caption)
+                    .foregroundStyle(BPTokens.Color.muted)
+                    .fixedSize()
+            }
 
             ToolbarIconButton(systemName: "chevron.up", help: "Previous Result") {
                 model.findPrevious()

@@ -37,15 +37,26 @@ struct SourceTextView: NSViewRepresentable {
     let monospaced: Bool
     let syntaxHighlighting: SourceSyntaxHighlighting?
     let markdownShortcutsEnabled: Bool
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSourceChanged: onSourceChanged, onEndEditing: onEndEditing)
+        Coordinator(
+            onSourceChanged: onSourceChanged,
+            onEndEditing: onEndEditing,
+            onFindMatchCount: onFindMatchCount
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownNSTextView()
+        textView.onFindFocus = onFindFocus
         textView.onEscape = { [weak textView, weak coordinator = context.coordinator] in
             guard let textView else { return }
             coordinator?.onEndEditing(textView.string)
@@ -65,7 +76,7 @@ struct SourceTextView: NSViewRepresentable {
             textView.isAutomaticTextReplacementEnabled = false
             textView.isAutomaticSpellingCorrectionEnabled = false
         }
-        textView.usesFindPanel = true
+        textView.usesFindPanel = false
         textView.drawsBackground = syntaxHighlighting == nil
         applyBaseColors(to: textView)
         textView.insertionPointColor = .controlAccentColor
@@ -105,6 +116,7 @@ struct SourceTextView: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.onSourceChanged = onSourceChanged
         context.coordinator.onEndEditing = onEndEditing
+        context.coordinator.onFindMatchCount = onFindMatchCount
 
         if !context.coordinator.didRequestInitialFocus {
             focus(textView, selection: nil) {
@@ -126,6 +138,14 @@ struct SourceTextView: NSViewRepresentable {
 
         applyTypography(to: textView)
         applySyntaxHighlighting(to: textView, source: source)
+        context.coordinator.applyFind(
+            in: textView,
+            source: source,
+            query: findQuery,
+            requestID: findRequestID,
+            backwards: findBackwards,
+            isFindTarget: isFindTarget
+        )
         textView.textContainerInset = NSSize(
             width: SourceEditorLayout.horizontalPadding * CGFloat(zoom),
             height: 40 * CGFloat(zoom)
@@ -286,20 +306,119 @@ struct SourceTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var onSourceChanged: @MainActor @Sendable (String) -> Void
         var onEndEditing: @MainActor @Sendable (String) -> Void
+        var onFindMatchCount: @MainActor @Sendable (Int) -> Void
         var appliedCursorUTF8Offset: Int?
         var didRequestInitialFocus = false
+        private var findSource = ""
+        private var findQuery = ""
+        private var findRequestID = -1
+        private var findMatches: [TextSearchMatch] = []
+        private var currentFindIndex: Int?
 
         init(
             onSourceChanged: @escaping @MainActor @Sendable (String) -> Void,
-            onEndEditing: @escaping @MainActor @Sendable (String) -> Void
+            onEndEditing: @escaping @MainActor @Sendable (String) -> Void,
+            onFindMatchCount: @escaping @MainActor @Sendable (Int) -> Void
         ) {
             self.onSourceChanged = onSourceChanged
             self.onEndEditing = onEndEditing
+            self.onFindMatchCount = onFindMatchCount
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             onSourceChanged(textView.string)
+        }
+
+        func applyFind(
+            in textView: NSTextView,
+            source: String,
+            query: String,
+            requestID: Int,
+            backwards: Bool,
+            isFindTarget: Bool
+        ) {
+            guard isFindTarget else {
+                clearFind(in: textView, notify: false)
+                return
+            }
+
+            let sourceChanged = findSource != source
+            let queryChanged = findQuery != query
+            let requestChanged = findRequestID != requestID
+            guard sourceChanged || queryChanged || requestChanged else { return }
+
+            findSource = source
+            findQuery = query
+            findRequestID = requestID
+
+            if sourceChanged || queryChanged {
+                findMatches = TextSearch.matches(in: source, query: query)
+                currentFindIndex = TextSearch.nextMatchIndex(
+                    currentIndex: nil,
+                    matchCount: findMatches.count,
+                    backwards: backwards
+                )
+            } else {
+                currentFindIndex = TextSearch.nextMatchIndex(
+                    currentIndex: currentFindIndex,
+                    matchCount: findMatches.count,
+                    backwards: backwards
+                )
+            }
+
+            onFindMatchCount(findMatches.count)
+            updateFindHighlights(in: textView)
+        }
+
+        private func clearFind(in textView: NSTextView, notify: Bool) {
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            textView.layoutManager?.removeTemporaryAttribute(
+                .backgroundColor,
+                forCharacterRange: fullRange
+            )
+            findSource = ""
+            findQuery = ""
+            findRequestID = -1
+            findMatches = []
+            currentFindIndex = nil
+            if notify {
+                onFindMatchCount(0)
+            }
+        }
+
+        private func updateFindHighlights(in textView: NSTextView) {
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            textView.layoutManager?.removeTemporaryAttribute(
+                .backgroundColor,
+                forCharacterRange: fullRange
+            )
+
+            for match in findMatches {
+                let range = NSRange(
+                    location: match.utf16Range.lowerBound,
+                    length: match.utf16Range.count
+                )
+                textView.layoutManager?.addTemporaryAttribute(
+                    .backgroundColor,
+                    value: NSColor.controlAccentColor.withAlphaComponent(0.22),
+                    forCharacterRange: range
+                )
+            }
+
+            guard let currentFindIndex,
+                  findMatches.indices.contains(currentFindIndex) else {
+                textView.setSelectedRange(NSRange(location: 0, length: 0))
+                return
+            }
+
+            let match = findMatches[currentFindIndex]
+            let range = NSRange(
+                location: match.utf16Range.lowerBound,
+                length: match.utf16Range.count
+            )
+            textView.setSelectedRange(range)
+            textView.scrollRangeToVisible(range)
         }
     }
 }
@@ -319,6 +438,20 @@ private extension NSColor {
 private final class MarkdownNSTextView: NSTextView {
     var onEscape: (() -> Void)?
     var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
+    var onFindFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        if becameFirstResponder {
+            onFindFocus?()
+        }
+        return becameFirstResponder
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onFindFocus?()
+        super.mouseDown(with: event)
+    }
 
     override func cancelOperation(_ sender: Any?) {
         onEscape?()

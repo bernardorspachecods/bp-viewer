@@ -27,7 +27,7 @@ struct BPViewerApp: App {
                 Button("Refresh Preview", action: model.refreshActiveTab)
                     .keyboardShortcut("r", modifiers: [.command])
 
-                Button("Find in Preview", action: model.showFindBar)
+                    Button("Find in Document", action: model.showFindBar)
                     .keyboardShortcut("f", modifiers: [.command])
 
                 Button("Zoom In", action: model.zoomIn)

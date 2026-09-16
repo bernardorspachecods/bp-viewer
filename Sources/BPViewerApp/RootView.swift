@@ -336,8 +336,9 @@ struct TopBarView: View {
                     .menuStyle(.borderlessButton)
                     .help("Advanced LaTeX Settings")
                 }
-                if model.activeTab?.kind == .markdown || model.activeTab?.kind == .latex || model.activeTab?.kind == .pdf {
-                    ToolbarIconButton(systemName: "magnifyingglass", help: "Find in Preview") {
+            if let kind = model.activeTab?.kind,
+               [.markdown, .latex, .pdf, .json, .docx].contains(kind) {
+                    ToolbarIconButton(systemName: "magnifyingglass", help: "Find in Document") {
                         model.showFindBar()
                     }
                 }

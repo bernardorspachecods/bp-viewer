@@ -76,7 +76,7 @@ private struct ShortcutsSettingsView: View {
 
             Section("View") {
                 ShortcutRow(title: "Refresh Preview", shortcut: "⌘R")
-                ShortcutRow(title: "Find in Preview", shortcut: "⌘F")
+                ShortcutRow(title: "Find in Document", shortcut: "⌘F")
                 ShortcutRow(title: "Zoom In", shortcut: "⌘+")
                 ShortcutRow(title: "Zoom Out", shortcut: "⌘−")
                 ShortcutRow(title: "Reset Zoom", shortcut: "⌘0")

@@ -23,6 +23,9 @@ struct MarkdownPreviewView: View {
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
+    let findTarget: FindTarget
+    let onFindTargetChanged: (FindTarget) -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     @Binding var isOutlineVisible: Bool
     let readingPosition: MarkdownReadingPosition?
     let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
@@ -89,6 +92,12 @@ struct MarkdownPreviewView: View {
                         source: editingSession.currentSource,
                         zoom: zoom,
                         cursorUTF8Offset: pendingCursorUTF8Offset,
+                        findQuery: findQuery,
+                        findRequestID: findRequestID,
+                        findBackwards: findBackwards,
+                        isFindTarget: findTarget == .source,
+                        onFindFocus: { onFindTargetChanged(.source) },
+                        onFindMatchCount: onFindMatchCount,
                         onEndEditing: onEndMarkdownEditing,
                         onSourceChanged: onMarkdownTextChanged
                     )
@@ -123,6 +132,9 @@ struct MarkdownPreviewView: View {
                 findQuery: findQuery,
                 findRequestID: findRequestID,
                 findBackwards: findBackwards,
+                isFindTarget: findTarget == .preview,
+                onFindFocus: { onFindTargetChanged(.preview) },
+                onFindMatchCount: onFindMatchCount,
                 requestedHeadingID: selectedHeadingID,
                 outlineRequestID: outlineRequestID,
                 readingPosition: readingPosition,
@@ -214,6 +226,12 @@ private struct MarkdownSourceEditor: View {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onEndEditing: () -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
 
@@ -230,6 +248,12 @@ private struct MarkdownSourceEditor: View {
                         MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
                     ),
                     markdownShortcutsEnabled: true,
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    isFindTarget: isFindTarget,
+                    onFindFocus: onFindFocus,
+                    onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onSourceChanged,
                     onEndEditing: { _ in onEndEditing() }
                 )

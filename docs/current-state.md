@@ -22,6 +22,7 @@ ou formatado.
 - Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.json`, `.docx` e `.pdf` podem ser
   abertos em tabs. Documentos Word são convertidos localmente para HTML rico e
   visualizados numa página com fundo e zoom responsivo.
+- O preview Word participa na pesquisa comum da tab ativa.
   Outros ficheiros são abertos pela aplicação predefinida do macOS.
 
 ## Markdown
@@ -42,6 +43,10 @@ ou formatado.
   resolução de conflitos.
 - O editor pode ocupar a superfície inteira ou funcionar em split view, com o
   source Markdown à esquerda e o preview live à direita.
+- `⌘F` abre uma barra de pesquisa comum para previews e editores source. A
+  pesquisa fica limitada à tab ativa, ignora maiúsculas/minúsculas e acentos,
+  permite avançar/recuar com Enter/Shift+Enter e fecha com Esc. Em split view,
+  pesquisa o painel que tem o foco.
 
 ## LaTeX e PDF
 
@@ -72,6 +77,7 @@ ou formatado.
   split view.
 - O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
   automática quando o ficheiro muda.
+- O preview e o editor raw JSON usam a mesma barra de pesquisa da app.
 - Rascunhos JSON inválidos podem permanecer abertos no editor, mas não são
   gravados até voltarem a ser válidos; o editor mostra o estado “Não guardado”.
 - Ao fechar uma tab com alterações por guardar, a app permite editar, guardar

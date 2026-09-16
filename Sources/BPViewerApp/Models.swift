@@ -1,6 +1,11 @@
 import BPViewerCore
 import SwiftUI
 
+enum FindTarget: Equatable {
+    case preview
+    case source
+}
+
 enum AppThemePreference: String, CaseIterable, Identifiable {
     case light
     case dark

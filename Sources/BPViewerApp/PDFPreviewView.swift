@@ -3,12 +3,30 @@ import BPViewerCore
 @preconcurrency import PDFKit
 import SwiftUI
 
+enum PDFPreviewUpdatePolicy {
+    static func shouldSynchronizeReadingPosition(afterFindNavigationHandled handled: Bool) -> Bool {
+        !handled
+    }
+
+    static func pageIndexToApply(
+        documentChanged: Bool,
+        requestedPageIndex: Int?,
+        pageIndex: Int
+    ) -> Int? {
+        if let requestedPageIndex { return requestedPageIndex }
+        return documentChanged ? pageIndex : nil
+    }
+}
+
 struct PDFPreviewView: View {
     let data: Data
     let zoom: Double
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let pageIndex: Int
     let readingPosition: PDFReadingPosition?
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
@@ -67,6 +85,9 @@ struct PDFPreviewView: View {
                         findQuery: findQuery,
                         findRequestID: findRequestID,
                         findBackwards: findBackwards,
+                        isFindTarget: isFindTarget,
+                        onFindFocus: onFindFocus,
+                        onFindMatchCount: onFindMatchCount,
                         pageIndex: pageIndex,
                         requestedPageIndex: requestedPageIndex,
                         readingPosition: readingPosition,
@@ -140,6 +161,9 @@ private struct PDFKitPreviewView: NSViewRepresentable {
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let pageIndex: Int
     let requestedPageIndex: Int?
     let readingPosition: PDFReadingPosition?
@@ -151,6 +175,8 @@ private struct PDFKitPreviewView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> FittingPDFView {
         let view = FittingPDFView()
+        view.onFindFocus = onFindFocus
+        view.onFindMatchCount = onFindMatchCount
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.displaysPageBreaks = true
@@ -171,6 +197,8 @@ private struct PDFKitPreviewView: NSViewRepresentable {
 
     func updateNSView(_ view: FittingPDFView, context: Context) {
         context.coordinator.onReadingPositionChanged = onReadingPositionChanged
+        view.onFindFocus = onFindFocus
+        view.onFindMatchCount = onFindMatchCount
         let documentChanged = view.loadedPDFData != data
         let zoomChanged = view.zoom != zoom
         let previousPosition = (documentChanged || zoomChanged) && view.loadedPDFData != nil
@@ -185,12 +213,17 @@ private struct PDFKitPreviewView: NSViewRepresentable {
         if documentChanged || zoomChanged {
             view.fitPageWidth(force: true)
         }
-        view.updateFind(
+        let didHandleFindNavigation = view.updateFind(
             query: findQuery,
             requestID: findRequestID,
             backwards: findBackwards,
+            isFindTarget: isFindTarget,
             force: documentChanged
         )
+        guard PDFPreviewUpdatePolicy.shouldSynchronizeReadingPosition(
+            afterFindNavigationHandled: didHandleFindNavigation
+        ) else { return }
+
         if let previousPosition {
             view.scheduleRestore(of: previousPosition) { restoredPageIndex in
                 onReadingPositionChanged(
@@ -203,8 +236,12 @@ private struct PDFKitPreviewView: NSViewRepresentable {
                     view.persistedReadingPosition(fallbackPageIndex: restoredPageIndex)
                 )
             }
-        } else {
-            view.goToPage(at: requestedPageIndex ?? pageIndex)
+        } else if let pageIndexToApply = PDFPreviewUpdatePolicy.pageIndexToApply(
+            documentChanged: documentChanged,
+            requestedPageIndex: requestedPageIndex,
+            pageIndex: pageIndex
+        ) {
+            view.goToPage(at: pageIndexToApply)
         }
     }
 
@@ -288,7 +325,7 @@ extension PDFKitPreviewView.Coordinator: PDFViewDelegate {
     }
 }
 
-final class FittingPDFView: PDFView {
+final class FittingPDFView: FindTrackingPDFView {
     struct ReadingPosition {
         let pageIndex: Int
         let point: CGPoint?
@@ -311,6 +348,7 @@ final class FittingPDFView: PDFView {
     var zoom = 1.0
     var loadedPDFData: Data?
     var isRestoringPosition = false
+    var onFindMatchCount: ((Int) -> Void)?
     private var activeFindQuery = ""
     private var lastFindRequestID = 0
     private var findMatches: [PDFSelection] = []
@@ -394,8 +432,22 @@ final class FittingPDFView: PDFView {
         }
     }
 
-    func updateFind(query: String, requestID: Int, backwards: Bool, force: Bool = false) {
-        guard force || query != activeFindQuery || requestID != lastFindRequestID else { return }
+    func updateFind(
+        query: String,
+        requestID: Int,
+        backwards: Bool,
+        isFindTarget: Bool,
+        force: Bool = false
+    ) -> Bool {
+        guard isFindTarget else {
+            activeFindQuery = ""
+            lastFindRequestID = requestID
+            findMatches = []
+            highlightedSelections = []
+            currentSelection = nil
+            return false
+        }
+        guard force || query != activeFindQuery || requestID != lastFindRequestID else { return false }
 
         let queryChanged = query != activeFindQuery
         activeFindQuery = query
@@ -405,7 +457,8 @@ final class FittingPDFView: PDFView {
             findMatches = []
             highlightedSelections = []
             currentSelection = nil
-            return
+            publishFindMatchCount(0, query: query, requestID: requestID)
+            return true
         }
 
         if force || queryChanged {
@@ -416,14 +469,28 @@ final class FittingPDFView: PDFView {
             currentFindIndex = (currentFindIndex + step + findMatches.count) % findMatches.count
         }
 
+        publishFindMatchCount(findMatches.count, query: query, requestID: requestID)
         highlightedSelections = findMatches
         guard !findMatches.isEmpty else {
             currentSelection = nil
-            return
+            return true
         }
 
         let selection = findMatches[currentFindIndex]
+        if let page = selection.pages.first {
+            go(to: page)
+        }
         setCurrentSelection(selection, animate: true)
         scrollSelectionToVisible(selection)
+        return true
+    }
+
+    private func publishFindMatchCount(_ count: Int, query: String, requestID: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.activeFindQuery == query,
+                  self.lastFindRequestID == requestID else { return }
+            self.onFindMatchCount?(count)
+        }
     }
 }

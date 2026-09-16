@@ -31,6 +31,7 @@ let package = Package(
         .testTarget(
             name: "BPViewerAppTests",
             dependencies: [
+                "BPViewerApp",
                 "BPViewerCore",
                 .product(name: "Testing", package: "swift-testing")
             ]

@@ -155,6 +155,12 @@ struct JSONPreviewView: View {
     let isSnapshotCaptureActive: Bool
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let findTarget: FindTarget
+    let onFindTargetChanged: (FindTarget) -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     @State private var editorSource: String?
 
     var body: some View {
@@ -180,6 +186,12 @@ struct JSONPreviewView: View {
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
                     syntaxHighlightPalette: JSONSyntaxColorPalette(isDark: colorScheme == .dark),
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    isFindTarget: findTarget == .source,
+                    onFindFocus: { onFindTargetChanged(.source) },
+                    onFindMatchCount: onFindMatchCount,
                     onSourceChanged: { text in
                         editorSource = text
                         onSourceChanged(text)
@@ -232,6 +244,12 @@ struct JSONPreviewView: View {
                     source: source,
                     zoom: zoom,
                     isDark: colorScheme == .dark,
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    isFindTarget: findTarget == .preview,
+                    onFindFocus: { onFindTargetChanged(.preview) },
+                    onFindMatchCount: onFindMatchCount,
                     onDoubleClick: onBeginEditing
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -291,6 +309,12 @@ private struct JSONSourceEditor: View {
     let zoom: Double
     let cursorUTF8Offset: Int?
     let syntaxHighlightPalette: JSONSyntaxColorPalette
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
 
@@ -304,6 +328,12 @@ private struct JSONSourceEditor: View {
                 monospaced: true,
                 syntaxHighlighting: .json(syntaxHighlightPalette),
                 markdownShortcutsEnabled: false,
+                findQuery: findQuery,
+                findRequestID: findRequestID,
+                findBackwards: findBackwards,
+                isFindTarget: isFindTarget,
+                onFindFocus: onFindFocus,
+                onFindMatchCount: onFindMatchCount,
                 onSourceChanged: onSourceChanged,
                 onEndEditing: onEndEditing
             )
@@ -325,6 +355,12 @@ private struct JSONPreviewWebView: NSViewRepresentable {
     let source: String
     let zoom: Double
     let isDark: Bool
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onDoubleClick: (Int) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -346,7 +382,9 @@ private struct JSONPreviewWebView: NSViewRepresentable {
             name: "bpViewerJSONEdit"
         )
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = FindTrackingWKWebView(frame: .zero, configuration: configuration)
+        webView.onFindFocus = onFindFocus
+        webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         webView.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
         webView.underPageBackgroundColor = isDark
@@ -368,12 +406,21 @@ private struct JSONPreviewWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onDoubleClick = onDoubleClick
+        context.coordinator.onFindMatchCount = onFindMatchCount
+        (webView as? FindTrackingWKWebView)?.onFindFocus = onFindFocus
         webView.pageZoom = zoom
         let themeChanged = context.coordinator.isDark != isDark
         webView.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
         webView.underPageBackgroundColor = isDark
             ? NSColor(calibratedWhite: 0.118, alpha: 1)
             : .white
+        context.coordinator.updateFind(
+            in: webView,
+            query: findQuery,
+            requestID: findRequestID,
+            backwards: findBackwards,
+            isFindTarget: isFindTarget
+        )
         guard context.coordinator.source != source || themeChanged else { return }
         context.coordinator.source = source
         context.coordinator.isDark = isDark
@@ -384,15 +431,57 @@ private struct JSONPreviewWebView: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         var source: String
         var isDark: Bool
         var onDoubleClick: (Int) -> Void
+        var onFindMatchCount: @MainActor @Sendable (Int) -> Void = { _ in }
+        private var findQuery = ""
+        private var findRequestID = -1
+        private var findBackwards = false
+        private var isFindTarget = true
 
         init(source: String, isDark: Bool, onDoubleClick: @escaping (Int) -> Void) {
             self.source = source
             self.isDark = isDark
             self.onDoubleClick = onDoubleClick
+        }
+
+        func updateFind(
+            in webView: WKWebView,
+            query: String,
+            requestID: Int,
+            backwards: Bool,
+            isFindTarget: Bool
+        ) {
+            guard findQuery != query
+                    || findRequestID != requestID
+                    || findBackwards != backwards
+                    || self.isFindTarget != isFindTarget else { return }
+            let queryChanged = findQuery != query
+            let targetChanged = self.isFindTarget != isFindTarget
+            findQuery = query
+            findRequestID = requestID
+            findBackwards = backwards
+            self.isFindTarget = isFindTarget
+            find(
+                in: webView,
+                updateMatchCount: queryChanged || targetChanged
+            )
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            find(in: webView, updateMatchCount: true)
+        }
+
+        private func find(in webView: WKWebView, updateMatchCount: Bool) {
+            guard isFindTarget else { return }
+            if updateMatchCount {
+                WebViewFindSupport.countMatches(in: webView, query: findQuery) { [weak self] count in
+                    self?.onFindMatchCount(count)
+                }
+            }
+            WebViewFindSupport.find(in: webView, query: findQuery, backwards: findBackwards)
         }
 
         func userContentController(

@@ -45,6 +45,9 @@ struct MarkdownWebView: NSViewRepresentable {
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let requestedHeadingID: String?
     let outlineRequestID: Int
     let readingPosition: MarkdownReadingPosition?
@@ -66,7 +69,8 @@ struct MarkdownWebView: NSViewRepresentable {
         )
         configuration.userContentController.add(context.coordinator, name: "bpViewerMarkdownEdit")
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = FindTrackingWKWebView(frame: .zero, configuration: configuration)
+        webView.onFindFocus = onFindFocus
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
         context.coordinator.observeScroll(in: webView)
@@ -83,14 +87,24 @@ struct MarkdownWebView: NSViewRepresentable {
         context.coordinator.onMarkdownEditEvent = onMarkdownEditEvent
         context.coordinator.onReadingPositionChanged = onReadingPositionChanged
         context.coordinator.canBeginEditing = canBeginEditing
+        context.coordinator.onFindMatchCount = onFindMatchCount
+        (webView as? FindTrackingWKWebView)?.onFindFocus = onFindFocus
         context.coordinator.observeScroll(in: webView)
         webView.pageZoom = zoom
 
-        if context.coordinator.findRequestID != findRequestID || context.coordinator.findQuery != findQuery {
+        if context.coordinator.findRequestID != findRequestID
+            || context.coordinator.findQuery != findQuery
+            || context.coordinator.isFindTarget != isFindTarget {
+            let queryChanged = context.coordinator.findQuery != findQuery
+            let targetChanged = context.coordinator.isFindTarget != isFindTarget
             context.coordinator.findRequestID = findRequestID
             context.coordinator.findQuery = findQuery
             context.coordinator.findBackwards = findBackwards
-            context.coordinator.find(in: webView)
+            context.coordinator.isFindTarget = isFindTarget
+            context.coordinator.find(
+                in: webView,
+                updateMatchCount: queryChanged || targetChanged
+            )
         }
 
         let documentChanged = context.coordinator.html != html || context.coordinator.baseURL != baseURL
@@ -138,11 +152,13 @@ struct MarkdownWebView: NSViewRepresentable {
         var onNavigate: ((URL) -> Void)?
         var onMarkdownEditEvent: ((MarkdownWebEditEvent) -> Void)?
         var onReadingPositionChanged: ((MarkdownReadingPosition) -> Void)?
+        var onFindMatchCount: @MainActor @Sendable (Int) -> Void = { _ in }
         var lastReadingPosition: MarkdownReadingPosition?
         var pendingReadingPosition: MarkdownReadingPosition?
         var findQuery = ""
         var findRequestID = 0
         var findBackwards = false
+        var isFindTarget = true
         var outlineRequestID = 0
         var pendingHeadingID: String?
         var isDocumentLoaded = false
@@ -235,7 +251,7 @@ struct MarkdownWebView: NSViewRepresentable {
                 self.pendingReadingPosition = nil
             }
             scrollToPendingHeading(in: webView)
-            find(in: webView)
+            find(in: webView, updateMatchCount: true)
             scheduleCapture(of: webView)
         }
 
@@ -299,13 +315,14 @@ struct MarkdownWebView: NSViewRepresentable {
             self.pendingHeadingID = nil
         }
 
-        func find(in webView: WKWebView) {
-            guard !findQuery.isEmpty else { return }
-            let configuration = WKFindConfiguration()
-            configuration.backwards = findBackwards
-            configuration.caseSensitive = false
-            configuration.wraps = true
-            webView.find(findQuery, configuration: configuration) { _ in }
+        func find(in webView: WKWebView, updateMatchCount: Bool) {
+            guard isFindTarget else { return }
+            if updateMatchCount {
+                WebViewFindSupport.countMatches(in: webView, query: findQuery) { [weak self] count in
+                    self?.onFindMatchCount(count)
+                }
+            }
+            WebViewFindSupport.find(in: webView, query: findQuery, backwards: findBackwards)
         }
 
         func webView(

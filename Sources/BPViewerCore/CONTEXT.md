@@ -17,6 +17,8 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
   contexto/root LaTeX sem ações de UI.
 - `JSONAdapter.swift` — validação e formatação determinística de JSON para
   preview.
+- `TextSearch.swift` — correspondência textual normalizada e navegação circular
+  reutilizável pela pesquisa da app.
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,
   `MarkdownPreviewLink.swift` e `MathMLRenderer.swift` — renderização,
   edição/merge e resolução de links Markdown.

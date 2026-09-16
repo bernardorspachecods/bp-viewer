@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+@testable import BPViewerApp
 @testable import BPViewerCore
 
 @Test("renders core Markdown and keeps resource URLs relative")
@@ -97,4 +98,39 @@ func recognizesWordDocuments() {
 func exposesMarkdownEditingModes() {
     #expect(MarkdownEditingMode.allCases == [.markdown, .split])
     #expect(MarkdownEditingMode(rawValue: "visual") == nil)
+}
+
+@Test("finds text case-insensitively without distinguishing accents")
+func findsTextWithNormalizedMatching() {
+    let matches = TextSearch.matches(in: "Café cafe", query: "CAFE")
+
+    #expect(matches.map(\.utf16Range) == [0..<4, 5..<9])
+}
+
+@Test("find navigation wraps in both directions")
+func findNavigationWraps() {
+    #expect(TextSearch.nextMatchIndex(currentIndex: 1, matchCount: 3, backwards: false) == 2)
+    #expect(TextSearch.nextMatchIndex(currentIndex: 2, matchCount: 3, backwards: false) == 0)
+    #expect(TextSearch.nextMatchIndex(currentIndex: 0, matchCount: 3, backwards: true) == 2)
+    #expect(TextSearch.nextMatchIndex(currentIndex: nil, matchCount: 3, backwards: true) == 2)
+}
+
+@Test("does not reapply the persisted page while PDF search navigates")
+func preservesPDFSearchDestinationDuringViewUpdate() {
+    #expect(
+        PDFPreviewUpdatePolicy.shouldSynchronizeReadingPosition(
+            afterFindNavigationHandled: true
+        ) == false
+    )
+}
+
+@Test("keeps explicit PDF page navigation available")
+func appliesExplicitPDFPageNavigationDuringViewUpdate() {
+    #expect(
+        PDFPreviewUpdatePolicy.pageIndexToApply(
+            documentChanged: false,
+            requestedPageIndex: 3,
+            pageIndex: 0
+        ) == 3
+    )
 }

@@ -8,6 +8,12 @@ struct DocxPreviewView: View {
     let url: URL
     let zoom: Double
     let previewRevision: Date?
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onZoomChanged: (Double) -> Void
 
     var body: some View {
@@ -15,6 +21,12 @@ struct DocxPreviewView: View {
             url: url,
             zoom: zoom,
             previewRevision: previewRevision,
+            findQuery: findQuery,
+            findRequestID: findRequestID,
+            findBackwards: findBackwards,
+            isFindTarget: isFindTarget,
+            onFindFocus: onFindFocus,
+            onFindMatchCount: onFindMatchCount,
             onZoomChanged: onZoomChanged
         )
         .background(BPTokens.Color.canvas)
@@ -25,6 +37,12 @@ private struct DocxHTMLPreview: NSViewRepresentable {
     let url: URL
     let zoom: Double
     let previewRevision: Date?
+    let findQuery: String
+    let findRequestID: Int
+    let findBackwards: Bool
+    let isFindTarget: Bool
+    let onFindFocus: @MainActor @Sendable () -> Void
+    let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onZoomChanged: (Double) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -32,13 +50,23 @@ private struct DocxHTMLPreview: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> DocxHTMLPreviewContainer {
-        let view = DocxHTMLPreviewContainer(onZoomChanged: onZoomChanged)
+        let view = DocxHTMLPreviewContainer(
+            onZoomChanged: onZoomChanged,
+            onFindFocus: onFindFocus,
+            onFindMatchCount: onFindMatchCount
+        )
         view.setPreview(url: url, zoom: zoom)
         return view
     }
 
     func updateNSView(_ view: DocxHTMLPreviewContainer, context: Context) {
         view.setZoom(zoom)
+        view.updateFind(
+            query: findQuery,
+            requestID: findRequestID,
+            backwards: findBackwards,
+            isFindTarget: isFindTarget
+        )
 
         guard context.coordinator.url != url || context.coordinator.revision != previewRevision else {
             return
@@ -74,18 +102,30 @@ private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
     private var artifactDirectory: URL?
     private var zoom = 1.0
     private let onZoomChanged: (Double) -> Void
+    private var findQuery = ""
+    private var findRequestID = -1
+    private var findBackwards = false
+    private var isFindTarget = true
+    private let onFindMatchCount: @MainActor @Sendable (Int) -> Void
 
-    init(onZoomChanged: @escaping (Double) -> Void) {
+    init(
+        onZoomChanged: @escaping (Double) -> Void,
+        onFindFocus: @escaping @MainActor @Sendable () -> Void,
+        onFindMatchCount: @escaping @MainActor @Sendable (Int) -> Void
+    ) {
         self.onZoomChanged = onZoomChanged
+        self.onFindMatchCount = onFindMatchCount
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         webView = ZoomableDocxWebView(frame: .zero, configuration: configuration)
         super.init(frame: .zero)
+        webView.onFindFocus = onFindFocus
         configure()
     }
 
     required init?(coder: NSCoder) {
         onZoomChanged = { _ in }
+        onFindMatchCount = { _ in }
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         webView = ZoomableDocxWebView(frame: .zero, configuration: configuration)
@@ -157,6 +197,30 @@ private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
         removeArtifact()
     }
 
+    func updateFind(query: String, requestID: Int, backwards: Bool, isFindTarget: Bool) {
+        let queryChanged = findQuery != query
+        let targetChanged = self.isFindTarget != isFindTarget
+        guard findQuery != query
+                || findRequestID != requestID
+                || findBackwards != backwards
+                || self.isFindTarget != isFindTarget else { return }
+        findQuery = query
+        findRequestID = requestID
+        findBackwards = backwards
+        self.isFindTarget = isFindTarget
+        applyFind(updateMatchCount: queryChanged || targetChanged)
+    }
+
+    private func applyFind(updateMatchCount: Bool) {
+        guard isFindTarget, !webView.isHidden else { return }
+        if updateMatchCount {
+            WebViewFindSupport.countMatches(in: webView, query: findQuery) { [onFindMatchCount] count in
+                onFindMatchCount(count)
+            }
+        }
+        WebViewFindSupport.find(in: webView, query: findQuery, backwards: findBackwards)
+    }
+
     private func configure() {
         wantsLayer = true
         updateCanvasAppearance()
@@ -205,10 +269,11 @@ private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
         webView.pageZoom = zoom
         webView.isHidden = false
         statusLabel.isHidden = true
+        applyFind(updateMatchCount: true)
     }
 }
 
-private final class ZoomableDocxWebView: WKWebView {
+private final class ZoomableDocxWebView: FindTrackingWKWebView {
     var currentZoom: CGFloat = 1.0
     var onMagnificationChanged: ((CGFloat) -> Void)?
     var onMagnificationEnded: ((CGFloat) -> Void)?

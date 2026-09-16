@@ -18,6 +18,8 @@ tabs, preview Markdown/JSON/PDF/DOCX, definições e snapshots.
   `SourceEditorView.swift`, `JSONPreviewView.swift`, `PDFPreviewView.swift` e
   `DocxPreviewView.swift` — superfícies de preview, editor partilhado e
   integração com WebKit/PDFKit.
+- `FindSupport.swift` — adapters de foco para que a pesquisa comum acompanhe o
+  preview ou editor source que tem o foco.
 - `DesignSystem.swift`, `SettingsView.swift` e `SnapshotSupport.swift` —
   tokens/controles, preferências e snapshots flutuantes.
 
