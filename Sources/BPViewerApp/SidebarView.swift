@@ -36,7 +36,8 @@ struct SidebarTreeItem: Identifiable {
 
     static func flatten(
         nodes: [FileNode],
-        expandedPaths: Set<String>
+        expandedPaths: Set<String>,
+        loadingPaths: Set<String> = []
     ) -> [SidebarTreeItem] {
         var result: [SidebarTreeItem] = []
 
@@ -48,7 +49,7 @@ struct SidebarTreeItem: Identifiable {
 
                 if node.childrenLoaded {
                     append(node.children, level: level + 1)
-                } else {
+                } else if loadingPaths.contains(node.id) {
                     result.append(SidebarTreeItem(loadingFor: node, level: level + 1))
                 }
             }
@@ -60,9 +61,13 @@ struct SidebarTreeItem: Identifiable {
 }
 
 struct SidebarView: View {
+    private static let loadingIndicatorDelay: Duration = .milliseconds(220)
+
     @EnvironmentObject private var model: AppModel
     @State private var highlightedSearchNodeIDs: Set<String> = []
     @State private var highlightedRevealNodeID: String?
+    @State private var loadingPaths: Set<String> = []
+    @State private var loadingIndicatorTasks: [String: Task<Void, Never>] = [:]
     @State private var isRootDropTarget = false
 
     var body: some View {
@@ -140,7 +145,8 @@ struct SidebarView: View {
                                 ForEach(
                                     SidebarTreeItem.flatten(
                                         nodes: model.nodes,
-                                        expandedPaths: model.expandedPaths
+                                        expandedPaths: model.expandedPaths,
+                                        loadingPaths: loadingPaths
                                     )
                                 ) { item in
                                     if let node = item.node {
@@ -160,13 +166,18 @@ struct SidebarView: View {
                             focusSearchResult(using: proxy)
                         }
                         .onChange(of: model.nodes) { _, _ in
+                            reconcileLoadingIndicators()
                             focusSearchResult(using: proxy)
                             revealTreeTarget(using: proxy)
+                        }
+                        .onChange(of: model.expandedPaths) { _, _ in
+                            reconcileLoadingIndicators()
                         }
                         .onChange(of: model.treeRevealTargetID) { _, _ in
                             revealTreeTarget(using: proxy)
                         }
                         .onAppear {
+                            reconcileLoadingIndicators()
                             focusSearchResult(using: proxy)
                             revealTreeTarget(using: proxy)
                         }
@@ -182,6 +193,58 @@ struct SidebarView: View {
             }
         }
         .background(BPTokens.Color.surface)
+        .onDisappear {
+            cancelLoadingIndicatorTasks()
+        }
+    }
+
+    private func reconcileLoadingIndicators() {
+        let pendingPaths = Set(model.expandedPaths.filter { path in
+            treeNode(withID: path, in: model.nodes)?.childrenLoaded == false
+        })
+
+        let pathsToCancel = Set(loadingIndicatorTasks.keys).subtracting(pendingPaths)
+        for path in pathsToCancel {
+            loadingIndicatorTasks[path]?.cancel()
+            loadingIndicatorTasks[path] = nil
+        }
+
+        loadingPaths.formIntersection(pendingPaths)
+
+        for path in pendingPaths where loadingIndicatorTasks[path] == nil && !loadingPaths.contains(path) {
+            scheduleLoadingIndicator(for: path)
+        }
+    }
+
+    private func scheduleLoadingIndicator(for path: String) {
+        loadingIndicatorTasks[path] = Task { @MainActor in
+            try? await Task.sleep(for: Self.loadingIndicatorDelay)
+            guard !Task.isCancelled else { return }
+            guard model.expandedPaths.contains(path),
+                  treeNode(withID: path, in: model.nodes)?.childrenLoaded == false else {
+                loadingIndicatorTasks[path] = nil
+                return
+            }
+
+            loadingPaths.insert(path)
+            loadingIndicatorTasks[path] = nil
+        }
+    }
+
+    private func cancelLoadingIndicatorTasks() {
+        loadingIndicatorTasks.values.forEach { $0.cancel() }
+        loadingIndicatorTasks.removeAll()
+        loadingPaths.removeAll()
+    }
+
+    private func treeNode(withID id: String, in nodes: [FileNode]) -> FileNode? {
+        for node in nodes {
+            if node.id == id { return node }
+            if let child = treeNode(withID: id, in: node.children) {
+                return child
+            }
+        }
+        return nil
     }
 
     private func revealTreeTarget(using proxy: ScrollViewProxy) {

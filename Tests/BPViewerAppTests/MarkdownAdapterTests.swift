@@ -250,6 +250,33 @@ func flattensExpandedTreeBranchesIntoLazyRows() {
     #expect(items.map(\.level) == [0, 1])
 }
 
+@Test("does not show a loading row before the delayed tree load threshold")
+func delaysTreeLoadingRowUntilRequested() {
+    let folderURL = URL(fileURLWithPath: "/tmp/project/chapters", isDirectory: true)
+    let folder = FileNode(
+        id: "chapters",
+        url: folderURL,
+        relativePath: "chapters",
+        isDirectory: true,
+        kind: .other,
+        children: [],
+        childrenLoaded: false
+    )
+
+    let immediateItems = SidebarTreeItem.flatten(
+        nodes: [folder],
+        expandedPaths: [folder.id]
+    )
+    let delayedItems = SidebarTreeItem.flatten(
+        nodes: [folder],
+        expandedPaths: [folder.id],
+        loadingPaths: [folder.id]
+    )
+
+    #expect(immediateItems.map(\.id) == ["chapters"])
+    #expect(delayedItems.map(\.id) == ["chapters", "chapters/loading"])
+}
+
 @Test("clears all folder expansion records or one folder branch")
 @MainActor
 func clearsFolderExpansionRecords() {
