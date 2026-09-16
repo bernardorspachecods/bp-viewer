@@ -120,10 +120,20 @@ public enum DocumentPresentationMode: Hashable, Sendable {
     case diff(DocumentDiffMode)
 }
 
+public enum DocumentOutlineSizing {
+    public static let defaultWidth = 250.0
+    public static let minimumWidth = 220.0
+    public static let maximumWidth = 480.0
+
+    public static func clamped(_ width: Double) -> Double {
+        min(max(width, minimumWidth), maximumWidth)
+    }
+}
+
 public struct DocumentTab: Identifiable, Hashable, Sendable {
-    public let id: String
-    public let url: URL
-    public let kind: DocumentKind
+    public var id: String
+    public var url: URL
+    public var kind: DocumentKind
     public var contextURL: URL?
     public var status: PreviewStatus
     public var isStale: Bool
@@ -134,6 +144,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
     public var previewPDFData: Data?
     public var markdownOutline: [MarkdownOutlineEntry]
     public var isOutlineVisible: Bool
+    public var outlineWidth: Double
     public var previewZoom: Double
     public var isPreviewZoomCustomized: Bool
     public var previewPageIndex: Int
@@ -166,6 +177,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         previewPDFData: Data? = nil,
         markdownOutline: [MarkdownOutlineEntry] = [],
         isOutlineVisible: Bool = false,
+        outlineWidth: Double = DocumentOutlineSizing.defaultWidth,
         previewZoom: Double = 1.0,
         isPreviewZoomCustomized: Bool = false,
         previewPageIndex: Int = 0,
@@ -197,6 +209,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.previewPDFData = previewPDFData
         self.markdownOutline = markdownOutline
         self.isOutlineVisible = isOutlineVisible
+        self.outlineWidth = DocumentOutlineSizing.clamped(outlineWidth)
         self.previewZoom = previewZoom
         self.isPreviewZoomCustomized = isPreviewZoomCustomized
         self.previewPageIndex = previewPageIndex
@@ -249,6 +262,30 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.diffSession = diffSession
         markdownEditSession?.mode = .markdown
         jsonEditSession?.mode = .markdown
+    }
+
+    public mutating func relocate(from oldURL: URL, to newURL: URL) {
+        guard let newLocation = relocatedURL(self.url, from: oldURL, to: newURL) else { return }
+
+        url = newLocation
+        id = newLocation.standardizedFileURL.path
+        kind = DocumentKind(url: newLocation)
+        contextURL = contextURL.flatMap { self.relocatedURL($0, from: oldURL, to: newURL) }
+        previewBaseURL = previewBaseURL.flatMap { self.relocatedURL($0, from: oldURL, to: newURL) }
+        previewDependencies = previewDependencies.compactMap { self.relocatedURL($0, from: oldURL, to: newURL) }
+        previewExternalDependencies = previewExternalDependencies.compactMap { self.relocatedURL($0, from: oldURL, to: newURL) }
+    }
+
+    private func relocatedURL(_ candidate: URL, from oldURL: URL, to newURL: URL) -> URL? {
+        let candidatePath = candidate.standardizedFileURL.path
+        let oldPath = oldURL.standardizedFileURL.path
+        guard candidatePath == oldPath || candidatePath.hasPrefix(oldPath + "/") else {
+            return candidate
+        }
+        guard candidatePath != oldPath else { return newURL.standardizedFileURL }
+
+        let relativePath = String(candidatePath.dropFirst(oldPath.count + 1))
+        return newURL.standardizedFileURL.appendingPathComponent(relativePath)
     }
 }
 
@@ -306,21 +343,24 @@ public struct GlobalState: Codable, Sendable {
 public struct DocumentState: Codable, Sendable {
     public var zoom: Double?
     public var outlineVisible: Bool
+    public var outlineWidth: Double
     public var markdownReadingPosition: MarkdownReadingPosition?
     public var pdfReadingPosition: PDFReadingPosition?
 
     private enum CodingKeys: String, CodingKey {
-        case zoom, outlineVisible, markdownReadingPosition, pdfReadingPosition
+        case zoom, outlineVisible, outlineWidth, markdownReadingPosition, pdfReadingPosition
     }
 
     public init(
         zoom: Double? = nil,
         outlineVisible: Bool = false,
+        outlineWidth: Double = DocumentOutlineSizing.defaultWidth,
         markdownReadingPosition: MarkdownReadingPosition? = nil,
         pdfReadingPosition: PDFReadingPosition? = nil
     ) {
         self.zoom = zoom
         self.outlineVisible = outlineVisible
+        self.outlineWidth = DocumentOutlineSizing.clamped(outlineWidth)
         self.markdownReadingPosition = markdownReadingPosition
         self.pdfReadingPosition = pdfReadingPosition
     }
@@ -329,6 +369,10 @@ public struct DocumentState: Codable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         zoom = try container.decodeIfPresent(Double.self, forKey: .zoom) ?? 1.0
         outlineVisible = try container.decodeIfPresent(Bool.self, forKey: .outlineVisible) ?? false
+        outlineWidth = DocumentOutlineSizing.clamped(
+            try container.decodeIfPresent(Double.self, forKey: .outlineWidth)
+                ?? DocumentOutlineSizing.defaultWidth
+        )
         markdownReadingPosition = try container.decodeIfPresent(MarkdownReadingPosition.self, forKey: .markdownReadingPosition)
         pdfReadingPosition = try container.decodeIfPresent(PDFReadingPosition.self, forKey: .pdfReadingPosition)
     }
@@ -359,11 +403,12 @@ public struct WorkspaceState: Codable, Sendable {
     public var compatibleOnly = true
     public var latexRootSelections: [String: String] = [:]
     public var latexExternalGrants: [String: [String]] = [:]
+    public var securityScopedBookmark: Data?
     public var snapshots: [SnapshotRecord] = []
 
     private enum CodingKeys: String, CodingKey {
         case tabPaths, activeTabPath, tabContexts, expandedPaths, treeScrollOffset
-        case compatibleOnly, latexRootSelections, latexExternalGrants, snapshots
+        case compatibleOnly, latexRootSelections, latexExternalGrants, securityScopedBookmark, snapshots
     }
 
     public init() {}
@@ -378,6 +423,7 @@ public struct WorkspaceState: Codable, Sendable {
         compatibleOnly = try container.decodeIfPresent(Bool.self, forKey: .compatibleOnly) ?? true
         latexRootSelections = try container.decodeIfPresent([String: String].self, forKey: .latexRootSelections) ?? [:]
         latexExternalGrants = try container.decodeIfPresent([String: [String]].self, forKey: .latexExternalGrants) ?? [:]
+        securityScopedBookmark = try container.decodeIfPresent(Data.self, forKey: .securityScopedBookmark)
         snapshots = try container.decodeIfPresent([SnapshotRecord].self, forKey: .snapshots) ?? []
     }
 }

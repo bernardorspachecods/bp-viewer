@@ -224,8 +224,9 @@ final class DocumentRenderCoordinator {
                 projectRoot: projectRoot,
                 rootURL: resolvedRootURL
             )
+            let approvedPaths = request.approvedLatexExternalPaths[grantKey, default: []]
             let unapprovedDependencies = externalDependencies.filter {
-                !request.approvedLatexExternalPaths[grantKey, default: []].contains($0.url.path)
+                !approvedPaths.contains($0.url.resolvingSymlinksInPath().standardizedFileURL.path)
             }
             if !unapprovedDependencies.isEmpty {
                 throw LatexRenderError.externalDependenciesRequireConfirmation(

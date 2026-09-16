@@ -18,6 +18,8 @@ struct DocumentWorkspaceView: View {
 struct TabBarView: View {
     @EnvironmentObject private var model: AppModel
     @State private var dropTargetID: String?
+    @State private var indicatorTabID: String?
+    @Namespace private var activeTabIndicator
 
     private let endDropTargetID = "__tab_end__"
 
@@ -27,8 +29,10 @@ struct TabBarView: View {
                 ForEach(model.tabs) { tab in
                     TabItemView(
                         tab: tab,
-                        isActive: model.activeTabID == tab.id,
-                        isDropTarget: dropTargetID == tab.id
+                        isIndicatorActive: indicatorTabID == tab.id,
+                        isDropTarget: dropTargetID == tab.id,
+                        activeTabIndicator: activeTabIndicator,
+                        onSelect: { selectTab(tab.id) }
                     )
                     .draggable(tab.id) {
                         Text(tab.title)
@@ -76,6 +80,23 @@ struct TabBarView: View {
         }
         .frame(height: 38)
         .background(BPTokens.Color.surface)
+        .zIndex(1)
+        .onAppear {
+            indicatorTabID = model.activeTabID
+        }
+        .onChange(of: model.activeTabID) { _, newTabID in
+            guard newTabID != indicatorTabID else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                indicatorTabID = newTabID
+            }
+        }
+    }
+
+    private func selectTab(_ tabID: String) {
+        withAnimation(.easeOut(duration: 0.16)) {
+            indicatorTabID = tabID
+        }
+        model.selectTab(id: tabID)
     }
 
     private func updateDropTarget(_ targetID: String?) {
@@ -88,13 +109,15 @@ struct TabBarView: View {
 struct TabItemView: View {
     @EnvironmentObject private var model: AppModel
     let tab: DocumentTab
-    let isActive: Bool
+    let isIndicatorActive: Bool
     let isDropTarget: Bool
+    let activeTabIndicator: Namespace.ID
+    let onSelect: () -> Void
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Button {
-                model.selectTab(id: tab.id)
+                onSelect()
             } label: {
                 HStack(spacing: BPTokens.Spacing.xs) {
                     Image(systemName: iconName)
@@ -130,10 +153,17 @@ struct TabItemView: View {
         .padding(.horizontal, BPTokens.Spacing.xs)
         .frame(minWidth: 150, minHeight: 36)
         .overlay(alignment: .bottom) {
-            if isActive {
+            if isIndicatorActive {
                 Rectangle()
                     .fill(Color.accentColor)
                     .frame(height: 2)
+                    .offset(y: 2)
+                    .matchedGeometryEffect(
+                        id: "active-tab-indicator",
+                        in: activeTabIndicator,
+                        properties: .position,
+                        anchor: .bottom
+                    )
             }
         }
         .overlay(alignment: .leading) {
@@ -144,6 +174,7 @@ struct TabItemView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.35, anchor: .leading)))
             }
         }
+        .animation(.easeOut(duration: 0.16), value: isIndicatorActive)
         .contextMenu {
             Button("Copy Path") { model.copyPath(tab.url) }
             Divider()
@@ -192,6 +223,7 @@ struct PreviewPane: View {
     let tab: DocumentTab
     @State private var isTitleRowHovered = false
     @State private var isPathRowHovered = false
+    @State private var isUpdatedInfoHovered = false
 
     private var snapshotAction: (() -> Void)? {
         guard model.activeTabID == tab.id, model.canCaptureActivePreview else {
@@ -201,11 +233,14 @@ struct PreviewPane: View {
     }
 
     private var previewHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
+        let path = FilePathCopy.string(for: tab.url)
+
+        return HStack {
+            HStack(alignment: .firstTextBaseline, spacing: BPTokens.Spacing.xs) {
                 HStack(spacing: BPTokens.Spacing.xxs) {
                     Text(tab.title)
                         .font(.title2.weight(.semibold))
+                        .fixedSize(horizontal: true, vertical: false)
                         .textSelection(.enabled)
                         .contextMenu {
                             Button("Copy Title") { model.copyText(tab.title) }
@@ -215,8 +250,8 @@ struct PreviewPane: View {
                     }
                 }
                 .onHover { isTitleRowHovered = $0 }
+
                 HStack(spacing: BPTokens.Spacing.xxs) {
-                    let path = FilePathCopy.string(for: tab.url)
                     Text(path)
                         .font(BPTokens.Typography.caption)
                         .foregroundStyle(BPTokens.Color.muted)
@@ -234,14 +269,21 @@ struct PreviewPane: View {
                 .onHover { isPathRowHovered = $0 }
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: BPTokens.Spacing.xxs) {
-                StatusBadge(status: tab.status)
+            HStack(alignment: .center, spacing: BPTokens.Spacing.xxs) {
+                if isUpdatedInfoHovered {
+                    ToolbarIconButton(systemName: "arrow.clockwise", help: "Refresh Preview") {
+                        model.refreshActiveTab()
+                    }
+                    .transition(.opacity)
+                }
                 if let updatedAt = tab.previewUpdatedAt {
                     Text("Updated \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(BPTokens.Typography.caption)
                         .foregroundStyle(BPTokens.Color.muted)
                 }
+                StatusBadge(status: tab.status, showsLabel: false)
             }
+            .onHover { isUpdatedInfoHovered = $0 }
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)
@@ -327,6 +369,13 @@ struct PreviewPane: View {
                                     get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
                                     set: { model.setOutlineVisible($0, forTabID: tab.id) }
                                 ),
+                                outlineWidth: tab.outlineWidth,
+                                onOutlineWidthChanged: { width in
+                                    model.resizeOutline(to: width, forTabID: tab.id)
+                                },
+                                onOutlineWidthChangeEnded: {
+                                    model.finishOutlineResize(forTabID: tab.id)
+                                },
                                 readingPosition: tab.markdownReadingPosition,
                                 onReadingPositionChanged: { position in
                                     model.updateMarkdownReadingPosition(position, forTabID: tab.id)

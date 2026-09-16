@@ -88,14 +88,31 @@ private struct MarkdownHTMLDocument {
           <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: file: http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
           <style>
             :root { color-scheme: light dark; }
+            html {
+              width: 100%;
+              min-width: 0;
+              overflow-x: hidden;
+              overflow-y: scroll;
+              scrollbar-gutter: stable;
+            }
             body {
-              margin: 0 auto;
-              max-width: 860px;
+              box-sizing: border-box;
+              width: 100%;
+              min-width: 0;
+              max-width: none;
+              margin: 0;
               padding: 40px 52px 80px;
               color: -apple-system-label;
               background: -apple-system-background;
               font: -apple-system-body;
               line-height: 1.55;
+            }
+            .bp-document-content {
+              box-sizing: border-box;
+              width: 100%;
+              min-width: 0;
+              max-width: 860px;
+              margin: 0 auto;
             }
             [data-bp-block-id] { transition: background-color 120ms ease, outline-color 120ms ease; }
             [data-bp-block-id].bp-editing {
@@ -155,7 +172,9 @@ private struct MarkdownHTMLDocument {
           </style>
         </head>
         <body>
+        <main class="bp-document-content">
         \(body)
+        </main>
         </body>
         </html>
         """

@@ -25,6 +25,20 @@ public struct WorkspaceSessionConfiguration: Sendable {
     }
 }
 
+public struct SecurityScopedBookmarkResolution: Sendable {
+    public let url: URL
+    public let isStale: Bool
+
+    public init(url: URL, isStale: Bool) {
+        self.url = url
+        self.isStale = isStale
+    }
+}
+
+public enum SecurityScopedBookmarkError: Error {
+    case missing
+}
+
 /// Owns persisted workspace/session state without knowing the SwiftUI model.
 @MainActor
 public final class WorkspaceSessionCoordinator {
@@ -76,7 +90,47 @@ public final class WorkspaceSessionCoordinator {
     }
 
     public func approvedLatexExternalPaths(for projectRoot: URL) -> [String: Set<String>] {
-        workspaceState(for: projectRoot).latexExternalGrants.mapValues(Set.init)
+        workspaceState(for: projectRoot).latexExternalGrants.mapValues { paths in
+            Set(paths.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().standardizedFileURL.path })
+        }
+    }
+
+    @discardableResult
+    public func storeSecurityScopedBookmark(for rootURL: URL) -> Bool {
+        guard let bookmark = try? rootURL.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else {
+            return false
+        }
+
+        let key = workspaceKey(for: rootURL)
+        var workspace = state.workspaceStates[key] ?? WorkspaceState()
+        workspace.securityScopedBookmark = bookmark
+        state.workspaceStates[key] = workspace
+        save()
+        return true
+    }
+
+    public func resolveSecurityScopedBookmark(for rootURL: URL) throws -> SecurityScopedBookmarkResolution {
+        let workspace = workspaceState(for: rootURL)
+        guard let bookmark = workspace.securityScopedBookmark else {
+            throw SecurityScopedBookmarkError.missing
+        }
+
+        var isStale = false
+        let resolvedURL = try URL(
+            resolvingBookmarkData: bookmark,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+
+        if isStale {
+            _ = storeSecurityScopedBookmark(for: resolvedURL)
+        }
+        return SecurityScopedBookmarkResolution(url: resolvedURL, isStale: isStale)
     }
 
     public func persist(
@@ -117,6 +171,7 @@ public final class WorkspaceSessionCoordinator {
             state.documentStates[documentKey(for: tab.url)] = DocumentState(
                 zoom: tab.isPreviewZoomCustomized ? tab.previewZoom : nil,
                 outlineVisible: tab.isOutlineVisible,
+                outlineWidth: tab.outlineWidth,
                 markdownReadingPosition: tab.markdownReadingPosition,
                 pdfReadingPosition: tab.pdfReadingPosition
             )

@@ -10,10 +10,19 @@ renderizado ou formatado.
   documento.
 - A sidebar abre uma pasta como raiz, mostra a árvore por pastas e ficheiros e
   ignora ficheiros ocultos.
-- A árvore carrega o primeiro nível e expande pastas sob pedido. A pesquisa por
+- O botão direito numa pasta permite copiar o caminho, renomeá-la e enviá-la
+  para o Lixo. Num ficheiro, o menu também permite renomear, duplicar e enviá-lo
+  para o Lixo. Ficheiros podem ser movidos arrastando-os para uma pasta da
+  árvore. Tabs abertas acompanham renomeações e movimentos; itens com alterações
+  por guardar não podem ser enviados para o Lixo.
+- A árvore carrega o primeiro nível e expande pastas sob pedido. Ficheiros
+  arrastados para as extremidades laterais da lista são movidos para a root
+  aberta, mesmo quando não existe espaço vazio abaixo dos itens. A pesquisa por
   nome ou caminho procura apenas pastas diretamente dentro da raiz, faz scroll
   automático até à primeira correspondência e aplica um highlight, sem filtrar
   a árvore nem percorrer descendentes.
+- O cabeçalho permite fechar todas as pastas e limpar os registos de expansão;
+  cada pasta de primeiro nível tem a mesma ação disponível ao passar o rato.
 - O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word e PDF por defeito; pode ser
   desligado para mostrar todos os ficheiros.
 - A árvore mantém expansão, scroll e filtro por workspace.
@@ -135,7 +144,8 @@ renderizado ou formatado.
   reordenadas, fechadas individualmente, fechadas à direita ou fechadas exceto
   a tab escolhida.
 - Tabs, tab ativa, contexto LaTeX, tema, largura e visibilidade da sidebar,
-  zooms predefinidos, filtro, expansão e posições de leitura são persistidos.
+  largura e visibilidade do outline por ficheiro, zooms predefinidos, filtro,
+  expansão e posições de leitura são persistidos.
 - A app restaura a última pasta existente e remove referências a tabs que já não
   existem.
 - O utilizador pode selecionar uma área do preview, incluindo conteúdo obtido

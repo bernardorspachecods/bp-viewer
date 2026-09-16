@@ -33,6 +33,15 @@ private enum MarkdownEditingJavaScript {
     })();
     """#
 }
+
+enum MarkdownScrollObservationPolicy {
+    static func shouldCapture(previousBounds: CGRect?, currentBounds: CGRect) -> Bool {
+        guard let previousBounds else { return false }
+        return previousBounds.size == currentBounds.size
+            && previousBounds.origin != currentBounds.origin
+    }
+}
+
 struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL
@@ -73,6 +82,7 @@ struct MarkdownWebView: NSViewRepresentable {
         webView.onFindFocus = onFindFocus
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = context.coordinator
+        configureScrollView(of: webView)
         context.coordinator.observeScroll(in: webView)
         return webView
     }
@@ -89,8 +99,11 @@ struct MarkdownWebView: NSViewRepresentable {
         context.coordinator.canBeginEditing = canBeginEditing
         context.coordinator.onFindMatchCount = onFindMatchCount
         (webView as? FindTrackingWKWebView)?.onFindFocus = onFindFocus
+        configureScrollView(of: webView)
         context.coordinator.observeScroll(in: webView)
-        webView.pageZoom = zoom
+        if abs(webView.pageZoom - zoom) > 0.001 {
+            webView.pageZoom = zoom
+        }
 
         if context.coordinator.findRequestID != findRequestID
             || context.coordinator.findQuery != findQuery
@@ -143,6 +156,12 @@ struct MarkdownWebView: NSViewRepresentable {
 
     }
 
+    private func configureScrollView(of webView: WKWebView) {
+        guard let scrollView = webView.enclosingScrollView else { return }
+        scrollView.horizontalScrollElasticity = .none
+        scrollView.hasHorizontalScroller = false
+    }
+
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var html: String?
@@ -165,6 +184,8 @@ struct MarkdownWebView: NSViewRepresentable {
         var canBeginEditing = true
         private var scrollObserver: ObserverToken?
         private var captureWorkItem: DispatchWorkItem?
+        private var boundsObservationWorkItem: DispatchWorkItem?
+        private var lastObservedScrollBounds: CGRect?
 
         deinit {
             if let scrollObserver {
@@ -176,22 +197,43 @@ struct MarkdownWebView: NSViewRepresentable {
             guard scrollObserver == nil, let scrollView = webView.enclosingScrollView else { return }
             let contentView = scrollView.contentView
             contentView.postsBoundsChangedNotifications = true
+            lastObservedScrollBounds = contentView.bounds
             scrollObserver = ObserverToken(NotificationCenter.default.addObserver(
                 forName: NSView.boundsDidChangeNotification,
                 object: contentView,
                 queue: .main
-            ) { [weak self, weak webView] _ in
-                Task { @MainActor [weak self, weak webView] in
-                    guard let self, let webView else { return }
-                    self.scheduleCapture(of: webView)
+            ) { [weak self, weak webView, weak contentView] _ in
+                MainActor.assumeIsolated {
+                    self?.scheduleBoundsObservation(in: contentView, webView: webView)
                 }
             })
         }
 
         func removeScrollObservation() {
+            boundsObservationWorkItem?.cancel()
+            boundsObservationWorkItem = nil
             guard let scrollObserver else { return }
             NotificationCenter.default.removeObserver(scrollObserver.value)
             self.scrollObserver = nil
+            lastObservedScrollBounds = nil
+        }
+
+        func scheduleBoundsObservation(in contentView: NSView?, webView: WKWebView?) {
+            guard let contentView, let webView else { return }
+            boundsObservationWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak webView, weak contentView] in
+                guard let self, let webView, let contentView else { return }
+                let currentBounds = contentView.bounds
+                let previousBounds = self.lastObservedScrollBounds
+                self.lastObservedScrollBounds = currentBounds
+                guard MarkdownScrollObservationPolicy.shouldCapture(
+                    previousBounds: previousBounds,
+                    currentBounds: currentBounds
+                ) else { return }
+                self.scheduleCapture(of: webView)
+            }
+            boundsObservationWorkItem = workItem
+            DispatchQueue.main.async(execute: workItem)
         }
 
         func scheduleCapture(of webView: WKWebView) {
@@ -224,16 +266,28 @@ struct MarkdownWebView: NSViewRepresentable {
                           let payload = result as? [String: Any] else { return }
                     let scrollY = (payload["scrollY"] as? NSNumber)?.doubleValue ?? 0
                     let anchorOffset = (payload["anchorOffset"] as? NSNumber)?.doubleValue ?? 0
-                    let position = MarkdownReadingPosition(
-                        scrollY: max(scrollY, 0),
+                    self.publishReadingPosition(
+                        scrollY: scrollY,
                         anchorID: payload["anchorID"] as? String,
                         anchorOffset: anchorOffset
                     )
-                    guard self.lastReadingPosition != position else { return }
-                    self.lastReadingPosition = position
-                    self.onReadingPositionChanged?(position)
                 }
             )
+        }
+
+        func publishReadingPosition(
+            scrollY: Double,
+            anchorID: String?,
+            anchorOffset: Double
+        ) {
+            let position = MarkdownReadingPosition(
+                scrollY: max(scrollY, 0),
+                anchorID: anchorID,
+                anchorOffset: anchorOffset
+            )
+            guard lastReadingPosition != position else { return }
+            lastReadingPosition = position
+            onReadingPositionChanged?(position)
         }
 
         private final class ObserverToken: @unchecked Sendable {

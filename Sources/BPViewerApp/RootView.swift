@@ -366,10 +366,6 @@ struct TopBarView: View {
                 }
             }
 
-            ToolbarIconButton(systemName: "arrow.clockwise", help: "Refresh Preview") {
-                model.refreshActiveTab()
-            }
-
             ToolbarIconButton(systemName: model.theme == .dark ? "sun.max" : "moon", help: "Toggle Theme") {
                 model.cycleTheme()
             }

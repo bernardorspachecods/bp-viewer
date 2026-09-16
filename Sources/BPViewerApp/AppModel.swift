@@ -61,6 +61,7 @@ final class AppModel: ObservableObject {
     @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
     @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
     @Published var isSnapshotCaptureActive = false
+    @Published private(set) var isPerformingFileOperation = false
 
     private let workspaceSession = WorkspaceSessionCoordinator()
     private let documentOpenCoordinator = DocumentOpenCoordinator()
@@ -90,6 +91,9 @@ final class AppModel: ObservableObject {
     private var localKeyMonitor: Any?
     private weak var pendingWindow: NSWindow?
     private var pendingBatchCloseIDs: Set<String> = []
+    private var readingPositionPersistenceTask: Task<Void, Never>?
+    private var fileOperationTask: Task<Void, Never>?
+    private var activeSecurityScopedRootURL: URL?
 
     init() {
         let configuration = workspaceSession.configuration
@@ -223,12 +227,15 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 self.snapshotWindowManager.prepareForTermination()
                 self.persistState()
+                self.stopSecurityScopedAccess()
             }
         }
 
         if let path = workspaceSession.lastWorkspacePath {
-            let url = URL(fileURLWithPath: path)
+            let pathURL = URL(fileURLWithPath: path)
+            let url = (try? workspaceSession.resolveSecurityScopedBookmark(for: pathURL))?.url ?? pathURL
             if FileManager.default.fileExists(atPath: url.path), isDirectory(url) {
+                beginSecurityScopedAccess(to: url)
                 rootURL = url
                 workspaceTreeSession.reset(rootURL: url)
                 reloadTree()
@@ -319,7 +326,11 @@ final class AppModel: ObservableObject {
         documentRenderCoordinator.cancelAll()
         workspaceTreeSession.reset(rootURL: nil)
         stopWatchingActiveFiles()
-        let standardizedRoot = url.standardizedFileURL
+        _ = workspaceSession.storeSecurityScopedBookmark(for: url)
+        let accessibleRoot = (try? workspaceSession.resolveSecurityScopedBookmark(for: url))?.url ?? url
+        stopSecurityScopedAccess()
+        beginSecurityScopedAccess(to: accessibleRoot)
+        let standardizedRoot = accessibleRoot.standardizedFileURL
         rootURL = standardizedRoot
         workspaceTreeSession.reset(rootURL: standardizedRoot)
         tabs = []
@@ -327,6 +338,17 @@ final class AppModel: ObservableObject {
         restoreTabs()
         reloadTree()
         persistState()
+    }
+
+    private func beginSecurityScopedAccess(to url: URL) {
+        guard url.startAccessingSecurityScopedResource() else { return }
+        activeSecurityScopedRootURL = url
+    }
+
+    private func stopSecurityScopedAccess() {
+        guard let activeSecurityScopedRootURL else { return }
+        activeSecurityScopedRootURL.stopAccessingSecurityScopedResource()
+        self.activeSecurityScopedRootURL = nil
     }
 
     func reloadTree() {
@@ -347,6 +369,17 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
+    func collapseAllFolders() {
+        workspaceTreeSession.collapseAllFolders()
+        persistState()
+    }
+
+    func collapseFolder(_ node: FileNode) {
+        guard node.isDirectory else { return }
+        workspaceTreeSession.collapseFolder(node.id)
+        persistState()
+    }
+
     func updateTreeScrollOffset(_ offset: Double) {
         workspaceTreeSession.updateScrollOffset(offset)
     }
@@ -358,7 +391,12 @@ final class AppModel: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].markdownReadingPosition != position else { return }
         tabs[index].markdownReadingPosition = position
-        persistState()
+        readingPositionPersistenceTask?.cancel()
+        readingPositionPersistenceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            self?.persistState()
+        }
     }
 
     func updatePDFReadingPosition(
@@ -391,6 +429,194 @@ final class AppModel: ObservableObject {
 
     func copyPath(_ url: URL) {
         copyText(FilePathCopy.string(for: url))
+    }
+
+    func rename(_ node: FileNode) {
+        guard let rootURL else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Rename " + node.title
+        alert.informativeText = "Enter a new name for this "
+            + (node.isDirectory ? "folder" : "file")
+            + "."
+        let nameField = NSTextField(string: node.title)
+        nameField.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        alert.accessoryView = nameField
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = nameField
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            let newURL = try WorkspaceFileOperations.rename(
+                itemAt: node.url,
+                to: nameField.stringValue,
+                in: rootURL
+            )
+            relocateOpenTabs(from: node.url, to: newURL)
+            if node.isDirectory {
+                workspaceTreeSession.relocateExpandedPaths(
+                    from: node.relativePath,
+                    to: relativePath(of: newURL, from: rootURL)
+                )
+            }
+            refreshTreeAfterFileOperation(in: [node.url.deletingLastPathComponent()])
+            persistState()
+        } catch {
+            showFileOperationError(error)
+        }
+    }
+
+    @discardableResult
+    func moveFile(at sourceURL: URL, to destinationDirectory: URL) -> Bool {
+        guard let rootURL else { return false }
+        let sourceIsDirectory = isDirectory(sourceURL)
+        do {
+            let newURL = try WorkspaceFileOperations.move(
+                itemAt: sourceURL,
+                to: destinationDirectory,
+                in: rootURL
+            )
+            relocateOpenTabs(from: sourceURL, to: newURL)
+            if sourceIsDirectory {
+                workspaceTreeSession.relocateExpandedPaths(
+                    from: relativePath(of: sourceURL, from: rootURL),
+                    to: relativePath(of: newURL, from: rootURL)
+                )
+            }
+            refreshTreeAfterFileOperation(in: [
+                sourceURL.deletingLastPathComponent(),
+                destinationDirectory
+            ])
+            return true
+        } catch {
+            showFileOperationError(error)
+            return false
+        }
+    }
+
+    func duplicate(_ node: FileNode) {
+        guard !node.isDirectory,
+              let rootURL,
+              !isPerformingFileOperation else { return }
+
+        let sourceURL = node.url
+        isPerformingFileOperation = true
+        fileOperationTask = Task { @MainActor [weak self] in
+            defer {
+                self?.isPerformingFileOperation = false
+                self?.fileOperationTask = nil
+            }
+
+            do {
+                _ = try await Task.detached(priority: .userInitiated) {
+                    try WorkspaceFileOperations.duplicate(
+                        itemAt: sourceURL,
+                        in: rootURL
+                    )
+                }.value
+
+                guard let self,
+                      self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
+                await Task.yield()
+                self.refreshTreeAfterFileOperation(in: [sourceURL.deletingLastPathComponent()])
+                self.persistState()
+            } catch is CancellationError {
+                return
+            } catch {
+                self?.showFileOperationError(error)
+            }
+        }
+    }
+
+    private func refreshTreeAfterFileOperation(in directories: [URL]) {
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            self.workspaceTreeSession.refreshAfterFileOperation(in: directories)
+            self.persistState()
+        }
+    }
+
+    func delete(_ node: FileNode) {
+        guard let rootURL else { return }
+        let affectedTabs = tabs.filter { isURL($0.url, inside: node.url) }
+        guard !affectedTabs.contains(where: hasUnsavedChanges(in:)) else {
+            showFileOperationError(
+                NSError(
+                    domain: "BPViewer.FileOperations",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Close or save this item before moving it to the Trash."]
+                )
+            )
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Move " + node.title + " to the Trash?"
+        alert.informativeText = "This " + (node.isDirectory ? "folder" : "file") + " and its contents will be moved to the Trash."
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try WorkspaceFileOperations.remove(itemAt: node.url, in: rootURL)
+            closeTabsImmediately(Set(affectedTabs.map(\.id)))
+            refreshTreeAfterFileOperation(in: [node.url.deletingLastPathComponent()])
+            persistState()
+        } catch {
+            showFileOperationError(error)
+        }
+    }
+
+    private func relocateOpenTabs(from oldURL: URL, to newURL: URL) {
+        let affectedTabs = tabs.filter { isURL($0.url, inside: oldURL) }
+        guard !affectedTabs.isEmpty else { return }
+
+        documentRenderCoordinator.cancel(tabIDs: affectedTabs.map(\.id))
+        var relocatedIDs: [String: String] = [:]
+        for index in tabs.indices {
+            let oldID = tabs[index].id
+            guard isURL(tabs[index].url, inside: oldURL) else { continue }
+            tabs[index].relocate(from: oldURL, to: newURL)
+            tabs[index].status = .idle
+            tabs[index].isStale = false
+            tabs[index].errorMessage = nil
+            relocatedIDs[oldID] = tabs[index].id
+        }
+        if let activeTabID, let relocatedActiveID = relocatedIDs[activeTabID] {
+            self.activeTabID = relocatedActiveID
+        }
+        restartWatchingActiveFilesIfNeeded()
+    }
+
+    private func restartWatchingActiveFilesIfNeeded() {
+        guard let activeTabID,
+              let tab = tabs.first(where: { $0.id == activeTabID }) else {
+            stopWatchingActiveFiles()
+            return
+        }
+        startWatchingActiveFiles(
+            [tab.url] + tab.previewDependencies + tab.previewExternalDependencies
+        )
+        renderActiveTabIfNeeded()
+    }
+
+    private func isURL(_ url: URL, inside parent: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        let parentPath = parent.standardizedFileURL.path
+        return path == parentPath || path.hasPrefix(parentPath + "/")
+    }
+
+    private func relativePath(of url: URL, from root: URL) -> String {
+        let rootPath = root.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path == rootPath ? "." : String(path.dropFirst(rootPath.count + 1))
+    }
+
+    private func showFileOperationError(_ error: Error) {
+        let alert = NSAlert(error: error)
+        alert.runModal()
     }
 
     var canCaptureActivePreview: Bool {
@@ -573,6 +799,7 @@ final class AppModel: ObservableObject {
             contextURL: contextURL,
             status: kind == .docx ? .ready : .updating,
             isOutlineVisible: documentState.outlineVisible,
+            outlineWidth: documentState.outlineWidth,
             previewZoom: documentState.zoom ?? defaultZoom(for: kind),
             isPreviewZoomCustomized: documentState.zoom != nil,
             previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,
@@ -1546,6 +1773,18 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
+    func resizeOutline(to width: Double, forTabID tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let normalizedWidth = DocumentOutlineSizing.clamped(width)
+        guard tabs[index].outlineWidth != normalizedWidth else { return }
+        tabs[index].outlineWidth = normalizedWidth
+    }
+
+    func finishOutlineResize(forTabID tabID: String) {
+        guard tabs.contains(where: { $0.id == tabID }) else { return }
+        persistState()
+    }
+
     func cancelLatexRootSelection() {
         pendingLatexRootSelection = nil
     }
@@ -1640,6 +1879,7 @@ final class AppModel: ObservableObject {
             activeTabID = rootURL.path
             let documentState = workspaceSession.documentState(for: rootURL)
             tabs[oldIndex].isOutlineVisible = documentState.outlineVisible
+            tabs[oldIndex].outlineWidth = documentState.outlineWidth
             tabs[oldIndex].previewZoom = documentState.zoom ?? defaultZoom(for: .latex)
             tabs[oldIndex].isPreviewZoomCustomized = documentState.zoom != nil
             tabs[oldIndex].previewPageIndex = documentState.pdfReadingPosition?.pageIndex ?? 0
@@ -1862,6 +2102,7 @@ final class AppModel: ObservableObject {
                 contextURL: contextURL,
                 status: kind == .docx ? .ready : (documentOpenCoordinator.isPreviewable(kind) ? .idle : .unavailable),
                 isOutlineVisible: documentState.outlineVisible,
+                outlineWidth: documentState.outlineWidth,
                 previewZoom: documentState.zoom ?? defaultZoom(for: kind),
                 isPreviewZoomCustomized: documentState.zoom != nil,
                 previewPageIndex: documentState.pdfReadingPosition?.pageIndex ?? 0,

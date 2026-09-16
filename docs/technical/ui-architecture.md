@@ -54,6 +54,19 @@ Os modelos principais são:
 `SidebarView` apresenta a raiz aberta, a pesquisa, o filtro de compatibilidade,
 o estado de indexação e a árvore lazy. Selecionar um ficheiro pede ao
 `AppModel` para abrir ou focar a tab correspondente.
+As ramificações expandidas são achatadas em linhas visíveis antes de serem
+entregues à `LazyVStack`, para que o scroll não tenha de construir uma view
+recursiva com todos os descendentes.
+O cabeçalho fecha todas as pastas; em cada pasta de primeiro nível, o mesmo
+comando aparece no hover e limpa apenas o ramo dessa pasta.
+
+O menu de contexto usa `WorkspaceFileOperations` para renomear
+pastas/ficheiros, duplicar e enviar itens para o Lixo, mantendo tabs abertas
+sincronizadas com os novos caminhos. Ficheiros são `draggable` por caminho e as
+pastas aceitam `dropDestination`, que executa o movimento apenas dentro da raiz
+do workspace. Duas zonas de drop nas extremidades laterais da lista também
+representam a root aberta, permitindo devolver um ficheiro à root sem depender
+de espaço vazio no fim da árvore.
 
 ### Tabs
 
@@ -70,7 +83,8 @@ JavaScript, a navegação e a posição de leitura. `SourceEditorView` contém o
 editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
 source Markdown, cujo syntax highlighting usa uma paleta própria para os temas
 claro e escuro; a toolbar alterna entre o editor integral e o split view, que
-mantém o source à esquerda e o preview live à direita.
+mantém o source à esquerda e o preview live à direita. O outline é redimensionável
+por ficheiro e restaura a largura guardada desse documento.
 `DocumentDiffView` é acionada pela toolbar e mantém a referência read-only à
 esquerda e o editor real à direita. Pode comparar o disco ou `HEAD`; ao sair,
 restaura o modo anterior.

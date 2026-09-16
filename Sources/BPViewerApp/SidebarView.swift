@@ -1,37 +1,106 @@
 import BPViewerCore
 import SwiftUI
 
+struct CollapseFoldersButton: View {
+    let helpText: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.plain)
+        .help(helpText)
+    }
+}
+
+struct SidebarTreeItem: Identifiable {
+    let id: String
+    let node: FileNode?
+    let level: Int
+
+    init(node: FileNode, level: Int) {
+        id = node.id
+        self.node = node
+        self.level = level
+    }
+
+    init(loadingFor node: FileNode, level: Int) {
+        id = node.id + "/loading"
+        self.node = nil
+        self.level = level
+    }
+
+    static func flatten(
+        nodes: [FileNode],
+        expandedPaths: Set<String>
+    ) -> [SidebarTreeItem] {
+        var result: [SidebarTreeItem] = []
+
+        func append(_ nodes: [FileNode], level: Int) {
+            for node in nodes {
+                result.append(SidebarTreeItem(node: node, level: level))
+                guard node.isDirectory,
+                      expandedPaths.contains(node.id) else { continue }
+
+                if node.childrenLoaded {
+                    append(node.children, level: level + 1)
+                } else {
+                    result.append(SidebarTreeItem(loadingFor: node, level: level + 1))
+                }
+            }
+        }
+
+        append(nodes, level: 0)
+        return result
+    }
+}
+
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @State private var highlightedSearchNodeIDs: Set<String> = []
+    @State private var isRootDropTarget = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Label("Files", systemImage: "folder.fill")
-                    .font(BPTokens.Typography.title)
-                Spacer()
-                if model.isScanningTree || model.isFilteringTree {
+            HStack(spacing: BPTokens.Spacing.xs) {
+                Toggle(isOn: Binding(
+                    get: { model.compatibleOnly },
+                    set: { model.updateCompatibleOnly($0) }
+                )) {
+                    Text("Supported files only")
+                        .padding(.leading, BPTokens.Spacing.xxs)
+                }
+                .font(BPTokens.Typography.caption)
+                .toggleStyle(.checkbox)
+                .controlSize(.mini)
+                .tint(BPTokens.Color.muted)
+
+                Spacer(minLength: 0)
+
+                CollapseFoldersButton(
+                    helpText: "Close all folders",
+                    action: model.collapseAllFolders
+                )
+                .opacity(model.expandedPaths.isEmpty ? 0 : 1)
+                .allowsHitTesting(!model.expandedPaths.isEmpty)
+                .accessibilityHidden(model.expandedPaths.isEmpty)
+                if model.isScanningTree || model.isFilteringTree || model.isPerformingFileOperation {
                     ProgressView()
                         .controlSize(.small)
-                        .help(model.isScanningTree ? "Indexing folder…" : "Searching files…")
+                        .help(
+                            model.isPerformingFileOperation
+                                ? "Copying file…"
+                                : model.isScanningTree
+                                    ? "Indexing folder…"
+                                : "Searching files…"
+                        )
                 }
-                Text(model.nodes.count, format: .number)
-                    .font(BPTokens.Typography.caption)
-                    .foregroundStyle(BPTokens.Color.muted)
             }
             .padding(.horizontal, BPTokens.Spacing.md)
-            .padding(.top, BPTokens.Spacing.md)
-            .padding(.bottom, BPTokens.Spacing.sm)
-
-            Toggle("Supported files only", isOn: Binding(
-                get: { model.compatibleOnly },
-                set: { model.updateCompatibleOnly($0) }
-            ))
-            .font(BPTokens.Typography.caption)
-            .toggleStyle(.checkbox)
-            .padding(.horizontal, BPTokens.Spacing.md)
-            .padding(.bottom, BPTokens.Spacing.sm)
+            .padding(.top, BPTokens.Spacing.xs)
+            .padding(.bottom, BPTokens.Spacing.xs)
 
             TextField("Search files", text: Binding(
                 get: { model.treeQuery },
@@ -61,29 +130,46 @@ struct SidebarView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(model.nodes) { node in
-                                FileTreeRow(
-                                    node: node,
-                                    level: 0,
-                                    highlightedNodeIDs: highlightedSearchNodeIDs
-                                )
-                                .id(node.id)
+                ZStack {
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(
+                                    SidebarTreeItem.flatten(
+                                        nodes: model.nodes,
+                                        expandedPaths: model.expandedPaths
+                                    )
+                                ) { item in
+                                    if let node = item.node {
+                                        FileTreeRow(
+                                            node: node,
+                                            level: item.level,
+                                            highlightedNodeIDs: highlightedSearchNodeIDs
+                                        )
+                                    } else {
+                                        TreeLoadingRow(level: item.level)
+                                    }
+                                }
                             }
+                            .padding(.vertical, BPTokens.Spacing.xs)
                         }
-                        .padding(.vertical, BPTokens.Spacing.xs)
+                        .onChange(of: model.treeQuery) { _, _ in
+                            focusSearchResult(using: proxy)
+                        }
+                        .onChange(of: model.nodes.map(\.id)) { _, _ in
+                            focusSearchResult(using: proxy)
+                        }
+                        .onAppear {
+                            focusSearchResult(using: proxy)
+                        }
                     }
-                    .onChange(of: model.treeQuery) { _, _ in
-                        focusSearchResult(using: proxy)
+
+                    HStack(spacing: 0) {
+                        rootDropZone
+                        Spacer(minLength: 0)
+                        rootDropZone
                     }
-                    .onChange(of: model.nodes.map(\.id)) { _, _ in
-                        focusSearchResult(using: proxy)
-                    }
-                    .onAppear {
-                        focusSearchResult(using: proxy)
-                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -114,6 +200,31 @@ struct SidebarView: View {
             }
         }
     }
+
+    private var rootDropZone: some View {
+        Color.accentColor.opacity(isRootDropTarget ? 0.16 : 0)
+            .frame(width: 14)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .dropDestination(for: String.self) { items, _ in
+                guard let rootURL = model.rootURL else {
+                    isRootDropTarget = false
+                    return false
+                }
+                let didMove = items.reduce(false) { movedAny, path in
+                    model.moveFile(
+                        at: URL(fileURLWithPath: path),
+                        to: rootURL
+                    ) || movedAny
+                }
+                isRootDropTarget = false
+                return didMove
+            } isTargeted: { isTargeted in
+                withAnimation(.easeInOut(duration: 0.14)) {
+                    isRootDropTarget = isTargeted
+                }
+            }
+    }
 }
 
 struct FileTreeRow: View {
@@ -121,52 +232,98 @@ struct FileTreeRow: View {
     let node: FileNode
     let level: Int
     let highlightedNodeIDs: Set<String>
+    @State private var isDropTarget = false
+    @State private var isHovering = false
 
     var body: some View {
-        if node.isDirectory {
-            VStack(alignment: .leading, spacing: 0) {
-                rowButton
+        rowButton
+    }
 
-                if model.expandedPaths.contains(node.id) {
-                    if node.childrenLoaded {
-                        ForEach(node.children) { child in
-                            FileTreeRow(
-                                node: child,
-                                level: level + 1,
-                                highlightedNodeIDs: highlightedNodeIDs
-                            )
-                        }
-                    } else {
-                        HStack(spacing: BPTokens.Spacing.xs) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Loading…")
-                                .font(BPTokens.Typography.caption)
-                                .foregroundStyle(BPTokens.Color.muted)
-                        }
-                        .padding(.leading, BPTokens.Spacing.sm + CGFloat(level + 1) * BPTokens.Spacing.md)
-                        .frame(minHeight: BPTokens.Size.row)
-                        .overlay(alignment: .leading) {
-                            TreeGuides(level: level + 1)
-                        }
+    @ViewBuilder
+    private var rowButton: some View {
+        if node.isDirectory {
+            baseRow
+                .draggable(node.url.path) {
+                    Label(node.title, systemImage: iconName)
+                        .padding(.horizontal, BPTokens.Spacing.sm)
+                        .padding(.vertical, BPTokens.Spacing.xs)
+                        .background(BPTokens.Color.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    let didMove = items.reduce(false) { movedAny, path in
+                        model.moveFile(
+                            at: URL(fileURLWithPath: path),
+                            to: node.url
+                        ) || movedAny
+                    }
+                    isDropTarget = false
+                    return didMove
+                } isTargeted: { isTargeted in
+                    withAnimation(.easeInOut(duration: 0.14)) {
+                        isDropTarget = isTargeted
                     }
                 }
-            }
         } else {
-            rowButton
+            baseRow
+                .draggable(node.url.path) {
+                    Label(node.title, systemImage: iconName)
+                        .padding(.horizontal, BPTokens.Spacing.sm)
+                        .padding(.vertical, BPTokens.Spacing.xs)
+                        .background(BPTokens.Color.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
+                }
         }
     }
 
-    private var rowButton: some View {
-        Button {
-            model.open(node)
-        } label: {
-            rowLabel
+    private var baseRow: some View {
+        ZStack(alignment: .trailing) {
+            Button {
+                model.open(node)
+            } label: {
+                rowLabel
+            }
+            .buttonStyle(.plain)
+
+            if shouldShowCollapseButton {
+                CollapseFoldersButton(
+                    helpText: "Close folder",
+                    action: { model.collapseFolder(node) }
+                )
+                .padding(.trailing, BPTokens.Spacing.sm)
+            }
         }
-        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { isHovering = $0 }
         .contextMenu {
-            Button("Copy Path") { model.copyPath(node.url) }
+            Button {
+                model.copyPath(node.url)
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                model.rename(node)
+            } label: {
+                Label("Rename…", systemImage: "pencil")
+            }
+
+            if !node.isDirectory {
+                Divider()
+                Button {
+                    model.duplicate(node)
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                .disabled(model.isPerformingFileOperation)
+            }
+
+            Divider()
+            Button(role: .destructive) {
+                model.delete(node)
+            } label: {
+                Label("Move to Trash", systemImage: "trash")
+            }
         }
     }
 
@@ -181,9 +338,20 @@ struct FileTreeRow: View {
             Spacer(minLength: 0)
         }
         .padding(.leading, BPTokens.Spacing.sm + CGFloat(level) * BPTokens.Spacing.md)
-        .padding(.trailing, BPTokens.Spacing.sm)
+        .padding(
+            .trailing,
+            shouldShowCollapseButton
+                ? BPTokens.Spacing.sm + 28
+                : BPTokens.Spacing.sm
+        )
         .frame(minHeight: BPTokens.Size.row)
-        .background(highlightedNodeIDs.contains(node.id) ? BPTokens.Color.selection : .clear)
+        .background(
+            isDropTarget
+                ? Color.accentColor.opacity(0.2)
+                : highlightedNodeIDs.contains(node.id)
+                    ? BPTokens.Color.selection
+                    : .clear
+        )
         .contentShape(Rectangle())
         .overlay(alignment: .leading) {
             TreeGuides(level: level)
@@ -205,6 +373,13 @@ struct FileTreeRow: View {
         }
     }
 
+    private var shouldShowCollapseButton: Bool {
+        node.isDirectory
+            && level == 0
+            && isHovering
+            && model.expandedPaths.contains(node.id)
+    }
+
     private var iconColor: Color {
         switch node.kind {
         case .markdown: .blue
@@ -214,6 +389,25 @@ struct FileTreeRow: View {
         case .docx: .purple
         case .pdf: .red
         case .other: BPTokens.Color.muted
+        }
+    }
+}
+
+struct TreeLoadingRow: View {
+    let level: Int
+
+    var body: some View {
+        HStack(spacing: BPTokens.Spacing.xs) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Loading…")
+                .font(BPTokens.Typography.caption)
+                .foregroundStyle(BPTokens.Color.muted)
+        }
+        .padding(.leading, BPTokens.Spacing.sm + CGFloat(level) * BPTokens.Spacing.md)
+        .frame(minHeight: BPTokens.Size.row)
+        .overlay(alignment: .leading) {
+            TreeGuides(level: level)
         }
     }
 }

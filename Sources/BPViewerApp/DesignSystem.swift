@@ -111,14 +111,23 @@ struct CopyTextButton: View {
 
 struct StatusBadge: View {
     let status: PreviewStatus
+    var showsLabel = true
 
     var body: some View {
-        Label(status.label, systemImage: status.systemImage)
-            .font(BPTokens.Typography.caption)
-            .foregroundStyle(status.color)
-            .padding(.horizontal, BPTokens.Spacing.xs)
-            .padding(.vertical, BPTokens.Spacing.xxs)
-            .background(status.color.opacity(0.12), in: Capsule())
+        Group {
+            if showsLabel {
+                Label(status.label, systemImage: status.systemImage)
+            } else {
+                Image(systemName: status.systemImage)
+                    .accessibilityLabel(status.label)
+            }
+        }
+        .font(BPTokens.Typography.caption)
+        .foregroundStyle(status.color)
+        .padding(.horizontal, showsLabel ? BPTokens.Spacing.xs : BPTokens.Spacing.xxs)
+        .padding(.vertical, BPTokens.Spacing.xxs)
+        .background(status.color.opacity(0.12), in: Capsule())
+        .help(status.label)
     }
 }
 

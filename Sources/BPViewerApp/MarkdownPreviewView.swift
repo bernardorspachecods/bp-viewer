@@ -2,6 +2,10 @@ import SwiftUI
 import BPViewerCore
 import AppKit
 
+private enum MarkdownOutlineLayout {
+    static let animation = Animation.easeInOut(duration: 0.24)
+}
+
 struct MarkdownPreviewView: View {
     @Environment(\.colorScheme) private var colorScheme
     let html: String
@@ -32,6 +36,9 @@ struct MarkdownPreviewView: View {
     let onFindTargetChanged: (FindTarget) -> Void
     let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     @Binding var isOutlineVisible: Bool
+    let outlineWidth: Double
+    let onOutlineWidthChanged: (Double) -> Void
+    let onOutlineWidthChangeEnded: () -> Void
     let readingPosition: MarkdownReadingPosition?
     let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
     let isSnapshotCaptureActive: Bool
@@ -81,63 +88,74 @@ struct MarkdownPreviewView: View {
             }
 
             HStack(spacing: 0) {
-                if isOutlineVisible {
-                    DocumentOutlineSidebar(
-                        entries: outlineItems,
-                        selectedID: selectedHeadingID
-                    ) { item in
-                        selectedHeadingID = item.id
-                        outlineRequestID += 1
-                    }
-                    Divider()
-                }
+                outlineSurface
+                documentSurface
+            }
+            .animation(MarkdownOutlineLayout.animation, value: isOutlineVisible)
+        }
+        .id(documentID)
+    }
 
-                if let editingSession {
-                    if let diffSession {
-                        DocumentDiffView(
-                            baseline: diffSession.baseline,
-                            unavailableMessage: diffSession.unavailableMessage,
-                            editedSource: editingSession.currentSource,
-                            zoom: zoom,
-                            syntaxHighlighting: .markdown(
-                                MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
-                            ),
-                            monospaced: false,
-                            markdownShortcutsEnabled: true,
-                            findQuery: findQuery,
-                            findRequestID: findRequestID,
-                            findBackwards: findBackwards,
-                            isFindTarget: findTarget == .source,
-                            onFindFocus: { onFindTargetChanged(.source) },
-                            onFindMatchCount: onFindMatchCount,
-                            onSourceChanged: onMarkdownTextChanged,
-                            onEndEditing: { _ in onEndMarkdownEditing() }
-                        )
-                    } else {
-                        MarkdownSourceEditor(
-                            source: editingSession.currentSource,
-                            zoom: zoom,
-                            cursorUTF8Offset: pendingCursorUTF8Offset,
-                            findQuery: findQuery,
-                            findRequestID: findRequestID,
-                            findBackwards: findBackwards,
-                            isFindTarget: findTarget == .source,
-                            onFindFocus: { onFindTargetChanged(.source) },
-                            onFindMatchCount: onFindMatchCount,
-                            onEndEditing: onEndMarkdownEditing,
-                            onSourceChanged: onMarkdownTextChanged
-                        )
-                        if editingSession.mode == .split {
-                            Divider()
-                            previewSurface
-                        }
-                    }
-                } else {
+    private var outlineSurface: some View {
+        ResizableDocumentOutlineView(
+            isVisible: isOutlineVisible,
+            width: outlineWidth,
+            entries: outlineItems,
+            selectedID: selectedHeadingID,
+            onSelect: { item in
+                selectedHeadingID = item.id
+                outlineRequestID += 1
+            },
+            onChanged: onOutlineWidthChanged,
+            onEnded: { _ in onOutlineWidthChangeEnded() }
+        )
+    }
+
+    @ViewBuilder
+    private var documentSurface: some View {
+        if let editingSession {
+            if let diffSession {
+                DocumentDiffView(
+                    baseline: diffSession.baseline,
+                    unavailableMessage: diffSession.unavailableMessage,
+                    editedSource: editingSession.currentSource,
+                    zoom: zoom,
+                    syntaxHighlighting: .markdown(
+                        MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
+                    ),
+                    monospaced: false,
+                    markdownShortcutsEnabled: true,
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    isFindTarget: findTarget == .source,
+                    onFindFocus: { onFindTargetChanged(.source) },
+                    onFindMatchCount: onFindMatchCount,
+                    onSourceChanged: onMarkdownTextChanged,
+                    onEndEditing: { _ in onEndMarkdownEditing() }
+                )
+            } else {
+                MarkdownSourceEditor(
+                    source: editingSession.currentSource,
+                    zoom: zoom,
+                    cursorUTF8Offset: pendingCursorUTF8Offset,
+                    findQuery: findQuery,
+                    findRequestID: findRequestID,
+                    findBackwards: findBackwards,
+                    isFindTarget: findTarget == .source,
+                    onFindFocus: { onFindTargetChanged(.source) },
+                    onFindMatchCount: onFindMatchCount,
+                    onEndEditing: onEndMarkdownEditing,
+                    onSourceChanged: onMarkdownTextChanged
+                )
+                if editingSession.mode == .split {
+                    Divider()
                     previewSurface
                 }
             }
+        } else {
+            previewSurface
         }
-        .id(documentID)
     }
 
     private var previewSurface: some View {

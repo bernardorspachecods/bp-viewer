@@ -156,40 +156,168 @@ struct DocumentOutlineSidebar: View {
     let entries: [DocumentOutlineItem]
     let selectedID: String?
     let onSelect: (DocumentOutlineItem) -> Void
+    let fixedWidth: CGFloat?
+
+    init(
+        entries: [DocumentOutlineItem],
+        selectedID: String?,
+        fixedWidth: CGFloat? = nil,
+        onSelect: @escaping (DocumentOutlineItem) -> Void
+    ) {
+        self.entries = entries
+        self.selectedID = selectedID
+        self.fixedWidth = fixedWidth
+        self.onSelect = onSelect
+    }
 
     var body: some View {
+        Group {
+            if let fixedWidth {
+                outlineList.frame(width: fixedWidth)
+            } else {
+                outlineList
+                    .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
+            }
+        }
+        .background(BPTokens.Color.surface)
+    }
+
+    private var outlineList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(entries) { entry in
                     Button {
                         onSelect(entry)
                     } label: {
-                        HStack(spacing: BPTokens.Spacing.xs) {
-                            Image(systemName: "list.bullet.indent")
-                                .foregroundStyle(BPTokens.Color.muted)
+                        HStack(spacing: 0) {
                             Text(entry.title)
-                                .font(BPTokens.Typography.caption)
+                                .font(
+                                    entry.level == 0
+                                        ? BPTokens.Typography.body.weight(.semibold)
+                                        : BPTokens.Typography.caption
+                                )
+                                .foregroundStyle(
+                                    selectedID == entry.id
+                                        ? Color.primary
+                                        : entry.level == 0
+                                            ? Color.primary.opacity(0.9)
+                                            : BPTokens.Color.muted
+                                )
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: 0)
                         }
                         .padding(
                             .leading,
-                            BPTokens.Spacing.sm
+                            BPTokens.Spacing.md
                                 + CGFloat(max(entry.level, 0)) * BPTokens.Spacing.md
                         )
-                        .padding(.trailing, BPTokens.Spacing.xs)
-                        .padding(.vertical, BPTokens.Spacing.xs)
-                        .background(selectedID == entry.id ? BPTokens.Color.selection : .clear)
+                        .padding(.trailing, BPTokens.Spacing.sm)
+                        .padding(.vertical, BPTokens.Spacing.xxs + 2)
+                        .frame(minHeight: BPTokens.Size.row)
+                        .background(
+                            RoundedRectangle(cornerRadius: BPTokens.Radius.sm)
+                                .fill(
+                                    selectedID == entry.id
+                                        ? Color.primary.opacity(0.12)
+                                        : .clear
+                                )
+                        )
+                        .overlay(alignment: .leading) {
+                            OutlineGuides(
+                                level: max(entry.level, 0),
+                                isSelected: selectedID == entry.id
+                            )
+                            .padding(.leading, BPTokens.Spacing.sm)
+                        }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(!entry.isSelectable)
                 }
             }
+            .padding(.horizontal, BPTokens.Spacing.xxs)
             .padding(.vertical, BPTokens.Spacing.xs)
         }
-        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
-        .background(BPTokens.Color.surface)
+    }
+}
+
+private struct OutlineGuides: View {
+    let level: Int
+    let isSelected: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            guard level > 0 else { return }
+
+            var guides = Path()
+            let baseX = BPTokens.Spacing.xs
+            let step = BPTokens.Spacing.md
+
+            for depth in 0..<level {
+                let x = baseX + CGFloat(depth) * step
+                guides.move(to: CGPoint(x: x, y: 0))
+                guides.addLine(to: CGPoint(x: x, y: size.height))
+            }
+
+            let connectorX = baseX + CGFloat(level - 1) * step
+            guides.move(to: CGPoint(x: connectorX, y: size.height / 2))
+            guides.addLine(to: CGPoint(x: connectorX + step * 0.5, y: size.height / 2))
+
+            context.stroke(
+                guides,
+                with: .color(
+                    isSelected
+                        ? Color.primary.opacity(0.42)
+                        : BPTokens.Color.separator.opacity(0.85)
+                ),
+                style: StrokeStyle(lineWidth: 1, lineCap: .square)
+            )
+        }
+        .frame(width: BPTokens.Spacing.md * CGFloat(max(level, 1)))
+        .allowsHitTesting(false)
+    }
+}
+
+struct ResizableDocumentOutlineView: View {
+    let isVisible: Bool
+    let width: Double
+    let entries: [DocumentOutlineItem]
+    let selectedID: String?
+    let onSelect: (DocumentOutlineItem) -> Void
+    let onChanged: (Double) -> Void
+    let onEnded: (Double) -> Void
+    @State private var liveWidth: Double?
+
+    private var displayedWidth: Double {
+        liveWidth ?? DocumentOutlineSizing.clamped(width)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            DocumentOutlineSidebar(
+                entries: entries,
+                selectedID: selectedID,
+                fixedWidth: displayedWidth,
+                onSelect: onSelect
+            )
+            SidebarResizeHandle(
+                width: displayedWidth,
+                onChanged: { resizedWidth in
+                    liveWidth = resizedWidth
+                    onChanged(resizedWidth)
+                },
+                onEnded: { resizedWidth in
+                    onEnded(resizedWidth)
+                    liveWidth = nil
+                }
+            )
+        }
+        .frame(width: isVisible ? displayedWidth + 5 : 0)
+        .frame(maxHeight: .infinity, alignment: .leading)
+        .clipped()
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
     }
 }

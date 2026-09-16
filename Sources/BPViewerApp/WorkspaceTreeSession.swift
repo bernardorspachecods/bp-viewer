@@ -32,6 +32,7 @@ final class WorkspaceTreeSession {
     private var activeDirectoryWatchers: [URL: DispatchSourceFileSystemObject] = [:]
     private var watchedDirectoryURLs: Set<URL> = []
     private var treeRefreshGeneration = 0
+    private var watcherRefreshSuppressedUntil: Date?
 
     init(
         scanner: FileSystemScanner = FileSystemScanner(),
@@ -87,6 +88,10 @@ final class WorkspaceTreeSession {
             return
         }
 
+        // A file operation can already have triggered a watcher refresh. The
+        // explicit reload is authoritative, so invalidate that pending work
+        // instead of scanning the tree a second time shortly afterwards.
+        treeRefreshGeneration += 1
         treeScanGeneration += 1
         let generation = treeScanGeneration
         let scanner = scanner
@@ -109,6 +114,85 @@ final class WorkspaceTreeSession {
             self.applyTreeFilter()
             self.expandAutomaticSingleChildChainIfNeeded()
             self.loadExpandedChildrenIfNeeded()
+        }
+    }
+
+    func refreshAfterFileOperation(in directories: [URL]) {
+        guard let rootURL else { return }
+
+        // File-system notifications for a local operation can arrive after
+        // the explicit refresh. Ignore that short burst so one action cannot
+        // enqueue a second update while SwiftUI is laying out rows.
+        watcherRefreshSuppressedUntil = Date().addingTimeInterval(0.75)
+        let directories = Set(directories.map { $0.standardizedFileURL })
+        guard !directories.isEmpty else { return }
+
+        treeRefreshGeneration += 1
+        treeScanGeneration += 1
+        let generation = treeScanGeneration
+        let scanner = scanner
+        treeFilterGeneration += 1
+        treeFilterTask?.cancel()
+        treeFilterTask = nil
+        state.isFiltering = false
+        state.isScanning = false
+
+        for directory in directories {
+            let path = relativePath(of: directory, from: rootURL)
+            childLoadGenerations[path] = (childLoadGenerations[path] ?? 0) + 1
+        }
+
+        Task { [weak self] in
+            let scannedDirectories = await Task.detached(priority: .userInitiated) {
+                directories.reduce(into: [URL: [FileNode]]()) { result, directory in
+                    result[directory] = scanner.scanChildren(of: directory, root: rootURL)
+                }
+            }.value
+
+            guard let self,
+                  self.treeScanGeneration == generation,
+                  self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
+
+            for directory in directories {
+                guard let scannedChildren = scannedDirectories[directory] else { continue }
+                let existingChildren: [FileNode]
+                if directory == rootURL.standardizedFileURL {
+                    existingChildren = self.completeNodes
+                } else {
+                    existingChildren = self.findNode(
+                        in: self.completeNodes,
+                        id: self.relativePath(of: directory, from: rootURL)
+                    )?.children ?? []
+                }
+                let mergedChildren = self.mergeScannedChildren(
+                    scannedChildren,
+                    preserving: existingChildren
+                )
+
+                if directory == rootURL.standardizedFileURL {
+                    self.completeNodes = mergedChildren
+                } else {
+                    self.updateNode(
+                        in: &self.completeNodes,
+                        id: self.relativePath(of: directory, from: rootURL)
+                    ) { node in
+                        node.children = mergedChildren
+                        node.childrenLoaded = true
+                    }
+                }
+            }
+
+            let affectedPaths = Set(directories.map {
+                self.relativePath(of: $0, from: rootURL)
+            })
+            self.state.nodes = self.updateVisibleNodes(
+                from: self.completeNodes,
+                keeping: self.state.nodes,
+                affectedPaths: affectedPaths
+            )
+            self.startWatchingDirectories(rootURL: rootURL, nodes: self.completeNodes)
+            self.loadExpandedChildrenIfNeeded()
+            self.emitState()
         }
     }
 
@@ -136,6 +220,39 @@ final class WorkspaceTreeSession {
         emitState()
     }
 
+    func collapseAllFolders() {
+        state.expandedPaths.removeAll()
+        automaticSingleChildExpansionPending = false
+        automaticSingleChildExpansionBasePath = nil
+        childLoadGenerations.removeAll()
+        emitState()
+    }
+
+    func collapseFolder(_ path: String) {
+        let prefix = path + "/"
+        state.expandedPaths = state.expandedPaths.filter {
+            $0 != path && !$0.hasPrefix(prefix)
+        }
+        if automaticSingleChildExpansionBasePath == path
+            || automaticSingleChildExpansionBasePath?.hasPrefix(prefix) == true {
+            automaticSingleChildExpansionPending = false
+            automaticSingleChildExpansionBasePath = nil
+        }
+        childLoadGenerations = childLoadGenerations.filter { key, _ in
+            key != path && !key.hasPrefix(prefix)
+        }
+        emitState()
+    }
+
+    func relocateExpandedPaths(from oldPath: String, to newPath: String) {
+        guard oldPath != newPath else { return }
+        state.expandedPaths = Set(state.expandedPaths.map { path in
+            guard path == oldPath || path.hasPrefix(oldPath + "/") else { return path }
+            return newPath + String(path.dropFirst(oldPath.count))
+        })
+        emitState()
+    }
+
     func updateScrollOffset(_ offset: Double) {
         let normalizedOffset = max(offset, 0)
         guard abs(state.treeScrollOffset - normalizedOffset) > 0.5 else { return }
@@ -155,6 +272,7 @@ final class WorkspaceTreeSession {
         treeScrollPersistenceTask?.cancel()
         treeScrollPersistenceTask = nil
         stopWatchingDirectories()
+        watcherRefreshSuppressedUntil = nil
         treeScanGeneration += 1
         childLoadGenerations.removeAll()
     }
@@ -174,9 +292,6 @@ final class WorkspaceTreeSession {
         state.isFiltering = true
         emitState()
         treeFilterTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(90))
-            guard !Task.isCancelled else { return }
-
             let filteredNodes = await Task.detached(priority: .userInitiated) {
                 scanner.filter(completeNodes, compatibleOnly: compatibleOnly, query: "")
             }.value
@@ -246,6 +361,77 @@ final class WorkspaceTreeSession {
             }
         }
         return false
+    }
+
+    private func mergeScannedChildren(
+        _ scannedChildren: [FileNode],
+        preserving existingChildren: [FileNode]
+    ) -> [FileNode] {
+        scannedChildren.map { scannedNode in
+            guard scannedNode.isDirectory,
+                  let existingNode = existingChildren.first(where: { $0.id == scannedNode.id }),
+                  existingNode.childrenLoaded else {
+                return scannedNode
+            }
+
+            var mergedNode = scannedNode
+            mergedNode.children = existingNode.children
+            mergedNode.childrenLoaded = true
+            return mergedNode
+        }
+    }
+
+    private func updateVisibleNodes(
+        from nodes: [FileNode],
+        keeping visibleNodes: [FileNode],
+        affectedPaths: Set<String>
+    ) -> [FileNode] {
+        nodes.compactMap { node in
+            let oldNode = visibleNodes.first(where: { $0.id == node.id })
+
+            if !node.isDirectory {
+                guard !state.compatibleOnly || node.kind != .other else { return nil }
+                return node
+            }
+
+            let isDirectlyAffected = affectedPaths.contains(node.relativePath)
+            let hasAffectedDescendant = affectedPaths.contains { path in
+                path.hasPrefix(node.relativePath + "/")
+            }
+
+            if isDirectlyAffected {
+                let filteredChildren = scanner.filter(
+                    node.children,
+                    compatibleOnly: state.compatibleOnly,
+                    query: ""
+                )
+                var updatedNode = node
+                updatedNode.children = filteredChildren
+                return updatedNode
+            }
+
+            guard hasAffectedDescendant else {
+                return oldNode ?? scanner.filter(
+                    [node],
+                    compatibleOnly: state.compatibleOnly,
+                    query: ""
+                ).first
+            }
+
+            var updatedNode = oldNode ?? node
+            updatedNode.children = updateVisibleNodes(
+                from: node.children,
+                keeping: oldNode?.children ?? [],
+                affectedPaths: affectedPaths
+            )
+            return updatedNode
+        }
+    }
+
+    private func relativePath(of url: URL, from root: URL) -> String {
+        let rootPath = root.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path == rootPath ? "." : String(path.dropFirst(rootPath.count + 1))
     }
 
     private func loadExpandedChildrenIfNeeded() {
@@ -343,6 +529,10 @@ final class WorkspaceTreeSession {
 
     private func scheduleTreeRefresh(for directoryURL: URL) {
         guard watchedDirectoryURLs.contains(directoryURL.standardizedFileURL) else { return }
+        if let suppressedUntil = watcherRefreshSuppressedUntil {
+            guard Date() >= suppressedUntil else { return }
+            watcherRefreshSuppressedUntil = nil
+        }
 
         treeRefreshGeneration += 1
         let generation = treeRefreshGeneration
