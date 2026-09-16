@@ -145,6 +145,7 @@ struct TabItemView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .medium))
                     .frame(width: 14, height: 14)
+                    .iconButtonHitArea()
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
@@ -176,11 +177,30 @@ struct TabItemView: View {
         }
         .animation(.easeOut(duration: 0.16), value: isIndicatorActive)
         .contextMenu {
-            Button("Copy Path") { model.copyPath(tab.url) }
+            Button {
+                model.copyPath(tab.url)
+            } label: {
+                Label("Copy Path", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                model.revealInSidebar(tab.url)
+            } label: {
+                Label("Reveal in Finder", systemImage: "folder")
+            }
+
             Divider()
-            Button("Close Tab") { model.closeTab(tab) }
-            Button("Close Other Tabs") { model.closeOtherTabs(keeping: tab) }
-            Button("Close Tabs to the Right") { model.closeTabsToRight(of: tab) }
+            Button {
+                model.closeTab(tab)
+            } label: {
+                Label("Close Tab", systemImage: "xmark")
+            }
+
+            Button {
+                model.closeOtherTabs(keeping: tab)
+            } label: {
+                Label("Close Other Tabs", systemImage: "rectangle.stack")
+            }
         }
     }
 
@@ -270,12 +290,12 @@ struct PreviewPane: View {
             }
             Spacer()
             HStack(alignment: .center, spacing: BPTokens.Spacing.xxs) {
-                if isUpdatedInfoHovered {
-                    ToolbarIconButton(systemName: "arrow.clockwise", help: "Refresh Preview") {
-                        model.refreshActiveTab()
-                    }
-                    .transition(.opacity)
+                ToolbarIconButton(systemName: "arrow.clockwise", help: "Refresh Preview") {
+                    model.refreshActiveTab()
                 }
+                .opacity(isUpdatedInfoHovered ? 1 : 0)
+                .allowsHitTesting(isUpdatedInfoHovered)
+                .accessibilityHidden(!isUpdatedInfoHovered)
                 if let updatedAt = tab.previewUpdatedAt {
                     Text("Updated \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(BPTokens.Typography.caption)
@@ -352,6 +372,9 @@ struct PreviewPane: View {
                                 onDiscardMarkdownEditing: {
                                     model.discardEditing(tabID: tab.id)
                                 },
+                                onDiscardGitChanges: {
+                                    model.requestDiscardGitChanges(tabID: tab.id)
+                                },
                                 onKeepLocalMarkdownEdit: {
                                     model.keepLocalMarkdownEdit(tabID: tab.id)
                                 },
@@ -423,6 +446,9 @@ struct PreviewPane: View {
                                 },
                                 onDiscardEditing: {
                                     model.discardEditing(tabID: tab.id)
+                                },
+                                onDiscardGitChanges: {
+                                    model.requestDiscardGitChanges(tabID: tab.id)
                                 },
                                 onKeepLocalEdit: {
                                     model.keepLocalJSONEdit(tabID: tab.id)
@@ -711,6 +737,7 @@ struct PreviewErrorBanner: View {
                     didCopy = true
                 } label: {
                     Image(systemName: didCopy ? "checkmark.circle" : "doc.on.doc")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .help(didCopy ? "Copied" : "Copy Message")

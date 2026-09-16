@@ -9,8 +9,10 @@ struct CollapseFoldersButton: View {
         Button(action: action) {
             Image(systemName: "chevron.up")
                 .frame(width: 22, height: 22)
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .help(helpText)
     }
 }
@@ -60,6 +62,7 @@ struct SidebarTreeItem: Identifiable {
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @State private var highlightedSearchNodeIDs: Set<String> = []
+    @State private var highlightedRevealNodeID: String?
     @State private var isRootDropTarget = false
 
     var body: some View {
@@ -144,7 +147,7 @@ struct SidebarView: View {
                                         FileTreeRow(
                                             node: node,
                                             level: item.level,
-                                            highlightedNodeIDs: highlightedSearchNodeIDs
+                                            highlightedNodeIDs: activeHighlightedNodeIDs
                                         )
                                     } else {
                                         TreeLoadingRow(level: item.level)
@@ -156,11 +159,16 @@ struct SidebarView: View {
                         .onChange(of: model.treeQuery) { _, _ in
                             focusSearchResult(using: proxy)
                         }
-                        .onChange(of: model.nodes.map(\.id)) { _, _ in
+                        .onChange(of: model.nodes) { _, _ in
                             focusSearchResult(using: proxy)
+                            revealTreeTarget(using: proxy)
+                        }
+                        .onChange(of: model.treeRevealTargetID) { _, _ in
+                            revealTreeTarget(using: proxy)
                         }
                         .onAppear {
                             focusSearchResult(using: proxy)
+                            revealTreeTarget(using: proxy)
                         }
                     }
 
@@ -174,6 +182,34 @@ struct SidebarView: View {
             }
         }
         .background(BPTokens.Color.surface)
+    }
+
+    private func revealTreeTarget(using proxy: ScrollViewProxy) {
+        guard let targetID = model.treeRevealTargetID else { return }
+        let visibleIDs = SidebarTreeItem.flatten(
+            nodes: model.nodes,
+            expandedPaths: model.expandedPaths
+        ).map(\.id)
+        guard visibleIDs.contains(targetID) else { return }
+
+        highlightedRevealNodeID = targetID
+        DispatchQueue.main.async {
+            proxy.scrollTo(targetID, anchor: .center)
+            model.clearTreeRevealTarget()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if highlightedRevealNodeID == targetID {
+                    highlightedRevealNodeID = nil
+                }
+            }
+        }
+    }
+
+    private var activeHighlightedNodeIDs: Set<String> {
+        var IDs = highlightedSearchNodeIDs
+        if let highlightedRevealNodeID {
+            IDs.insert(highlightedRevealNodeID)
+        }
+        return IDs
     }
 
     private func focusSearchResult(using proxy: ScrollViewProxy) {
@@ -300,6 +336,14 @@ struct FileTreeRow: View {
                 model.copyPath(node.url)
             } label: {
                 Label("Copy Path", systemImage: "doc.on.doc")
+            }
+
+            if !node.isDirectory {
+                Button {
+                    model.reload(node)
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                }
             }
 
             Button {

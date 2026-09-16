@@ -38,6 +38,7 @@ struct DocumentOutlineToolbar: View {
                     Image(systemName: "camera.viewfinder")
                         .font(BPTokens.Typography.body)
                         .foregroundStyle(BPTokens.Color.muted)
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .focusable(false)
@@ -92,6 +93,7 @@ struct DocumentInteractionToolbar: View {
                         Image(systemName: "camera.viewfinder")
                             .font(BPTokens.Typography.body)
                             .foregroundStyle(BPTokens.Color.muted)
+                            .iconButtonHitArea()
                     }
                     .buttonStyle(.borderless)
                     .focusable(false)

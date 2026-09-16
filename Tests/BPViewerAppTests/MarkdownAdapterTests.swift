@@ -271,6 +271,25 @@ func clearsFolderExpansionRecords() {
     #expect(session.snapshot.expandedPaths.isEmpty)
 }
 
+@Test("expands every ancestor when revealing a workspace file")
+@MainActor
+func revealsWorkspaceFileByExpandingAncestors() {
+    let root = URL(fileURLWithPath: "/tmp/project", isDirectory: true)
+    let target = root
+        .appendingPathComponent("chapters", isDirectory: true)
+        .appendingPathComponent("part-one", isDirectory: true)
+        .appendingPathComponent("intro.md")
+    let session = WorkspaceTreeSession(
+        onStateChange: { _ in },
+        onPersistenceRequested: {}
+    )
+
+    session.reset(rootURL: root)
+    session.reveal(url: target)
+
+    #expect(session.snapshot.expandedPaths == ["chapters", "chapters/part-one"])
+}
+
 @Test("rejects moving a workspace item outside the project root")
 func rejectsWorkspaceFileOperationsOutsideProjectRoot() throws {
     let root = FileManager.default.temporaryDirectory
@@ -794,6 +813,45 @@ func resolvesGitHeadBaselineThroughProcessSeam() {
     #expect(baseline.source == "from head")
 }
 
+@Test("restores a tracked file to Git HEAD including staged and worktree changes")
+func restoresTrackedFileToGitHead() {
+    let runner = RecordingGitProcessRunner()
+    let restorer = GitHeadDocumentRestorer(runner: runner)
+
+    let result = restorer.restoreToHead(for: URL(fileURLWithPath: "/tmp/project/notes.md"))
+
+    guard case let .restored(source) = result else {
+        Issue.record("Expected the file to be restored from Git HEAD")
+        return
+    }
+    #expect(source == "from head")
+    #expect(runner.requests.map(\.arguments) == [
+        ["-C", "/tmp/project", "rev-parse", "--show-toplevel"],
+        ["show", "HEAD:notes.md"],
+        ["restore", "--source=HEAD", "--staged", "--worktree", "--", "notes.md"]
+    ])
+}
+
+@Test("does not restore a file that has no version in Git HEAD")
+func doesNotRestoreFileWithoutGitHeadVersion() {
+    let runner = RecordingGitProcessRunner(headResult: ProcessResult(
+        status: .failed,
+        exitCode: 128,
+        standardOutput: "",
+        standardError: "pathspec 'notes.md' did not match any file(s) known to git"
+    ))
+    let restorer = GitHeadDocumentRestorer(runner: runner)
+
+    let result = restorer.restoreToHead(for: URL(fileURLWithPath: "/tmp/project/notes.md"))
+
+    guard case let .unavailable(message) = result else {
+        Issue.record("Expected Git restore to be unavailable without a HEAD version")
+        return
+    }
+    #expect(message == "This file has no version in the latest Git commit.")
+    #expect(runner.requests.count == 2)
+}
+
 @Test("uses direct labels for document diff modes")
 func usesDirectLabelsForDocumentDiffModes() {
     #expect(DocumentDiffMode.savedOnDisk.label == "Disk Diff")
@@ -841,6 +899,112 @@ func togglesDocumentEditingModesDirectly() {
     #expect(model.tabs[0].diffSession == nil)
 }
 
+@Test("discards Git changes and leaves Markdown in source mode")
+@MainActor
+func discardsGitChangesAndLeavesMarkdownInSourceMode() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-git-discard-\(UUID().uuidString)", isDirectory: true)
+    let fileURL = root.appendingPathComponent("notes.md")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try "# On disk".write(to: fileURL, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let restorer = GitHeadDocumentRestorer(
+        runner: RecordingGitProcessRunner(repositoryPath: root.path)
+    )
+    let model = AppModel(documentDiffCoordinator: DocumentDiffCoordinator(gitRestorer: restorer))
+    let tabID = fileURL.path
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: fileURL,
+            kind: .markdown,
+            markdownSource: "# On disk",
+            markdownEditSession: MarkdownEditSession(
+                baseSource: "# On disk",
+                currentSource: "# Draft"
+            ),
+            diffSession: DocumentDiffSession(
+                mode: .gitHead,
+                baseline: DocumentDiffBaseline(label: "HEAD", source: "# Head")
+            )
+        )
+    ]
+
+    model.requestDiscardGitChanges(tabID: tabID)
+    #expect(model.showingGitDiscardConfirmation)
+    #expect(model.pendingGitDiscardTitle == "notes")
+
+    model.confirmDiscardGitChanges()
+    for _ in 0..<10 {
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+
+    let updated = model.tabs[0]
+    #expect(!model.showingGitDiscardConfirmation)
+    #expect(updated.diffSession == nil)
+    #expect(updated.presentationMode == .source)
+    #expect(updated.markdownEditSession?.isEditing == true)
+    #expect(updated.markdownEditSession?.baseSource == "from head")
+    #expect(updated.markdownEditSession?.currentSource == "from head")
+    #expect(updated.markdownEditSession?.undoSources.isEmpty == true)
+}
+
+@Test("discards Git changes and leaves JSON in source mode")
+@MainActor
+func discardsGitChangesAndLeavesJSONInSourceMode() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-git-discard-json-\(UUID().uuidString)", isDirectory: true)
+    let fileURL = root.appendingPathComponent("data.json")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try "{\"disk\":true}".write(to: fileURL, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let restorer = GitHeadDocumentRestorer(
+        runner: RecordingGitProcessRunner(
+            headResult: ProcessResult(
+                status: .success,
+                exitCode: 0,
+                standardOutput: "{\"head\":true}",
+                standardError: ""
+            ),
+            repositoryPath: root.path
+        )
+    )
+    let model = AppModel(documentDiffCoordinator: DocumentDiffCoordinator(gitRestorer: restorer))
+    let tabID = fileURL.path
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: fileURL,
+            kind: .json,
+            jsonSource: "{\"disk\":true}",
+            jsonEditSession: MarkdownEditSession(
+                baseSource: "{\"disk\":true}",
+                currentSource: "{\"draft\":true}"
+            ),
+            diffSession: DocumentDiffSession(
+                mode: .gitHead,
+                baseline: DocumentDiffBaseline(label: "HEAD", source: "{\"head\":true}")
+            )
+        )
+    ]
+
+    model.requestDiscardGitChanges(tabID: tabID)
+    model.confirmDiscardGitChanges()
+    for _ in 0..<10 {
+        try await Task.sleep(nanoseconds: 1_000_000)
+    }
+
+    let updated = model.tabs[0]
+    #expect(updated.diffSession == nil)
+    #expect(updated.presentationMode == .source)
+    #expect(updated.jsonEditSession?.isEditing == true)
+    #expect(updated.jsonEditSession?.baseSource == "{\"head\":true}")
+    #expect(updated.jsonEditSession?.currentSource == "{\"head\":true}")
+    #expect(updated.jsonEditSession?.saveState == .saved)
+}
+
 private struct StubGitProcessRunner: ProcessRunning {
     func run(_ request: ProcessRequest) throws -> ProcessResult {
         if request.arguments.contains("rev-parse") {
@@ -858,4 +1022,53 @@ private struct StubGitProcessRunner: ProcessRunning {
             standardError: ""
         )
     }
+}
+
+private struct RecordingGitProcessRunner: ProcessRunning {
+    let headResult: ProcessResult
+    let repositoryPath: String
+    private let storage: RequestStorage
+
+    init(
+        headResult: ProcessResult = ProcessResult(
+            status: .success,
+            exitCode: 0,
+            standardOutput: "from head",
+            standardError: ""
+        ),
+        repositoryPath: String = "/tmp/project"
+    ) {
+        self.headResult = headResult
+        self.repositoryPath = repositoryPath
+        self.storage = RequestStorage()
+    }
+
+    var requests: [ProcessRequest] {
+        storage.requests
+    }
+
+    func run(_ request: ProcessRequest) throws -> ProcessResult {
+        storage.requests.append(request)
+        if request.arguments.contains("rev-parse") {
+            return ProcessResult(
+                status: .success,
+                exitCode: 0,
+                standardOutput: "\(repositoryPath)\n",
+                standardError: ""
+            )
+        }
+        if request.arguments.first == "show" {
+            return headResult
+        }
+        return ProcessResult(
+            status: .success,
+            exitCode: 0,
+            standardOutput: "",
+            standardError: ""
+        )
+    }
+}
+
+private final class RequestStorage: @unchecked Sendable {
+    var requests: [ProcessRequest] = []
 }

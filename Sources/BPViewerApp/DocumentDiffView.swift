@@ -18,6 +18,7 @@ struct DocumentDiffView: View {
     let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
+    let onDiscardGitChanges: @MainActor @Sendable () -> Void
 
     private var diff: DocumentDiff? {
         guard let baseline else { return nil }
@@ -54,36 +55,52 @@ struct DocumentDiffView: View {
         HStack(spacing: 0) {
             headerLabel(
                 title: baseline?.label ?? "Reference",
-                subtitle: diff.map { "\($0.removedLineCount) removed" } ?? "Unavailable",
-                systemImage: "arrow.left"
+                subtitle: diff.map { "\($0.removedLineCount) removed" } ?? "Unavailable"
             )
             Divider()
                 .frame(height: 24)
-            headerLabel(
-                title: "Current Draft",
-                subtitle: diff.map { "\($0.addedLineCount) added" } ?? "Editable",
-                systemImage: "arrow.right"
-            )
+            currentDraftHeader
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)
         .background(BPTokens.Color.surface)
     }
 
-    private func headerLabel(title: String, subtitle: String, systemImage: String) -> some View {
-        HStack(spacing: BPTokens.Spacing.xs) {
-            Image(systemName: systemImage)
-                .foregroundStyle(BPTokens.Color.muted)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title)
-                    .font(BPTokens.Typography.caption.weight(.semibold))
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(BPTokens.Color.muted)
+    private var currentDraftHeader: some View {
+        HStack(spacing: BPTokens.Spacing.sm) {
+            headerLabel(
+                title: "Current Draft",
+                subtitle: diff.map { "\($0.addedLineCount) added" } ?? "Editable",
+                fillsAvailableWidth: false
+            )
+            if baseline != nil {
+                Button("Discard Git Changes", role: .destructive, action: onDiscardGitChanges)
+                    .buttonStyle(.bordered)
+                    .disabled(diff?.hasChanges != true)
             }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, BPTokens.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func headerLabel(
+        title: String,
+        subtitle: String,
+        fillsAvailableWidth: Bool = true
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(BPTokens.Typography.caption.weight(.semibold))
+            Text(subtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(BPTokens.Color.muted)
+        }
+        .padding(.horizontal, BPTokens.Spacing.sm)
+        .frame(
+            maxWidth: fillsAvailableWidth ? .infinity : nil,
+            alignment: .leading
+        )
     }
 
     @ViewBuilder

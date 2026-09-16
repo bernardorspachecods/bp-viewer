@@ -231,6 +231,7 @@ private struct ZoomValueControl: View {
                     Image(systemName: "chevron.up")
                         .font(.system(size: 8, weight: .semibold))
                         .frame(width: 18, height: 11)
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Zoom In")
@@ -241,6 +242,7 @@ private struct ZoomValueControl: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 8, weight: .semibold))
                         .frame(width: 18, height: 11)
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Zoom Out")

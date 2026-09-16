@@ -17,6 +17,7 @@ struct JSONPreviewView: View {
     let onToggleDiff: (DocumentDiffMode) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
     let onDiscardEditing: () -> Void
+    let onDiscardGitChanges: @MainActor @Sendable () -> Void
     let onKeepLocalEdit: () -> Void
     let onUseExternalEdit: () -> Void
     let onSnapshot: (() -> Void)?
@@ -86,7 +87,8 @@ struct JSONPreviewView: View {
                             editorSource = text
                             onSourceChanged(text)
                             onEndEditing(text)
-                        }
+                        },
+                        onDiscardGitChanges: onDiscardGitChanges
                         )
                     } else {
                         JSONSourceEditor(

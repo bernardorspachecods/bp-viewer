@@ -63,6 +63,15 @@ struct RootView: View {
         } message: {
             Text("This JSON is invalid and cannot be saved. Continue editing or discard the changes?")
         }
+        .alert(
+            "Discard Git Changes?",
+            isPresented: $model.showingGitDiscardConfirmation
+        ) {
+            Button("Cancel", role: .cancel, action: model.cancelDiscardGitChanges)
+            Button("Discard Git Changes", role: .destructive, action: model.confirmDiscardGitChanges)
+        } message: {
+            Text("\(model.pendingGitDiscardTitle) and its current draft will be restored to HEAD. Staged and unstaged changes will be discarded.")
+        }
         .sheet(item: $model.pendingLatexRootSelection) { request in
             LatexRootSelectionView(request: request)
                 .environmentObject(model)
@@ -343,6 +352,7 @@ struct TopBarView: View {
                     } label: {
                         Image(systemName: "gearshape")
                             .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
+                            .iconButtonHitArea()
                     }
                     .menuStyle(.borderlessButton)
                     .help("Advanced LaTeX Settings")

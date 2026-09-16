@@ -67,6 +67,11 @@ renderizado ou formatado.
   real; alterações na direita continuam a atualizar o preview Markdown live.
   O diff mantém `undo/redo` no rascunho e não mantém uma lista separada de
   versões históricas.
+- No modo `Git diff`, `Discard Git Changes` aparece junto de `Current Draft`
+  quando o ficheiro é rastreado e tem versão em `HEAD`. Uma confirmação única
+  repõe o ficheiro inteiro para `HEAD`, descartando alterações staged, unstaged
+  e o rascunho atual; depois a app mantém o editor aberto e regressa ao modo
+  source.
 - `⌘F` abre uma barra de pesquisa comum para previews e editores source. A
   pesquisa fica limitada à tab ativa, ignora maiúsculas/minúsculas e acentos,
   permite avançar/recuar com Enter/Shift+Enter e fecha com Esc. Em split view,
@@ -106,6 +111,9 @@ renderizado ou formatado.
   lado direito têm marcador `+` e destaque verde, tal como num diff Git.
   Ficheiros fora de Git ou sem versão `HEAD` mostram um
   estado explicativo, sem retirar o modo de comparação com o disco.
+- No modo `Git diff`, a ação `Discard Git Changes` tem o mesmo comportamento
+  destrutivo do editor Markdown: repõe staged, unstaged e rascunho para `HEAD`
+  numa única confirmação, mantendo o editor aberto e saindo do diff.
 - O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
   automática quando o ficheiro muda.
 - O preview e o editor raw JSON usam a mesma barra de pesquisa da app.

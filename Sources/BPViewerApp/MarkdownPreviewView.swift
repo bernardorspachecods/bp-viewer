@@ -26,6 +26,7 @@ struct MarkdownPreviewView: View {
     let onToggleDiff: (DocumentDiffMode) -> Void
     let onEndMarkdownEditing: () -> Void
     let onDiscardMarkdownEditing: () -> Void
+    let onDiscardGitChanges: @MainActor @Sendable () -> Void
     let onKeepLocalMarkdownEdit: () -> Void
     let onUseExternalMarkdownEdit: () -> Void
     let zoom: Double
@@ -132,7 +133,8 @@ struct MarkdownPreviewView: View {
                     onFindFocus: { onFindTargetChanged(.source) },
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onMarkdownTextChanged,
-                    onEndEditing: { _ in onEndMarkdownEditing() }
+                    onEndEditing: { _ in onEndMarkdownEditing() },
+                    onDiscardGitChanges: onDiscardGitChanges
                 )
             } else {
                 MarkdownSourceEditor(

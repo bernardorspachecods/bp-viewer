@@ -220,6 +220,32 @@ final class WorkspaceTreeSession {
         emitState()
     }
 
+    func reveal(url: URL) {
+        guard let rootURL else { return }
+
+        let rootPath = rootURL.standardizedFileURL.path
+        let targetPath = url.standardizedFileURL.path
+        guard targetPath == rootPath || targetPath.hasPrefix(rootPath + "/") else { return }
+
+        let relativePath = relativePath(of: url, from: rootURL)
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard components.count > 1 else { return }
+
+        automaticSingleChildExpansionPending = false
+        automaticSingleChildExpansionBasePath = nil
+
+        var ancestorPath = ""
+        for component in components.dropLast() {
+            ancestorPath = ancestorPath.isEmpty
+                ? component
+                : ancestorPath + "/" + component
+            state.expandedPaths.insert(ancestorPath)
+        }
+
+        emitState()
+        loadExpandedChildrenIfNeeded()
+    }
+
     func collapseAllFolders() {
         state.expandedPaths.removeAll()
         automaticSingleChildExpansionPending = false
@@ -536,10 +562,43 @@ final class WorkspaceTreeSession {
 
         treeRefreshGeneration += 1
         let generation = treeRefreshGeneration
+        let rootURL = rootURL
+        let knownStructure = childStructureSignature(in: directoryURL, rootURL: rootURL)
+        let scanner = scanner
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
-            guard let self, self.treeRefreshGeneration == generation else { return }
-            self.reload()
+            guard let self,
+                  self.treeRefreshGeneration == generation,
+                  let rootURL else { return }
+
+            let currentStructure = await Task.detached(priority: .userInitiated) {
+                Set(
+                    scanner.scanChildren(of: directoryURL, root: rootURL)
+                        .map { "\($0.id)|\($0.isDirectory ? "directory" : "file")" }
+                )
+            }.value
+
+            guard self.treeRefreshGeneration == generation,
+                  currentStructure != knownStructure else { return }
+
+            let refreshDirectory = FileManager.default.fileExists(atPath: directoryURL.path)
+                ? directoryURL
+                : directoryURL.deletingLastPathComponent()
+            self.refreshAfterFileOperation(in: [refreshDirectory])
         }
+    }
+
+    private func childStructureSignature(in directoryURL: URL, rootURL: URL?) -> Set<String> {
+        guard let rootURL else { return [] }
+        let children: [FileNode]
+        if directoryURL.standardizedFileURL == rootURL.standardizedFileURL {
+            children = completeNodes
+        } else {
+            children = findNode(
+                in: completeNodes,
+                id: relativePath(of: directoryURL, from: rootURL)
+            )?.children ?? []
+        }
+        return Set(children.map { "\($0.id)|\($0.isDirectory ? "directory" : "file")" })
     }
 }

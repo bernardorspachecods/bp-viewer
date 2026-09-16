@@ -27,6 +27,12 @@ public enum DocumentDiffBaselineResolution: Hashable, Sendable {
     case unavailable(String)
 }
 
+public enum GitDocumentRestoreResolution: Hashable, Sendable {
+    case restored(source: String)
+    case unavailable(String)
+    case failed(String)
+}
+
 public struct DocumentDiffSession: Hashable, Sendable {
     public var mode: DocumentDiffMode
     public var baseline: DocumentDiffBaseline?
@@ -64,19 +70,21 @@ public struct DiskDocumentDiffBaselineProvider: DocumentDiffBaselineProviding {
     }
 }
 
-public struct GitHeadDocumentDiffBaselineProvider: DocumentDiffBaselineProviding {
-    private let runner: any ProcessRunning
-    private let gitExecutable: URL
+private struct GitDocumentLocation: Sendable {
+    let repositoryURL: URL
+    let relativePath: String
+}
 
-    public init(
-        runner: any ProcessRunning = LiveProcessRunner(),
-        gitExecutable: URL = URL(fileURLWithPath: "/usr/bin/git")
-    ) {
-        self.runner = runner
-        self.gitExecutable = gitExecutable
-    }
+private enum GitDocumentLocationResolution {
+    case available(GitDocumentLocation)
+    case unavailable(String)
+}
 
-    public func baseline(for url: URL) -> DocumentDiffBaselineResolution {
+private struct GitDocumentLocator: Sendable {
+    let runner: any ProcessRunning
+    let gitExecutable: URL
+
+    func locate(_ url: URL) -> GitDocumentLocationResolution {
         let directory = url.deletingLastPathComponent()
         let repositoryResult: ProcessResult
         do {
@@ -109,13 +117,47 @@ public struct GitHeadDocumentDiffBaselineProvider: DocumentDiffBaselineProviding
 
         let relativePath = String(documentURL.path.dropFirst(repositoryPrefix.count))
             .replacingOccurrences(of: "\\", with: "/")
+        return .available(GitDocumentLocation(
+            repositoryURL: repositoryURL,
+            relativePath: relativePath
+        ))
+    }
+
+    private func nonEmptyPath(from output: String) -> String? {
+        let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
+    }
+}
+
+public struct GitHeadDocumentDiffBaselineProvider: DocumentDiffBaselineProviding {
+    private let runner: any ProcessRunning
+    private let gitExecutable: URL
+
+    public init(
+        runner: any ProcessRunning = LiveProcessRunner(),
+        gitExecutable: URL = URL(fileURLWithPath: "/usr/bin/git")
+    ) {
+        self.runner = runner
+        self.gitExecutable = gitExecutable
+    }
+
+    public func baseline(for url: URL) -> DocumentDiffBaselineResolution {
+        let locator = GitDocumentLocator(runner: runner, gitExecutable: gitExecutable)
+        let location: GitDocumentLocation
+        switch locator.locate(url) {
+        case let .available(value):
+            location = value
+        case let .unavailable(message):
+            return .unavailable(message)
+        }
+
         let headResult: ProcessResult
         do {
             headResult = try runner.run(
                 ProcessRequest(
                     executable: gitExecutable,
-                    arguments: ["show", "HEAD:\(relativePath)"],
-                    workingDirectory: repositoryURL,
+                    arguments: ["show", "HEAD:\(location.relativePath)"],
+                    workingDirectory: location.repositoryURL,
                     timeout: 10,
                     maxOutputBytes: 8_000_000
                 )
@@ -134,10 +176,80 @@ public struct GitHeadDocumentDiffBaselineProvider: DocumentDiffBaselineProviding
             )
         )
     }
+}
 
-    private func nonEmptyPath(from output: String) -> String? {
-        let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        return path.isEmpty ? nil : path
+public struct GitHeadDocumentRestorer: Sendable {
+    private let runner: any ProcessRunning
+    private let gitExecutable: URL
+
+    public init(
+        runner: any ProcessRunning = LiveProcessRunner(),
+        gitExecutable: URL = URL(fileURLWithPath: "/usr/bin/git")
+    ) {
+        self.runner = runner
+        self.gitExecutable = gitExecutable
+    }
+
+    public func restoreToHead(for url: URL) -> GitDocumentRestoreResolution {
+        let locator = GitDocumentLocator(runner: runner, gitExecutable: gitExecutable)
+        let location: GitDocumentLocation
+        switch locator.locate(url) {
+        case let .available(value):
+            location = value
+        case let .unavailable(message):
+            return .unavailable(message)
+        }
+
+        let headResult: ProcessResult
+        do {
+            headResult = try runner.run(
+                ProcessRequest(
+                    executable: gitExecutable,
+                    arguments: ["show", "HEAD:\(location.relativePath)"],
+                    workingDirectory: location.repositoryURL,
+                    timeout: 10,
+                    maxOutputBytes: 8_000_000
+                )
+            )
+        } catch {
+            return .unavailable("Git could not read this file from HEAD.")
+        }
+
+        guard headResult.status == .success else {
+            return .unavailable("This file has no version in the latest Git commit.")
+        }
+
+        let restoreResult: ProcessResult
+        do {
+            restoreResult = try runner.run(
+                ProcessRequest(
+                    executable: gitExecutable,
+                    arguments: [
+                        "restore",
+                        "--source=HEAD",
+                        "--staged",
+                        "--worktree",
+                        "--",
+                        location.relativePath
+                    ],
+                    workingDirectory: location.repositoryURL,
+                    timeout: 10,
+                    maxOutputBytes: 32_000
+                )
+            )
+        } catch {
+            return .failed("Git could not restore this file to HEAD.")
+        }
+
+        guard restoreResult.status == .success else {
+            let detail = restoreResult.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .failed(
+                detail.isEmpty
+                    ? "Git could not restore this file to HEAD."
+                    : "Git could not restore this file to HEAD.\n\(detail)"
+            )
+        }
+        return .restored(source: headResult.standardOutput)
     }
 }
 

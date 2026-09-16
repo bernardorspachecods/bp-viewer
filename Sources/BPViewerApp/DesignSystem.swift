@@ -26,6 +26,7 @@ enum BPTokens {
         static let toolbar: CGFloat = 44
         static let row: CGFloat = 28
         static let control: CGFloat = 28
+        static let iconHitTarget: CGFloat = 32
         static let sidebarMin: CGFloat = 220
         static let sidebarMax: CGFloat = 480
     }
@@ -50,6 +51,27 @@ enum BPTokens {
     }
 }
 
+private struct IconButtonHitArea: ViewModifier {
+    let size: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .overlay {
+                Rectangle()
+                    .fill(.clear)
+                    .frame(width: size, height: size)
+                    .contentShape(Rectangle())
+            }
+    }
+}
+
+extension View {
+    func iconButtonHitArea(size: CGFloat = BPTokens.Size.iconHitTarget) -> some View {
+        modifier(IconButtonHitArea(size: size))
+    }
+}
+
 struct ToolbarIconButton: View {
     let systemName: String
     let help: String
@@ -61,6 +83,7 @@ struct ToolbarIconButton: View {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(BPTokens.Color.muted)
                 .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -99,6 +122,7 @@ struct CopyTextButton: View {
             Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .medium))
                 .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())

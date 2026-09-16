@@ -35,6 +35,7 @@ final class AppModel: ObservableObject {
     @Published var treeQuery = ""
     @Published var compatibleOnly = true
     @Published var expandedPaths: Set<String> = []
+    @Published private(set) var treeRevealTargetID: String?
     @Published var treeScrollOffset: Double = 0
     @Published var sidebarVisible = true
     @Published var sidebarWidth: Double = 280
@@ -58,6 +59,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPendingWindowClose = false
     @Published var pendingInvalidJSONTabID: String?
     @Published var showingInvalidJSONConfirmation = false
+    @Published private(set) var pendingGitDiscardTabID: String?
+    @Published var showingGitDiscardConfirmation = false
     @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
     @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
     @Published var isSnapshotCaptureActive = false
@@ -81,7 +84,7 @@ final class AppModel: ObservableObject {
         self?.handleDocumentRenderEvent(event)
     }
     private lazy var documentEditCoordinator = DocumentEditCoordinator()
-    private lazy var documentDiffCoordinator = DocumentDiffCoordinator()
+    private let documentDiffCoordinator: DocumentDiffCoordinator
     private lazy var activeDocumentWatcher = ActiveDocumentWatcher { [weak self] change in
         self?.handleActiveDocumentChange(change)
     }
@@ -93,9 +96,11 @@ final class AppModel: ObservableObject {
     private var pendingBatchCloseIDs: Set<String> = []
     private var readingPositionPersistenceTask: Task<Void, Never>?
     private var fileOperationTask: Task<Void, Never>?
+    private var gitDiscardTask: Task<Void, Never>?
     private var activeSecurityScopedRootURL: URL?
 
-    init() {
+    init(documentDiffCoordinator: DocumentDiffCoordinator = DocumentDiffCoordinator()) {
+        self.documentDiffCoordinator = documentDiffCoordinator
         let configuration = workspaceSession.configuration
         theme = AppThemePreference(rawValue: configuration.theme) ?? .dark
         sidebarVisible = configuration.sidebarVisible
@@ -380,6 +385,18 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
+    func revealInSidebar(_ url: URL) {
+        guard let rootURL, isURL(url, inside: rootURL) else { return }
+        treeQuery = ""
+        treeRevealTargetID = relativePath(of: url, from: rootURL)
+        workspaceTreeSession.reveal(url: url)
+        persistState()
+    }
+
+    func clearTreeRevealTarget() {
+        treeRevealTargetID = nil
+    }
+
     func updateTreeScrollOffset(_ offset: Double) {
         workspaceTreeSession.updateScrollOffset(offset)
     }
@@ -420,6 +437,14 @@ final class AppModel: ObservableObject {
         }
 
         openDocument(url: node.url)
+    }
+
+    func reload(_ node: FileNode) {
+        guard !node.isDirectory else { return }
+        let tabIDsBeforeOpening = Set(tabs.map(\.id))
+        guard let tabID = openDocument(url: node.url) else { return }
+        guard tabIDsBeforeOpening.contains(tabID) else { return }
+        refreshTab(tabID: tabID)
     }
 
     func copyText(_ text: String) {
@@ -764,17 +789,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func openDocument(url: URL) {
+    @discardableResult
+    private func openDocument(url: URL) -> String? {
         guard let result = documentOpenCoordinator.resolve(
             url,
             workspaceRoot: rootURL,
             storedLatexRoot: rootURL.flatMap { workspaceSession.storedLatexRoot(for: $0) }
-        ) else { return }
+        ) else { return nil }
         guard case let .preview(documentURL, kind, contextURL) = result else {
             if case let .external(externalURL) = result {
                 NSWorkspace.shared.open(externalURL)
             }
-            return
+            return nil
         }
 
         let id = documentURL.path
@@ -788,7 +814,7 @@ final class AppModel: ObservableObject {
             syncPreviewZoomToActiveTab()
             renderActiveTabIfNeeded()
             persistState()
-            return
+            return id
         }
 
         let documentState = workspaceSession.documentState(for: documentURL)
@@ -812,6 +838,7 @@ final class AppModel: ObservableObject {
         syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
+        return id
     }
 
     func closeTab(_ tab: DocumentTab) {
@@ -824,7 +851,10 @@ final class AppModel: ObservableObject {
     }
 
     func shouldCloseWindow(_ window: NSWindow) -> Bool {
-        if isPendingWindowClose || showingPendingCloseConfirmation || showingInvalidJSONConfirmation {
+        if isPendingWindowClose
+            || showingPendingCloseConfirmation
+            || showingInvalidJSONConfirmation
+            || showingGitDiscardConfirmation {
             return false
         }
         guard let tab = tabs.first(where: hasUnsavedChanges(in:)) else {
@@ -990,6 +1020,84 @@ final class AppModel: ObservableObject {
         discardChanges(in: tab, keepEditing: true)
     }
 
+    func requestDiscardGitChanges(tabID: String) {
+        guard !showingGitDiscardConfirmation,
+              gitDiscardTask == nil,
+              let tab = tabs.first(where: { $0.id == tabID }),
+              (tab.kind == .markdown || tab.kind == .json),
+              tab.presentationMode == .diff(.gitHead),
+              tab.diffSession?.baseline != nil else { return }
+        pendingGitDiscardTabID = tabID
+        showingGitDiscardConfirmation = true
+    }
+
+    func cancelDiscardGitChanges() {
+        pendingGitDiscardTabID = nil
+        showingGitDiscardConfirmation = false
+    }
+
+    func confirmDiscardGitChanges() {
+        guard let tabID = pendingGitDiscardTabID,
+              let tab = tabs.first(where: { $0.id == tabID }) else {
+            cancelDiscardGitChanges()
+            return
+        }
+
+        pendingGitDiscardTabID = nil
+        showingGitDiscardConfirmation = false
+        gitDiscardTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await self.documentDiffCoordinator.restoreGitChanges(for: tab.url)
+            self.applyGitDiscardOutcome(outcome, tabID: tabID)
+            self.gitDiscardTask = nil
+        }
+    }
+
+    var pendingGitDiscardTitle: String {
+        guard let pendingGitDiscardTabID,
+              let tab = tabs.first(where: { $0.id == pendingGitDiscardTabID }) else {
+            return "This file"
+        }
+        return tab.title
+    }
+
+    private func applyGitDiscardOutcome(
+        _ outcome: GitDocumentRestoreResolution,
+        tabID: String
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        switch outcome {
+        case let .restored(source):
+            tabs[index].diffSession = nil
+            tabs[index].errorMessage = nil
+            if let session = tabs[index].markdownEditSession {
+                tabs[index].markdownSource = source
+                tabs[index].markdownBlocks = MarkdownBlockDocument(source: source).blocks
+                tabs[index].markdownEditSession = MarkdownEditSession(
+                    mode: session.mode,
+                    isEditing: true,
+                    baseSource: source,
+                    currentSource: source
+                )
+                renderMarkdown(tabID: tabID)
+            } else if let session = tabs[index].jsonEditSession {
+                tabs[index].jsonSource = source
+                tabs[index].jsonEditSession = MarkdownEditSession(
+                    mode: session.mode,
+                    isEditing: true,
+                    baseSource: source,
+                    currentSource: source
+                )
+                renderJSON(tabID: tabID)
+            }
+            persistState()
+        case let .unavailable(message), let .failed(message):
+            tabs[index].errorMessage = message
+            tabs[index].markdownEditSession?.saveState = .failed
+            tabs[index].jsonEditSession?.saveState = .failed
+        }
+    }
+
     private func closeTabImmediately(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
         documentRenderCoordinator.cancel(tabIDs: [tab.id])
@@ -1104,25 +1212,29 @@ final class AppModel: ObservableObject {
     }
 
     func refreshActiveTab() {
-        reloadTree()
         guard let activeTabID else { return }
-        if tabs.first(where: { $0.id == activeTabID })?.kind == .markdown {
-            renderMarkdown(tabID: activeTabID)
-        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .latex {
-            renderLatex(tabID: activeTabID, force: true)
-        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .json {
-            renderJSON(tabID: activeTabID)
-        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .csv {
-            renderCSV(tabID: activeTabID)
-        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .pdf {
-            renderPDF(tabID: activeTabID)
-        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .docx {
-            refreshDocx(tabID: activeTabID)
-        } else if let index = tabs.firstIndex(where: { $0.id == activeTabID }) {
+        refreshTab(tabID: activeTabID)
+        persistState()
+    }
+
+    private func refreshTab(tabID: String) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        if tab.kind == .markdown {
+            renderMarkdown(tabID: tabID)
+        } else if tab.kind == .latex {
+            renderLatex(tabID: tabID, force: true)
+        } else if tab.kind == .json {
+            renderJSON(tabID: tabID)
+        } else if tab.kind == .csv {
+            renderCSV(tabID: tabID)
+        } else if tab.kind == .pdf {
+            renderPDF(tabID: tabID)
+        } else if tab.kind == .docx {
+            refreshDocx(tabID: tabID)
+        } else if let index = tabs.firstIndex(where: { $0.id == tabID }) {
             tabs[index].status = .unavailable
             tabs[index].errorMessage = nil
         }
-        persistState()
     }
 
     func beginMarkdownEditing(
