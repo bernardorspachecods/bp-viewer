@@ -52,8 +52,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isFilteringTree = false
     @Published var pendingRootURL: URL?
     @Published var showingRootChangeConfirmation = false
+    @Published private(set) var isPendingRootChange = false
     @Published var pendingCloseRequest: PendingCloseRequest?
     @Published var showingPendingCloseConfirmation = false
+    @Published private(set) var isPendingWindowClose = false
+    @Published var pendingInvalidJSONTabID: String?
+    @Published var showingInvalidJSONConfirmation = false
     @Published var pendingLatexRootSelection: LatexRootSelectionRequest?
     @Published var pendingLatexExternalDependencies: LatexExternalDependencyRequest?
     @Published var isSnapshotCaptureActive = false
@@ -75,9 +79,8 @@ final class AppModel: ObservableObject {
     private lazy var documentRenderCoordinator = DocumentRenderCoordinator { [weak self] event in
         self?.handleDocumentRenderEvent(event)
     }
-    private lazy var documentEditCoordinator = DocumentEditCoordinator { [weak self] event in
-        self?.handleDocumentEditSaveEvent(event)
-    }
+    private lazy var documentEditCoordinator = DocumentEditCoordinator()
+    private lazy var documentDiffCoordinator = DocumentDiffCoordinator()
     private lazy var activeDocumentWatcher = ActiveDocumentWatcher { [weak self] change in
         self?.handleActiveDocumentChange(change)
     }
@@ -85,6 +88,8 @@ final class AppModel: ObservableObject {
     private var openFilesObserver: NSObjectProtocol?
     private var terminationObserver: NSObjectProtocol?
     private var localKeyMonitor: Any?
+    private weak var pendingWindow: NSWindow?
+    private var pendingBatchCloseIDs: Set<String> = []
 
     init() {
         let configuration = workspaceSession.configuration
@@ -150,6 +155,17 @@ final class AppModel: ObservableObject {
                 return nil
             }
 
+            if flags == [.command],
+               event.charactersIgnoringModifiers?.lowercased() == "s",
+               let tabID = self?.activeTabID,
+               let session = self?.activeTab?.csvEditSession,
+               session.currentSource != session.baseSource {
+                Task { @MainActor [weak self] in
+                    _ = await self?.saveCSVEdit(tabID: tabID)
+                }
+                return nil
+            }
+
             if flags.contains(.command),
                event.charactersIgnoringModifiers?.lowercased() == "z",
                let session = self?.activeTab?.markdownEditSession,
@@ -175,6 +191,21 @@ final class AppModel: ObservableObject {
                         self?.redoJSONEdit()
                     } else {
                         self?.undoJSONEdit()
+                    }
+                }
+                return nil
+            }
+
+            if flags.contains(.command),
+               event.charactersIgnoringModifiers?.lowercased() == "z",
+               let session = self?.activeTab?.csvEditSession,
+               (flags.contains(.shift) ? !session.redoSources.isEmpty : !session.undoSources.isEmpty) {
+                let redo = flags.contains(.shift)
+                Task { @MainActor [weak self] in
+                    if redo {
+                        self?.redoCSVEdit()
+                    } else {
+                        self?.undoCSVEdit()
                     }
                 }
                 return nil
@@ -256,11 +287,22 @@ final class AppModel: ObservableObject {
 
     func confirmRootChange() {
         guard let pendingRootURL else { return }
+        if let tab = tabs.first(where: hasUnsavedChanges(in:)) {
+            isPendingRootChange = true
+            showingRootChangeConfirmation = false
+            presentPendingClose(for: tab, closesTab: false)
+            return
+        }
+        completeRootChange(to: pendingRootURL)
+    }
+
+    private func completeRootChange(to rootURL: URL) {
         let urlsToOpen = pendingOpenURLs
         pendingOpenURLs = []
-        openRoot(pendingRootURL)
+        openRoot(rootURL)
         self.pendingRootURL = nil
         showingRootChangeConfirmation = false
+        isPendingRootChange = false
         urlsToOpen.forEach { openDocument(url: $0) }
     }
 
@@ -268,13 +310,13 @@ final class AppModel: ObservableObject {
         pendingRootURL = nil
         pendingOpenURLs = []
         showingRootChangeConfirmation = false
+        isPendingRootChange = false
     }
 
     func openRoot(_ url: URL) {
         snapshotWindowManager.closeAllPreservingRecords()
         persistState()
         documentRenderCoordinator.cancelAll()
-        documentEditCoordinator.cancel(tabIDs: tabs.map(\.id))
         workspaceTreeSession.reset(rootURL: nil)
         stopWatchingActiveFiles()
         let standardizedRoot = url.standardizedFileURL
@@ -355,6 +397,7 @@ final class AppModel: ObservableObject {
         guard let activeTab else { return false }
         return activeTab.previewHTML != nil
             || activeTab.previewJSON != nil
+            || activeTab.previewCSV != nil
             || activeTab.previewPDFData != nil
     }
 
@@ -547,15 +590,33 @@ final class AppModel: ObservableObject {
     func closeTab(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
         guard !hasUnsavedChanges(in: tab) else {
-            pendingCloseRequest = PendingCloseRequest(
-                id: tab.id,
-                tabID: tab.id,
-                title: tab.title
-            )
-            showingPendingCloseConfirmation = true
+            presentPendingClose(for: tab, closesTab: true)
             return
         }
         closeTabImmediately(tab)
+    }
+
+    func shouldCloseWindow(_ window: NSWindow) -> Bool {
+        if isPendingWindowClose || showingPendingCloseConfirmation || showingInvalidJSONConfirmation {
+            return false
+        }
+        guard let tab = tabs.first(where: hasUnsavedChanges(in:)) else {
+            return true
+        }
+        pendingWindow = window
+        isPendingWindowClose = true
+        presentPendingClose(for: tab, closesTab: false)
+        return false
+    }
+
+    private func presentPendingClose(for tab: DocumentTab, closesTab: Bool) {
+        pendingCloseRequest = PendingCloseRequest(
+            id: "\(closesTab ? "tab" : "window")-\(tab.id)",
+            tabID: tab.id,
+            title: tab.title,
+            closesTab: closesTab
+        )
+        showingPendingCloseConfirmation = true
     }
 
     func cancelPendingClose() {
@@ -566,6 +627,16 @@ final class AppModel: ObservableObject {
         }
         pendingCloseRequest = nil
         showingPendingCloseConfirmation = false
+        pendingBatchCloseIDs.removeAll()
+        if isPendingWindowClose {
+            isPendingWindowClose = false
+            pendingWindow = nil
+        }
+        if isPendingRootChange {
+            isPendingRootChange = false
+            pendingRootURL = nil
+            pendingOpenURLs = []
+        }
     }
 
     var pendingCloseCanSave: Bool {
@@ -582,11 +653,18 @@ final class AppModel: ObservableObject {
               let tab = tabs.first(where: { $0.id == request.tabID }) else {
             pendingCloseRequest = nil
             showingPendingCloseConfirmation = false
+            pendingBatchCloseIDs.removeAll()
             return
         }
+        let closesTab = request.closesTab
         pendingCloseRequest = nil
         showingPendingCloseConfirmation = false
-        closeTabImmediately(tab)
+        if closesTab {
+            closeTabImmediately(tab)
+        } else {
+            discardChanges(in: tab)
+            continuePendingExit()
+        }
     }
 
     func savePendingClose() {
@@ -597,6 +675,7 @@ final class AppModel: ObservableObject {
             showingPendingCloseConfirmation = false
             return
         }
+        let closesTab = request.closesTab
         pendingCloseRequest = nil
         showingPendingCloseConfirmation = false
 
@@ -607,20 +686,86 @@ final class AppModel: ObservableObject {
             case .markdown:
                 saved = await saveMarkdownEdit(tabID: tab.id)
             case .json:
-                saved = await saveJSONEdit(tabID: tab.id)
+                saved = await saveJSONEdit(tabID: tab.id, finishEditing: !closesTab)
+            case .csv:
+                saved = await saveCSVEdit(tabID: tab.id)
             default:
                 saved = true
             }
-            guard saved,
-                  let currentTab = tabs.first(where: { $0.id == tab.id }) else { return }
-            closeTabImmediately(currentTab)
+            guard saved else { return }
+            if closesTab {
+                guard let currentTab = tabs.first(where: { $0.id == tab.id }) else { return }
+                closeTabImmediately(currentTab)
+            } else {
+                continuePendingExit()
+            }
         }
+    }
+
+    private func continuePendingExit() {
+        guard isPendingWindowClose || isPendingRootChange else { return }
+        if let nextTab = tabs.first(where: hasUnsavedChanges(in:)) {
+            presentPendingClose(for: nextTab, closesTab: false)
+            return
+        }
+        if isPendingRootChange, let rootURL = pendingRootURL {
+            completeRootChange(to: rootURL)
+            return
+        }
+        let window = pendingWindow
+        pendingWindow = nil
+        isPendingWindowClose = false
+        window?.close()
+    }
+
+    private func discardChanges(in tab: DocumentTab, keepEditing: Bool = false) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if let session = tabs[index].markdownEditSession {
+            tabs[index].markdownSource = session.baseSource
+            tabs[index].markdownBlocks = MarkdownBlockDocument(source: session.baseSource).blocks
+            tabs[index].markdownEditSession?.currentSource = session.baseSource
+            tabs[index].markdownEditSession?.undoSources.removeAll()
+            tabs[index].markdownEditSession?.redoSources.removeAll()
+            tabs[index].markdownEditSession?.saveState = .saved
+            tabs[index].markdownEditSession?.conflict = nil
+            tabs[index].markdownEditSession?.isEditing = keepEditing
+            tabs[index].errorMessage = nil
+            renderMarkdown(tabID: tab.id)
+        } else if let session = tabs[index].jsonEditSession {
+            tabs[index].jsonSource = session.baseSource
+            tabs[index].jsonEditSession?.currentSource = session.baseSource
+            tabs[index].jsonEditSession?.undoSources.removeAll()
+            tabs[index].jsonEditSession?.redoSources.removeAll()
+            tabs[index].jsonEditSession?.saveState = .saved
+            tabs[index].jsonEditSession?.conflict = nil
+            tabs[index].jsonEditSession?.isEditing = keepEditing
+            tabs[index].errorMessage = nil
+            renderJSON(tabID: tab.id)
+        } else if let session = tabs[index].csvEditSession {
+            if let document = try? CSVPreviewAdapter().parse(source: session.baseSource) {
+                tabs[index].previewCSV = document
+            }
+            tabs[index].csvEditSession = keepEditing
+                ? CSVEditSession(
+                    isEditing: true,
+                    baseSource: session.baseSource,
+                    currentSource: session.baseSource,
+                    saveState: .saved
+                )
+                : nil
+            tabs[index].errorMessage = nil
+            renderCSV(tabID: tab.id)
+        }
+    }
+
+    func discardEditing(tabID: String) {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        discardChanges(in: tab, keepEditing: true)
     }
 
     private func closeTabImmediately(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
         documentRenderCoordinator.cancel(tabIDs: [tab.id])
-        documentEditCoordinator.cancel(tabIDs: [tab.id])
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
         }
@@ -636,6 +781,9 @@ final class AppModel: ObservableObject {
             renderActiveTabIfNeeded()
         }
         persistState()
+        if pendingBatchCloseIDs.remove(tab.id) != nil {
+            continuePendingBatchClose()
+        }
     }
 
     private func hasUnsavedChanges(in tab: DocumentTab) -> Bool {
@@ -643,6 +791,9 @@ final class AppModel: ObservableObject {
             return session.currentSource != session.baseSource || session.saveState != .saved
         }
         if let session = tab.jsonEditSession {
+            return session.currentSource != session.baseSource || session.saveState != .saved
+        }
+        if let session = tab.csvEditSession {
             return session.currentSource != session.baseSource || session.saveState != .saved
         }
         return false
@@ -677,24 +828,48 @@ final class AppModel: ObservableObject {
     }
 
     func closeOtherTabs(keeping tab: DocumentTab) {
-        var session = documentTabSession
-        guard session.closeOthers(keeping: tab.id) else { return }
-        documentRenderCoordinator.cancel(tabIDs: tabs.filter { $0.id != tab.id }.map(\.id))
-        documentEditCoordinator.cancel(tabIDs: tabs.filter { $0.id != tab.id }.map(\.id))
-        applyDocumentTabSession(session)
-        syncPreviewZoomToActiveTab()
-        renderActiveTabIfNeeded()
-        persistState()
+        requestBatchClose(tabs.filter { $0.id != tab.id })
     }
 
     func closeTabsToRight(of tab: DocumentTab) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        requestBatchClose(Array(tabs.dropFirst(index + 1)))
+    }
+
+    private func requestBatchClose(_ tabsToClose: [DocumentTab]) {
+        guard !tabsToClose.isEmpty else { return }
+        let ids = Set(tabsToClose.map(\.id))
+        if let unsavedTab = tabsToClose.first(where: hasUnsavedChanges(in:)) {
+            pendingBatchCloseIDs = ids
+            presentPendingClose(for: unsavedTab, closesTab: true)
+            return
+        }
+        closeTabsImmediately(ids)
+    }
+
+    private func continuePendingBatchClose() {
+        guard !pendingBatchCloseIDs.isEmpty else { return }
+        let batchTabs = tabs.filter { pendingBatchCloseIDs.contains($0.id) }
+        if let unsavedTab = batchTabs.first(where: hasUnsavedChanges(in:)) {
+            presentPendingClose(for: unsavedTab, closesTab: true)
+        } else {
+            let ids = pendingBatchCloseIDs
+            pendingBatchCloseIDs.removeAll()
+            closeTabsImmediately(ids)
+        }
+    }
+
+    private func closeTabsImmediately(_ ids: Set<String>) {
+        let closingTabs = tabs.filter { ids.contains($0.id) }
+        guard !closingTabs.isEmpty else { return }
+        let wasActive = activeTabID.map(ids.contains) == true
+        documentRenderCoordinator.cancel(tabIDs: closingTabs.map(\.id))
         var session = documentTabSession
-        guard session.closeToRight(of: tab.id) else { return }
-        let allowed = Set(session.tabs.map(\.id))
-        documentRenderCoordinator.cancel(tabIDs: tabs.filter { !allowed.contains($0.id) }.map(\.id))
-        documentEditCoordinator.cancel(tabIDs: tabs.filter { !allowed.contains($0.id) }.map(\.id))
+        for tab in closingTabs {
+            _ = session.close(id: tab.id)
+        }
         applyDocumentTabSession(session)
-        if let activeTabID, !allowed.contains(activeTabID) {
+        if wasActive {
             syncPreviewZoomToActiveTab()
             renderActiveTabIfNeeded()
         }
@@ -710,6 +885,8 @@ final class AppModel: ObservableObject {
             renderLatex(tabID: activeTabID, force: true)
         } else if tabs.first(where: { $0.id == activeTabID })?.kind == .json {
             renderJSON(tabID: activeTabID)
+        } else if tabs.first(where: { $0.id == activeTabID })?.kind == .csv {
+            renderCSV(tabID: activeTabID)
         } else if tabs.first(where: { $0.id == activeTabID })?.kind == .pdf {
             renderPDF(tabID: activeTabID)
         } else if tabs.first(where: { $0.id == activeTabID })?.kind == .docx {
@@ -721,14 +898,62 @@ final class AppModel: ObservableObject {
         persistState()
     }
 
-    func beginMarkdownEditing(tabID: String) {
+    func beginMarkdownEditing(
+        tabID: String,
+        mode: MarkdownEditingMode = .markdown
+    ) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .markdown else { return }
 
         let source = tabs[index].markdownSource
             ?? (try? String(contentsOf: tabs[index].url, encoding: .utf8))
             ?? ""
-        applyMarkdownTransition(documentEditCoordinator.beginMarkdown(source: source), at: index)
+        tabs[index].diffSession = nil
+        applyMarkdownTransition(
+            documentEditCoordinator.beginMarkdown(source: source, mode: mode),
+            at: index
+        )
+    }
+
+    func toggleDocumentDiff(mode: DocumentDiffMode, tabID: String) {
+        guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        if tabs[initialIndex].diffSession?.mode == mode {
+            tabs[initialIndex].diffSession = nil
+            return
+        }
+
+        switch tabs[initialIndex].kind {
+        case .markdown:
+            if tabs[initialIndex].markdownEditSession?.isEditing != true {
+                beginMarkdownEditing(tabID: tabID)
+            }
+        case .json:
+            if tabs[initialIndex].jsonEditSession?.isEditing != true {
+                beginJSONEditing(tabID: tabID)
+            }
+        default:
+            return
+        }
+
+        openDocumentDiff(tabID: tabID, mode: mode)
+    }
+
+    private func openDocumentDiff(tabID: String, mode: DocumentDiffMode) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .markdown || tabs[index].kind == .json else { return }
+
+        switch documentDiffCoordinator.baseline(for: mode, url: tabs[index].url) {
+        case let .available(baseline):
+            tabs[index].diffSession = DocumentDiffSession(
+                mode: mode,
+                baseline: baseline
+            )
+        case let .unavailable(message):
+            tabs[index].diffSession = DocumentDiffSession(
+                mode: mode,
+                unavailableMessage: message
+            )
+        }
     }
 
     func updateMarkdownEditing(
@@ -743,29 +968,194 @@ final class AppModel: ObservableObject {
               ) else { return }
 
         applyMarkdownTransition(transition, at: index)
-        documentEditCoordinator.scheduleMarkdownSave(
-            tabID: tabID,
-            url: tabs[index].url,
-            baseSource: transition.session.baseSource,
-            localSource: transition.session.currentSource
-        )
         if transition.session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: text)
         }
     }
 
     func endMarkdownEditing(tabID: String) {
-        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        tabs[index].markdownEditSession?.isEditing = false
-        if tabs[index].markdownEditSession?.currentSource == tabs[index].markdownEditSession?.baseSource {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].markdownEditSession else { return }
+        if session.currentSource == session.baseSource {
+            tabs[index].markdownEditSession?.isEditing = false
+            tabs[index].diffSession = nil
             renderMarkdown(tabID: tabID)
-        } else if let session = tabs[index].markdownEditSession {
-            documentEditCoordinator.scheduleMarkdownSave(
-                tabID: tabID,
-                url: tabs[index].url,
-                baseSource: session.baseSource,
-                localSource: session.currentSource
+        } else {
+            tabs[index].markdownEditSession?.saveState = .saving
+            Task { @MainActor [weak self] in
+                _ = await self?.saveMarkdownEdit(tabID: tabID, finishEditing: true)
+            }
+        }
+    }
+
+    func updateCSVEditing(tabID: String, row: Int, column: Int, value: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .csv,
+              let document = tabs[index].previewCSV,
+              let updatedDocument = document.replacingCell(atRow: row, column: column, with: value) else {
+            return
+        }
+
+        let adapter = CSVPreviewAdapter()
+        let currentSource = adapter.serialize(document: updatedDocument)
+        if tabs[index].csvEditSession == nil {
+            let baseSource = (try? String(contentsOf: tabs[index].url, encoding: .utf8))
+                ?? adapter.serialize(document: document)
+            tabs[index].csvEditSession = CSVEditSession(
+                baseSource: baseSource,
+                currentSource: currentSource,
+                saveState: .unsaved,
+                undoSources: [baseSource]
             )
+        } else {
+            guard let session = tabs[index].csvEditSession,
+                  session.currentSource != currentSource else { return }
+            tabs[index].csvEditSession?.undoSources.append(session.currentSource)
+            tabs[index].csvEditSession?.redoSources.removeAll()
+            tabs[index].csvEditSession?.isEditing = true
+            tabs[index].csvEditSession?.currentSource = currentSource
+            tabs[index].csvEditSession?.saveState = .unsaved
+            tabs[index].csvEditSession?.conflict = nil
+        }
+        tabs[index].previewCSV = updatedDocument
+        tabs[index].previewUpdatedAt = Date()
+        tabs[index].errorMessage = nil
+    }
+
+    func keepLocalCSVEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession else { return }
+        applyCSVSaveOutcome(
+            documentEditCoordinator.commitCSV(url: tabs[index].url, source: session.currentSource),
+            tabID: tabID
+        )
+    }
+
+    @discardableResult
+    func saveCSVEditing(tabID: String) async -> Bool {
+        await saveCSVEdit(tabID: tabID)
+    }
+
+    @discardableResult
+    func undoCSVEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession,
+              let previous = session.undoSources.last,
+              let document = try? CSVPreviewAdapter().parse(source: previous) else { return false }
+
+        var updated = session
+        updated.undoSources.removeLast()
+        updated.redoSources.append(updated.currentSource)
+        updated.currentSource = previous
+        updated.saveState = previous == updated.baseSource ? .saved : .unsaved
+        updated.conflict = nil
+        updated.isEditing = true
+        tabs[index].csvEditSession = updated
+        tabs[index].previewCSV = document
+        tabs[index].previewUpdatedAt = Date()
+        tabs[index].errorMessage = nil
+        return true
+    }
+
+    @discardableResult
+    func redoCSVEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession,
+              let next = session.redoSources.last,
+              let document = try? CSVPreviewAdapter().parse(source: next) else { return false }
+
+        var updated = session
+        updated.redoSources.removeLast()
+        updated.undoSources.append(updated.currentSource)
+        updated.currentSource = next
+        updated.saveState = next == updated.baseSource ? .saved : .unsaved
+        updated.conflict = nil
+        updated.isEditing = true
+        tabs[index].csvEditSession = updated
+        tabs[index].previewCSV = document
+        tabs[index].previewUpdatedAt = Date()
+        tabs[index].errorMessage = nil
+        return true
+    }
+
+    func useExternalCSVEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession,
+              let conflict = session.conflict,
+              let document = try? CSVPreviewAdapter().parse(source: conflict.externalSource) else {
+            return
+        }
+        tabs[index].previewCSV = document
+        tabs[index].csvEditSession = CSVEditSession(
+            isEditing: false,
+            baseSource: conflict.externalSource,
+            currentSource: conflict.externalSource,
+            saveState: .saved
+        )
+        tabs[index].previewUpdatedAt = Date()
+        tabs[index].errorMessage = nil
+    }
+
+    @discardableResult
+    private func saveCSVEdit(tabID: String) async -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession else {
+            return false
+        }
+        guard session.currentSource != session.baseSource else { return true }
+
+        tabs[index].csvEditSession?.saveState = .saving
+        let localSource = session.currentSource
+        let outcome = await documentEditCoordinator.saveCSV(
+            url: tabs[index].url,
+            baseSource: session.baseSource,
+            localSource: localSource
+        )
+        guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[currentIndex].csvEditSession?.currentSource == localSource else {
+            return false
+        }
+        return applyCSVSaveOutcome(outcome, tabID: tabID)
+    }
+
+    @discardableResult
+    private func applyCSVSaveOutcome(
+        _ outcome: DocumentEditSaveOutcome,
+        tabID: String
+    ) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              var session = tabs[index].csvEditSession else {
+            return false
+        }
+        switch outcome {
+        case let .saved(source):
+            guard let document = try? CSVPreviewAdapter().parse(source: source) else {
+                session.saveState = .failed
+                tabs[index].csvEditSession = session
+                return false
+            }
+            session.baseSource = source
+            session.currentSource = source
+            session.saveState = .saved
+            session.conflict = nil
+            tabs[index].csvEditSession = session
+            tabs[index].previewCSV = document
+            tabs[index].previewUpdatedAt = Date()
+            tabs[index].errorMessage = nil
+            return true
+        case let .conflict(conflict):
+            session.saveState = .conflict
+            session.conflict = conflict
+            tabs[index].csvEditSession = session
+            return false
+        case let .failed(message):
+            session.saveState = .failed
+            session.conflict = nil
+            tabs[index].csvEditSession = session
+            tabs[index].errorMessage = message
+            return false
         }
     }
 
@@ -776,10 +1166,9 @@ final class AppModel: ObservableObject {
         let source = tabs[index].jsonSource
             ?? (try? String(contentsOf: tabs[index].url, encoding: .utf8))
             ?? ""
-        let formattedSource = tabs[index].previewJSON ?? source
+        tabs[index].diffSession = nil
         let transition = documentEditCoordinator.beginJSON(
             source: source,
-            formattedSource: formattedSource,
             previewUTF8Offset: previewUTF8Offset
         )
         tabs[index].jsonSource = source
@@ -810,8 +1199,15 @@ final class AppModel: ObservableObject {
               tabs[index].kind == .json,
               let session = tabs[index].jsonEditSession else { return }
 
+        if session.saveState == .failed {
+            pendingInvalidJSONTabID = tabID
+            showingInvalidJSONConfirmation = true
+            return
+        }
+
         if session.currentSource == session.baseSource {
             tabs[index].jsonEditSession?.isEditing = false
+            tabs[index].diffSession = nil
             renderJSON(tabID: tabID)
         } else {
             tabs[index].jsonEditSession?.saveState = .saving
@@ -819,6 +1215,32 @@ final class AppModel: ObservableObject {
                 _ = await self?.saveJSONEdit(tabID: tabID, finishEditing: true)
             }
         }
+    }
+
+    func cancelInvalidJSONEditing() {
+        pendingInvalidJSONTabID = nil
+        showingInvalidJSONConfirmation = false
+    }
+
+    func discardInvalidJSONEditing() {
+        guard let tabID = pendingInvalidJSONTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].jsonEditSession else {
+            cancelInvalidJSONEditing()
+            return
+        }
+
+        tabs[index].jsonSource = session.baseSource
+        tabs[index].jsonEditSession?.currentSource = session.baseSource
+        tabs[index].jsonEditSession?.undoSources.removeAll()
+        tabs[index].jsonEditSession?.redoSources.removeAll()
+        tabs[index].jsonEditSession?.saveState = .saved
+        tabs[index].jsonEditSession?.conflict = nil
+        tabs[index].jsonEditSession?.isEditing = false
+        tabs[index].diffSession = nil
+        tabs[index].errorMessage = nil
+        cancelInvalidJSONEditing()
+        renderJSON(tabID: tabID)
     }
 
     @discardableResult
@@ -833,7 +1255,8 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func redoJSONEdit() -> Bool {
-        guard let index = activeTabID.flatMap({ id in tabs.firstIndex(where: { $0.id == id }) }),
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].jsonEditSession,
               let transition = documentEditCoordinator.redoJSON(session: session) else { return false }
         applyJSONTransition(transition, at: index)
@@ -861,6 +1284,7 @@ final class AppModel: ObservableObject {
             ),
             at: index
         )
+        tabs[index].diffSession = nil
         renderJSON(tabID: tabID)
     }
 
@@ -874,6 +1298,7 @@ final class AppModel: ObservableObject {
         guard session.currentSource != session.baseSource else {
             if finishEditing {
                 tabs[index].jsonEditSession?.isEditing = false
+                tabs[index].diffSession = nil
                 renderJSON(tabID: tabID)
             }
             return true
@@ -893,9 +1318,13 @@ final class AppModel: ObservableObject {
         return applyJSONSaveOutcome(outcome, tabID: tabID, finishEditing: finishEditing)
     }
 
-    func toggleMarkdownEditingMode(tabID: String) {
-        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              var session = tabs[index].markdownEditSession else { return }
+    func toggleMarkdownSplitView(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        guard var session = tabs[index].markdownEditSession,
+              session.isEditing else {
+            beginMarkdownEditing(tabID: tabID, mode: .split)
+            return
+        }
         session.mode = session.mode == .markdown ? .split : .markdown
         tabs[index].markdownEditSession = session
         if session.mode == .split {
@@ -911,12 +1340,6 @@ final class AppModel: ObservableObject {
               let transition = documentEditCoordinator.undoMarkdown(session: session) else { return false }
 
         applyMarkdownTransition(transition, at: index)
-        documentEditCoordinator.scheduleMarkdownSave(
-            tabID: tabID,
-            url: tabs[index].url,
-            baseSource: transition.session.baseSource,
-            localSource: transition.session.currentSource
-        )
         if transition.session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: transition.source)
         }
@@ -931,12 +1354,6 @@ final class AppModel: ObservableObject {
               let transition = documentEditCoordinator.redoMarkdown(session: session) else { return false }
 
         applyMarkdownTransition(transition, at: index)
-        documentEditCoordinator.scheduleMarkdownSave(
-            tabID: tabID,
-            url: tabs[index].url,
-            baseSource: transition.session.baseSource,
-            localSource: transition.session.currentSource
-        )
         if transition.session.mode == .split {
             renderMarkdown(tabID: tabID, sourceOverride: transition.source)
         }
@@ -964,14 +1381,23 @@ final class AppModel: ObservableObject {
             ),
             at: index
         )
+        tabs[index].diffSession = nil
         renderMarkdown(tabID: tabID)
     }
 
     @discardableResult
-    private func saveMarkdownEdit(tabID: String) async -> Bool {
+    private func saveMarkdownEdit(tabID: String, finishEditing: Bool = false) async -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              let session = tabs[index].markdownEditSession,
-              session.currentSource != session.baseSource else { return true }
+              let session = tabs[index].markdownEditSession else { return false }
+
+        guard session.currentSource != session.baseSource else {
+            if finishEditing {
+                tabs[index].markdownEditSession?.isEditing = false
+                tabs[index].diffSession = nil
+                renderMarkdown(tabID: tabID)
+            }
+            return true
+        }
 
         let localSource = session.currentSource
         tabs[index].markdownEditSession?.saveState = .saving
@@ -987,21 +1413,9 @@ final class AppModel: ObservableObject {
         return applyMarkdownSaveOutcome(
             outcome,
             tabID: tabID,
-            renderWhenNotEditing: true
+            renderWhenNotEditing: true,
+            finishEditing: finishEditing
         )
-    }
-
-    private func handleDocumentEditSaveEvent(_ event: DocumentEditSaveEvent) {
-        switch event {
-        case let .markdown(tabID, source, outcome):
-            guard let tab = tabs.first(where: { $0.id == tabID }),
-                  tab.markdownEditSession?.currentSource == source else { return }
-            _ = applyMarkdownSaveOutcome(
-                outcome,
-                tabID: tabID,
-                renderWhenNotEditing: true
-            )
-        }
     }
 
     private func applyMarkdownTransition(
@@ -1029,7 +1443,8 @@ final class AppModel: ObservableObject {
     private func applyMarkdownSaveOutcome(
         _ outcome: DocumentEditSaveOutcome,
         tabID: String,
-        renderWhenNotEditing: Bool
+        renderWhenNotEditing: Bool,
+        finishEditing: Bool = false
     ) -> Bool {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
         switch outcome {
@@ -1040,7 +1455,17 @@ final class AppModel: ObservableObject {
             tabs[index].markdownEditSession?.currentSource = source
             tabs[index].markdownEditSession?.saveState = .saved
             tabs[index].markdownEditSession?.conflict = nil
+            if tabs[index].diffSession?.mode == .savedOnDisk {
+                tabs[index].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: source
+                )
+            }
             tabs[index].errorMessage = nil
+            if finishEditing {
+                tabs[index].markdownEditSession?.isEditing = false
+                tabs[index].diffSession = nil
+            }
             if renderWhenNotEditing && tabs[index].markdownEditSession?.isEditing != true {
                 renderMarkdown(tabID: tabID)
             }
@@ -1070,9 +1495,16 @@ final class AppModel: ObservableObject {
             tabs[index].jsonEditSession?.currentSource = source
             tabs[index].jsonEditSession?.saveState = .saved
             tabs[index].jsonEditSession?.conflict = nil
+            if tabs[index].diffSession?.mode == .savedOnDisk {
+                tabs[index].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: source
+                )
+            }
             tabs[index].errorMessage = nil
             if finishEditing {
                 tabs[index].jsonEditSession?.isEditing = false
+                tabs[index].diffSession = nil
                 renderJSON(tabID: tabID)
             }
             return true
@@ -1091,7 +1523,7 @@ final class AppModel: ObservableObject {
 
     func showFindBar() {
         guard let kind = activeTab?.kind,
-              [.markdown, .latex, .pdf, .json, .docx].contains(kind) else { return }
+              [.markdown, .latex, .pdf, .json, .csv, .docx].contains(kind) else { return }
         isFindBarVisible = true
     }
 
@@ -1306,6 +1738,8 @@ final class AppModel: ObservableObject {
             return defaultLatexZoom
         case .json, .docx, .other:
             return 1.0
+        case .csv:
+            return 1.0
         }
     }
 
@@ -1450,7 +1884,7 @@ final class AppModel: ObservableObject {
     private func renderActiveTabIfNeeded() {
         guard let activeTabID,
               let tab = tabs.first(where: { $0.id == activeTabID }),
-              tab.kind == .markdown || tab.kind == .latex || tab.kind == .json || tab.kind == .pdf || tab.kind == .docx else {
+              tab.kind == .markdown || tab.kind == .latex || tab.kind == .json || tab.kind == .csv || tab.kind == .pdf || tab.kind == .docx else {
             stopWatchingActiveFiles()
             return
         }
@@ -1468,6 +1902,8 @@ final class AppModel: ObservableObject {
             hasPreview = tab.previewPDFData != nil
         case .json:
             hasPreview = tab.previewJSON != nil
+        case .csv:
+            hasPreview = tab.previewCSV != nil
         case .docx:
             return
         case .other:
@@ -1480,6 +1916,8 @@ final class AppModel: ObservableObject {
                 renderLatex(tabID: activeTabID)
             } else if tab.kind == .json {
                 renderJSON(tabID: activeTabID)
+            } else if tab.kind == .csv {
+                renderCSV(tabID: activeTabID)
             } else if tab.kind == .pdf {
                 renderPDF(tabID: activeTabID)
             }
@@ -1509,11 +1947,21 @@ final class AppModel: ObservableObject {
             // The active source editor owns the cursor while its latest
             // version is already on disk. Reconcile the next external event
             // after the user leaves the editor.
+            if tab.diffSession?.mode == .savedOnDisk {
+                Task { @MainActor [weak self] in
+                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
+                }
+            }
             return
         }
         if let session = tab.jsonEditSession,
            session.isEditing,
            session.currentSource == session.baseSource {
+            if tab.diffSession?.mode == .savedOnDisk {
+                Task { @MainActor [weak self] in
+                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
+                }
+            }
             return
         }
 
@@ -1531,6 +1979,13 @@ final class AppModel: ObservableObject {
                     await self.handleExternalJSONChange(tabID: change.tabID)
                 } else {
                     self.renderJSON(tabID: change.tabID)
+                }
+            case .csv:
+                if let session = currentTab.csvEditSession,
+                   session.currentSource != session.baseSource {
+                    await self.handleExternalCSVChange(tabID: change.tabID)
+                } else {
+                    self.renderCSV(tabID: change.tabID)
                 }
             case .pdf:
                 self.renderPDF(tabID: change.tabID)
@@ -1557,19 +2012,30 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let localSource = session.currentSource
-        let outcome = await documentEditCoordinator.saveMarkdown(
-            url: tabs[index].url,
-            baseSource: session.baseSource,
-            localSource: localSource
-        )
-        guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[currentIndex].markdownEditSession?.currentSource == localSource else { return }
-        _ = applyMarkdownSaveOutcome(
-            outcome,
-            tabID: tabID,
-            renderWhenNotEditing: true
-        )
+        do {
+            let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].url)
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].markdownEditSession?.currentSource == session.currentSource else { return }
+            if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: externalSource
+                )
+            }
+            guard externalSource != session.baseSource else { return }
+
+            tabs[currentIndex].markdownEditSession?.saveState = .conflict
+            tabs[currentIndex].markdownEditSession?.isEditing = true
+            tabs[currentIndex].markdownEditSession?.conflict = MarkdownConflict(
+                localSource: session.currentSource,
+                externalSource: externalSource,
+                blockIDs: []
+            )
+        } catch {
+            tabs[index].markdownEditSession?.saveState = .failed
+            tabs[index].markdownEditSession?.isEditing = true
+            tabs[index].errorMessage = error.localizedDescription
+        }
     }
 
     private func handleExternalJSONChange(tabID: String) async {
@@ -1584,6 +2050,12 @@ final class AppModel: ObservableObject {
             let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].url)
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[currentIndex].jsonEditSession?.currentSource == session.currentSource else { return }
+            if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: externalSource
+                )
+            }
 
             if externalSource == session.baseSource {
                 tabs[currentIndex].jsonEditSession?.saveState = .unsaved
@@ -1601,6 +2073,45 @@ final class AppModel: ObservableObject {
             tabs[index].jsonEditSession?.isEditing = true
             tabs[index].errorMessage = error.localizedDescription
         }
+    }
+
+    private func handleExternalCSVChange(tabID: String) async {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].csvEditSession,
+              session.currentSource != session.baseSource else {
+            renderCSV(tabID: tabID)
+            return
+        }
+
+        do {
+            let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].url)
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].csvEditSession?.currentSource == session.currentSource else { return }
+            if externalSource == session.baseSource {
+                tabs[currentIndex].csvEditSession?.saveState = .unsaved
+            } else {
+                tabs[currentIndex].csvEditSession?.saveState = .conflict
+                tabs[currentIndex].csvEditSession?.conflict = MarkdownConflict(
+                    localSource: session.currentSource,
+                    externalSource: externalSource,
+                    blockIDs: []
+                )
+            }
+        } catch {
+            tabs[index].csvEditSession?.saveState = .failed
+            tabs[index].errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshDiskDiffBaseline(tabID: String) async {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].diffSession?.mode == .savedOnDisk else { return }
+        guard let source = try? await documentEditCoordinator.readSource(at: tabs[index].url),
+              let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+            label: "Saved on Disk",
+            source: source
+        )
     }
 
     private func renderLatex(
@@ -1683,6 +2194,21 @@ final class AppModel: ObservableObject {
         ))
     }
 
+    private func renderCSV(tabID: String) {
+        guard let tab = tabs.first(where: { $0.id == tabID }), tab.kind == .csv else { return }
+        documentRenderCoordinator.render(DocumentRenderRequest(
+            tabID: tabID,
+            url: tab.url,
+            kind: .csv,
+            projectRoot: rootURL,
+            markdownSourceOverride: nil,
+            latexRootURL: nil,
+            latexShellEscapeMode: latexShellEscapeMode,
+            approvedLatexExternalPaths: [:],
+            force: false
+        ))
+    }
+
     private func renderPDF(tabID: String) {
         guard let tab = tabs.first(where: { $0.id == tabID }), tab.kind == .pdf else { return }
         documentRenderCoordinator.render(DocumentRenderRequest(
@@ -1717,6 +2243,8 @@ final class AppModel: ObservableObject {
             case .json:
                 tabs[index].previewJSON = output.json
                 tabs[index].jsonSource = output.source
+            case .csv:
+                tabs[index].previewCSV = output.csv
             case .latex, .pdf:
                 tabs[index].previewPDFData = output.pdfData
                 tabs[index].previewHTML = nil
@@ -1742,6 +2270,7 @@ final class AppModel: ObservableObject {
             tabs[index].status = failure.status
             tabs[index].isStale = tabs[index].previewHTML != nil
                 || tabs[index].previewJSON != nil
+                || tabs[index].previewCSV != nil
                 || tabs[index].previewPDFData != nil
             tabs[index].errorMessage = failure.message
             if let candidates = failure.latexRootSelectionCandidates,

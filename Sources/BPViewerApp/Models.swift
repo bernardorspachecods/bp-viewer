@@ -82,4 +82,5 @@ struct PendingCloseRequest: Identifiable {
     let id: String
     let tabID: String
     let title: String
+    let closesTab: Bool
 }

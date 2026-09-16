@@ -94,10 +94,262 @@ func recognizesWordDocuments() {
     #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/report.doc")) == .other)
 }
 
+@Test("recognizes CSV documents as supported preview files")
+func recognizesCSVDocuments() {
+    #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/data.csv")) == .csv)
+    #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/DATA.CSV")) == .csv)
+}
+
+@Test("parses quoted CSV fields, escaped quotes, and line breaks")
+func parsesCSVFields() throws {
+    let source = "Name,Note\nAlice,\"hello\nworld\"\nBob,\"He said \"\"hi\"\"\""
+    let document = try CSVPreviewAdapter().parse(source: source)
+
+    #expect(document.rows == [
+        ["Name", "Note"],
+        ["Alice", "hello\nworld"],
+        ["Bob", "He said \"hi\""]
+    ])
+}
+
+@Test("detects semicolon-delimited CSV files")
+func detectsSemicolonDelimitedCSV() throws {
+    let document = try CSVPreviewAdapter().parse(source: "Name;Age\nAlice;42")
+
+    #expect(document.delimiter == ";")
+    #expect(document.rows == [["Name", "Age"], ["Alice", "42"]])
+}
+
+@Test("parses CRLF CSV records as separate rows")
+func parsesCRLFCSVRecords() throws {
+    let document = try CSVPreviewAdapter().parse(source: "Name,Age\r\nAlice,42\r\nBob,37")
+
+    #expect(document.rows == [["Name", "Age"], ["Alice", "42"], ["Bob", "37"]])
+}
+
+@Test("updates and serializes a CSV cell using the detected delimiter")
+func updatesAndSerializesCSVCell() throws {
+    let adapter = CSVPreviewAdapter()
+    let document = try adapter.parse(source: "Name;Note\nAlice;plain")
+    let updated = try #require(document.replacingCell(atRow: 1, column: 1, with: "needs;quotes"))
+
+    #expect(adapter.serialize(document: updated) == "Name;Note\nAlice;\"needs;quotes\"")
+}
+
+@Test("serializes CSV quotes and line breaks safely")
+func serializesCSVQuotesAndLineBreaks() throws {
+    let document = try CSVPreviewAdapter().parse(source: "Name,Note\nAlice,plain")
+    let updated = try #require(document.replacingCell(atRow: 1, column: 1, with: "He said \"hi\"\nnext"))
+
+    #expect(CSVPreviewAdapter().serialize(document: updated) == "Name,Note\nAlice,\"He said \"\"hi\"\"\nnext\"")
+}
+
+@Test("renders CSV spreadsheet coordinates and focusable cells")
+func rendersCSVSpreadsheetCoordinates() throws {
+    let document = try CSVPreviewAdapter().parse(source: "Name,Age\nAlice,42")
+    let html = CSVPreviewAdapter().html(document: document, isDark: false)
+
+    #expect(html.contains("data-column-header=\"A\""))
+    #expect(html.contains("data-column-header=\"B\""))
+    #expect(html.contains("data-row-header=\"1\""))
+    #expect(html.contains("data-row-index=\"0\" data-column-index=\"0\""))
+    #expect(html.contains("tabindex=\"0\""))
+    #expect(html.contains("data-row-index=\"0\" data-column-index=\"0\" tabindex=\"0\" aria-selected=\"false\""))
+    #expect(!html.contains("aria-selected=\"true\""))
+    #expect(html.contains(">Name</div>"))
+    #expect(html.contains("data-row-index=\"1\" data-column-index=\"0\""))
+    #expect(html.contains("<div class=\"sheet\" data-bp-csv"))
+    #expect(html.contains("grid-template-columns: 42px repeat(2"))
+    #expect(!html.contains("<table data-bp-csv"))
+    #expect(html.contains("background-color: #e9e9eb !important"))
+    #expect(html.contains(".coordinate-header"))
+    #expect(!html.contains("opacity: 0.56"))
+    #expect(!html.contains("selected-header"))
+}
+
+@Test("CSV preview exposes keyboard navigation for the active cell")
+func exposesCSVKeyboardNavigation() throws {
+    let document = try CSVPreviewAdapter().parse(source: "Name,Age\nAlice,42")
+    let html = CSVPreviewAdapter().html(document: document, isDark: false)
+
+    #expect(html.contains("ArrowRight"))
+    #expect(html.contains("ArrowLeft"))
+    #expect(html.contains("ArrowDown"))
+    #expect(html.contains("ArrowUp"))
+    #expect(html.contains("event.key === 'Tab'"))
+    #expect(html.contains("event.key === 'Enter'"))
+    #expect(html.contains("function revealCell"))
+    #expect(html.contains("const visibleLeft"))
+    #expect(html.contains("viewport.scrollLeft"))
+    #expect(html.contains("let hasActiveSelection = false"))
+    #expect(html.contains("if (hasActiveSelection)"))
+    #expect(html.contains("dblclick"))
+    #expect(html.contains("if (editingCell !== cell)"))
+    #expect(html.contains("contentEditable = 'true'"))
+    #expect(html.contains("function commitCellEditing"))
+    #expect(html.contains("commitCellEditing();"))
+    #expect(!html.contains("cellChangedAndSave"))
+    #expect(html.contains("document.addEventListener('keydown'"))
+    #expect(html.contains("if (event.key !== 'Escape' || editingCell)"))
+    #expect(html.contains("type: 'save'"))
+    #expect(html.contains("window.webkit.messageHandlers.csvEdit.postMessage"))
+}
+
+@Test("hides completed document actions after saving")
+@MainActor
+func hidesCompletedDocumentActionsAfterSaving() {
+    let savedBar = DocumentEditActionBar(
+        saveState: .saved,
+        onDiscard: {},
+        onSave: {}
+    )
+    let unsavedBar = DocumentEditActionBar(
+        saveState: .unsaved,
+        onDiscard: {},
+        onSave: {}
+    )
+
+    #expect(savedBar.showsStatus == false)
+    #expect(savedBar.showsDiscardChanges == false)
+    #expect(savedBar.isSaveDisabled)
+    #expect(savedBar.saveButtonOpacity == 0.55)
+    #expect(unsavedBar.showsStatus)
+    #expect(unsavedBar.showsDiscardChanges)
+    #expect(unsavedBar.isSaveDisabled == false)
+    #expect(unsavedBar.saveButtonOpacity == 1)
+}
+
+@Test("rejects CSV files with an unterminated quoted field")
+func rejectsUnterminatedCSVField() {
+    #expect(throws: CSVPreviewError.self) {
+        try CSVPreviewAdapter().parse(source: "Name,Note\nAlice,\"missing end")
+    }
+}
+
 @Test("Markdown editing exposes source and split modes")
 func exposesMarkdownEditingModes() {
     #expect(MarkdownEditingMode.allCases == [.markdown, .split])
     #expect(MarkdownEditingMode(rawValue: "visual") == nil)
+}
+
+@Test("discards an active Markdown draft without closing its tab")
+@MainActor
+func discardsActiveMarkdownDraftWithoutClosingTab() {
+    let tabID = "file:///tmp/project/notes.md"
+    let tab = DocumentTab(
+        id: tabID,
+        url: URL(fileURLWithPath: "/tmp/project/notes.md"),
+        kind: .markdown,
+        markdownSource: "# Draft",
+        markdownEditSession: MarkdownEditSession(
+            baseSource: "# Saved",
+            currentSource: "# Draft",
+            saveState: .unsaved,
+            undoSources: ["# Saved"]
+        )
+    )
+    let model = AppModel()
+    model.tabs = [tab]
+    model.activeTabID = tabID
+
+    model.discardEditing(tabID: tabID)
+
+    let updated = model.tabs[0]
+    #expect(model.tabs.count == 1)
+    #expect(updated.markdownEditSession?.currentSource == "# Saved")
+    #expect(updated.markdownEditSession?.isEditing == true)
+    #expect(updated.markdownEditSession?.saveState == .saved)
+    #expect(updated.markdownEditSession?.undoSources.isEmpty == true)
+}
+
+@Test("keeps CSV editing active after discarding its draft")
+@MainActor
+func keepsCSVEditingActiveAfterDiscardingDraft() throws {
+    let source = "Name,Age\nAlice,30"
+    let editedSource = "Name,Age\nAlice,31"
+    let url = URL(fileURLWithPath: "/tmp/bp-viewer-discard-csv-\(UUID().uuidString).csv")
+    let tabID = url.path
+    let tab = DocumentTab(
+        id: tabID,
+        url: url,
+        kind: .csv,
+        previewCSV: try CSVPreviewAdapter().parse(source: editedSource),
+        csvEditSession: CSVEditSession(
+            baseSource: source,
+            currentSource: editedSource,
+            saveState: .unsaved
+        )
+    )
+    let model = AppModel()
+    model.tabs = [tab]
+    model.activeTabID = tabID
+
+    model.discardEditing(tabID: tabID)
+
+    let updated = model.tabs[0]
+    #expect(updated.csvEditSession?.currentSource == source)
+    #expect(updated.csvEditSession?.isEditing == true)
+    #expect(updated.csvEditSession?.saveState == .saved)
+    #expect(updated.previewCSV?.rows[1][1] == "30")
+}
+
+@Test("undoes and redoes CSV cell edits without saving the file")
+@MainActor
+func undoesAndRedoesCSVCellEditsWithoutSavingFile() throws {
+    let source = "Name,Age\nAlice,30"
+    let editedSource = "Name,Age\nAlice,31"
+    let url = URL(fileURLWithPath: "/tmp/bp-viewer-undo-csv-\(UUID().uuidString).csv")
+    let tabID = url.path
+    let tab = DocumentTab(
+        id: tabID,
+        url: url,
+        kind: .csv,
+        previewCSV: try CSVPreviewAdapter().parse(source: source)
+    )
+    let model = AppModel()
+    model.tabs = [tab]
+    model.activeTabID = tabID
+
+    model.updateCSVEditing(tabID: tabID, row: 1, column: 1, value: "31")
+    #expect(model.tabs[0].csvEditSession?.currentSource == editedSource)
+    #expect(model.tabs[0].csvEditSession?.undoSources == [source])
+    #expect(model.undoCSVEdit())
+    #expect(model.tabs[0].previewCSV?.rows[1][1] == "30")
+    #expect(model.tabs[0].csvEditSession?.saveState == .saved)
+    #expect(model.tabs[0].csvEditSession?.redoSources == [editedSource])
+    #expect(model.redoCSVEdit())
+    #expect(model.tabs[0].previewCSV?.rows[1][1] == "31")
+    #expect(model.tabs[0].csvEditSession?.saveState == .unsaved)
+}
+
+@Test("saves an active CSV edit through the shared editing action")
+@MainActor
+func savesActiveCSVEditThroughSharedEditingAction() async throws {
+    let source = "Name,Age\nAlice,30"
+    let editedSource = "Name,Age\nAlice,31"
+    let url = URL(fileURLWithPath: "/tmp/bp-viewer-shared-csv-(UUID().uuidString).csv")
+    try source.write(to: url, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let tab = DocumentTab(
+        id: url.path,
+        url: url,
+        kind: .csv,
+        previewCSV: try CSVPreviewAdapter().parse(source: source),
+        csvEditSession: CSVEditSession(
+            baseSource: source,
+            currentSource: editedSource,
+            saveState: .unsaved
+        )
+    )
+    let model = AppModel()
+    model.tabs = [tab]
+
+    #expect(await model.saveCSVEditing(tabID: url.path))
+    #expect(try String(contentsOf: url, encoding: .utf8) == editedSource)
+    #expect(model.tabs[0].csvEditSession?.baseSource == editedSource)
+    #expect(model.tabs[0].csvEditSession?.saveState == .saved)
+    #expect(model.tabs[0].previewCSV?.rows[1][1] == "31")
 }
 
 @Test("finds text case-insensitively without distinguishing accents")
@@ -133,4 +385,219 @@ func appliesExplicitPDFPageNavigationDuringViewUpdate() {
             pageIndex: 0
         ) == 3
     )
+}
+
+@Test("keeps the editor cursor when no find query is active")
+func keepsEditorCursorWithoutFindQuery() {
+    #expect(SourceEditorFindSelectionPolicy.shouldSelectMatch(query: "", matchCount: 0) == false)
+    #expect(SourceEditorFindSelectionPolicy.shouldSelectMatch(query: "   ", matchCount: 0) == false)
+    #expect(SourceEditorFindSelectionPolicy.shouldSelectMatch(query: "heading", matchCount: 1))
+}
+
+@Test("numbers every source line, including empty and trailing lines")
+func numbersEverySourceLineIncludingEmptyLines() {
+    #expect(SourceEditorLineNumbering.lineCount(in: "one\n\nthree\n") == 4)
+    #expect(SourceEditorLineNumbering.lineNumber(atUTF16Offset: 4, in: "one\n\nthree\n") == 2)
+    #expect(SourceEditorLineNumbering.lineNumber(atUTF16Offset: 5, in: "one\n\nthree\n") == 3)
+}
+
+@Test("maps glyph locations to the line baseline")
+func mapsGlyphLocationsToTheLineBaseline() {
+    #expect(
+        SourceEditorLayout.lineBaselineY(
+            lineFragmentRect: CGRect(x: 0, y: 24, width: 200, height: 24),
+            glyphLocationY: 21
+        ) == 45
+    )
+}
+
+@Test("keeps the extra line fragment on the configured baseline")
+func keepsExtraLineFragmentOnTheConfiguredBaseline() {
+    #expect(
+        SourceEditorLayout.extraLineBaselineOffset(
+            lineHeight: 24,
+            defaultBaselineOffset: 13,
+            defaultLineHeight: 16
+        ) == 21
+    )
+}
+
+@Test("keeps the trailing line fragment at the editor line height")
+func keepsTrailingLineFragmentAtEditorLineHeight() {
+    #expect(
+        SourceEditorLayout.normalizedLineHeight(
+            extraLineHeight: 10,
+            configuredLineHeight: 24
+        ) == 24
+    )
+}
+
+@Test("starts the trailing line after the previous line fragment")
+func startsTrailingLineAfterPreviousLineFragment() {
+    #expect(
+        SourceEditorLayout.normalizedExtraLineRect(
+            extraLineRect: CGRect(x: 0, y: 96, width: 0, height: 10),
+            previousLineMaxY: 100,
+            configuredLineHeight: 24
+        ) == CGRect(x: 0, y: 100, width: 0, height: 24)
+    )
+}
+
+@Test("keeps the final diff line inside the full-width highlight row")
+func keepsFinalDiffLineInsideFullWidthHighlightRow() {
+    #expect(
+        SourceEditorLayout.lineHighlightRect(
+            lineFragmentRect: CGRect(x: 0, y: 48, width: 240, height: 24),
+            textContainerOrigin: CGPoint(x: 52, y: 40),
+            viewWidth: 360,
+            verticalOffset: 10
+        ) == CGRect(x: 0, y: 98, width: 360, height: 24)
+    )
+}
+
+@Test("builds a side by side diff with stable line numbers")
+func buildsSideBySideDiffWithStableLineNumbers() {
+    let diff = DocumentDiffEngine().compare(
+        reference: "one\ntwo\nthree",
+        edited: "one\nchanged\nthree\nfour"
+    )
+
+    #expect(diff.hasChanges)
+    #expect(diff.rows.count == 4)
+    #expect(diff.rows[0].left?.lineNumber == 1)
+    #expect(diff.rows[0].left?.text == "one")
+    #expect(diff.rows[0].right?.lineNumber == 1)
+    #expect(diff.rows[0].right?.text == "one")
+    #expect(diff.rows[1].left?.lineNumber == 2)
+    #expect(diff.rows[1].left?.text == "two")
+    #expect(diff.rows[1].right?.lineNumber == 2)
+    #expect(diff.rows[1].right?.text == "changed")
+    #expect(diff.rows[1].left?.kind == .removed)
+    #expect(diff.rows[1].right?.kind == .added)
+    #expect(diff.rows[2].left?.lineNumber == 3)
+    #expect(diff.rows[2].right?.lineNumber == 3)
+    #expect(diff.rows[3].left == nil)
+    #expect(diff.rows[3].right?.lineNumber == 4)
+    #expect(diff.rows[3].right?.text == "four")
+    #expect(diff.rightLineKinds == [
+        1: .unchanged,
+        2: .added,
+        3: .unchanged,
+        4: .added
+    ])
+}
+
+@Test("keeps replaced lines on the same diff row")
+func keepsReplacedLinesOnTheSameDiffRow() {
+    let diff = DocumentDiffEngine().compare(
+        reference: "before",
+        edited: "after"
+    )
+
+    #expect(diff.rows.count == 1)
+    #expect(diff.rows[0].left?.lineNumber == 1)
+    #expect(diff.rows[0].left?.text == "before")
+    #expect(diff.rows[0].left?.kind == .removed)
+    #expect(diff.rows[0].right?.lineNumber == 1)
+    #expect(diff.rows[0].right?.text == "after")
+    #expect(diff.rows[0].right?.kind == .added)
+}
+
+@Test("uses one AppKit layout model for wrapped diff rows")
+func usesOneAppKitLayoutModelForWrappedDiffRows() {
+    let diff = DocumentDiffEngine().compare(
+        reference: "one\nthree\nfour",
+        edited: "one\nthis inserted line is deliberately long enough to wrap across the diff column\nthree\nfour"
+    )
+    let layout = DocumentDiffLayout(
+        diff: diff,
+        panelWidth: 360,
+        zoom: 1,
+        monospaced: true
+    )
+
+    #expect((layout.referenceLineSpacingBefore[3] ?? 0) > 0)
+    #expect(layout.referenceLineSpacingBefore[4] == 0)
+    #expect(layout.editedLineSpacingBefore[2] == 0)
+    #expect(layout.editedLineSpacingBefore[3] == 0)
+}
+
+@Test("reports an unchanged document without diff rows marked as changes")
+func reportsUnchangedDocument() {
+    let diff = DocumentDiffEngine().compare(reference: "same", edited: "same")
+
+    #expect(!diff.hasChanges)
+    #expect(diff.addedLineCount == 0)
+    #expect(diff.removedLineCount == 0)
+    #expect(diff.rows.count == 1)
+    #expect(diff.rows[0].left?.kind == .unchanged)
+    #expect(diff.rows[0].right?.kind == .unchanged)
+}
+
+@Test("resolves a Git HEAD baseline through the process seam")
+func resolvesGitHeadBaselineThroughProcessSeam() {
+    let provider = GitHeadDocumentDiffBaselineProvider(runner: StubGitProcessRunner())
+    let result = provider.baseline(for: URL(fileURLWithPath: "/tmp/project/notes.md"))
+
+    guard case let .available(baseline) = result else {
+        Issue.record("Expected a Git HEAD baseline")
+        return
+    }
+    #expect(baseline.label == "HEAD")
+    #expect(baseline.source == "from head")
+}
+
+@Test("uses direct labels for document diff modes")
+func usesDirectLabelsForDocumentDiffModes() {
+    #expect(DocumentDiffMode.savedOnDisk.label == "Disk Diff")
+    #expect(DocumentDiffMode.gitHead.label == "Git Diff")
+}
+
+@Test("toggles document editing modes directly")
+@MainActor
+func togglesDocumentEditingModesDirectly() {
+    let tabID = "file:///tmp/project/notes.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: URL(fileURLWithPath: "/tmp/project/notes.md"),
+            kind: .markdown,
+            markdownEditSession: MarkdownEditSession(
+                baseSource: "# Notes",
+                currentSource: "# Notes"
+            )
+        )
+    ]
+
+    model.toggleMarkdownSplitView(tabID: tabID)
+    #expect(model.tabs[0].markdownEditSession?.mode == .split)
+    model.toggleMarkdownSplitView(tabID: tabID)
+    #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
+
+    model.toggleDocumentDiff(mode: .savedOnDisk, tabID: tabID)
+    #expect(model.tabs[0].diffSession?.mode == .savedOnDisk)
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].diffSession?.mode == .gitHead)
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].diffSession == nil)
+}
+
+private struct StubGitProcessRunner: ProcessRunning {
+    func run(_ request: ProcessRequest) throws -> ProcessResult {
+        if request.arguments.contains("rev-parse") {
+            return ProcessResult(
+                status: .success,
+                exitCode: 0,
+                standardOutput: "/tmp/project\n",
+                standardError: ""
+            )
+        }
+        return ProcessResult(
+            status: .success,
+            exitCode: 0,
+            standardOutput: "from head",
+            standardError: ""
+        )
+    }
 }

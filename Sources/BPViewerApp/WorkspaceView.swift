@@ -158,6 +158,7 @@ struct TabItemView: View {
         case .markdown: "doc.richtext"
         case .latex: "doc.text"
         case .json: "curlybraces"
+        case .csv: "tablecells"
         case .docx: "doc.text.fill"
         case .pdf: "doc.fill"
         case .other: "doc"
@@ -271,6 +272,7 @@ struct PreviewPane: View {
                                     || tab.markdownEditSession?.conflict != nil
                                     ? tab.markdownEditSession
                                     : nil,
+                                diffSession: tab.diffSession,
                                 onNavigate: model.openPreviewURL,
                                 onMarkdownTextChanged: { text in
                                     model.updateMarkdownEditing(tabID: tab.id, text: text)
@@ -295,11 +297,17 @@ struct PreviewPane: View {
                                 onRedo: {
                                     _ = model.redoMarkdownEdit()
                                 },
-                                onToggleMarkdownMode: {
-                                    model.toggleMarkdownEditingMode(tabID: tab.id)
+                                onToggleSplitView: {
+                                    model.toggleMarkdownSplitView(tabID: tab.id)
+                                },
+                                onToggleDiff: { mode in
+                                    model.toggleDocumentDiff(mode: mode, tabID: tab.id)
                                 },
                                 onEndMarkdownEditing: {
                                     model.endMarkdownEditing(tabID: tab.id)
+                                },
+                                onDiscardMarkdownEditing: {
+                                    model.discardEditing(tabID: tab.id)
                                 },
                                 onKeepLocalMarkdownEdit: {
                                     model.keepLocalMarkdownEdit(tabID: tab.id)
@@ -330,7 +338,7 @@ struct PreviewPane: View {
                                 },
                             )
                         }
-                    } else if tab.kind == .json, let source = tab.previewJSON {
+                    } else if tab.kind == .json, let source = tab.jsonSource ?? tab.previewJSON {
                         VStack(spacing: 0) {
                             JSONPreviewView(
                                 source: source,
@@ -340,6 +348,7 @@ struct PreviewPane: View {
                                     || tab.jsonEditSession?.conflict != nil
                                     ? tab.jsonEditSession
                                     : nil,
+                                diffSession: tab.diffSession,
                                 onBeginEditing: { offset in
                                     model.beginJSONEditing(
                                         tabID: tab.id,
@@ -355,8 +364,14 @@ struct PreviewPane: View {
                                 onRedo: {
                                     _ = model.redoJSONEdit()
                                 },
+                                onToggleDiff: { mode in
+                                    model.toggleDocumentDiff(mode: mode, tabID: tab.id)
+                                },
                                 onEndEditing: { source in
                                     model.endJSONEditing(tabID: tab.id, source: source)
+                                },
+                                onDiscardEditing: {
+                                    model.discardEditing(tabID: tab.id)
                                 },
                                 onKeepLocalEdit: {
                                     model.keepLocalJSONEdit(tabID: tab.id)
@@ -378,6 +393,53 @@ struct PreviewPane: View {
                                 onFindMatchCount: model.setFindMatchCount
                             )
                         }
+                    } else if tab.kind == .csv, let document = tab.previewCSV {
+                        CSVPreviewView(
+                            document: document,
+                            editingSession: tab.csvEditSession,
+                            zoom: tab.previewZoom,
+                            previewRevision: tab.previewUpdatedAt,
+                            findQuery: model.findQuery,
+                            findRequestID: model.findRequestID,
+                            findBackwards: model.findBackwards,
+                            isFindTarget: model.findTarget == .preview,
+                            onFindFocus: { model.setFindTarget(.preview) },
+                            onFindMatchCount: model.setFindMatchCount,
+                            onCellChanged: { row, column, value in
+                                model.updateCSVEditing(
+                                    tabID: tab.id,
+                                    row: row,
+                                    column: column,
+                                    value: value
+                                )
+                            },
+                            onUndo: {
+                                _ = model.undoCSVEdit()
+                            },
+                            onRedo: {
+                                _ = model.redoCSVEdit()
+                            },
+                            onSaveEditing: {
+                                Task { @MainActor in
+                                    _ = await model.saveCSVEditing(tabID: tab.id)
+                                }
+                            },
+                            onDiscardEditing: {
+                                model.discardEditing(tabID: tab.id)
+                            },
+                            onKeepLocalEdit: {
+                                model.keepLocalCSVEdit(tabID: tab.id)
+                            },
+                            onUseExternalEdit: {
+                                model.useExternalCSVEdit(tabID: tab.id)
+                            },
+                            onSnapshot: snapshotAction,
+                            isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
+                            onSnapshotCancel: model.cancelSnapshotCapture,
+                            onSnapshotCapture: { image in
+                                model.finishSnapshotCapture(image, forTabID: tab.id)
+                            }
+                        )
                     } else if (tab.kind == .latex || tab.kind == .pdf), let pdfData = tab.previewPDFData {
                         VStack(spacing: 0) {
                             PDFPreviewView(
@@ -465,6 +527,7 @@ struct PreviewPane: View {
         return switch tab.kind {
         case .latex: "doc.text.image"
         case .json: "curlybraces"
+        case .csv: "tablecells"
         case .pdf: "doc.fill"
         case .docx: "doc.text.fill"
         case .markdown: "doc.richtext"
@@ -477,6 +540,7 @@ struct PreviewPane: View {
         return switch tab.kind {
         case .latex: "Preparing LaTeX Preview…"
         case .json: "Preparing JSON Preview…"
+        case .csv: "Preparing CSV Preview…"
         case .pdf: "Preparing PDF Preview…"
         case .docx: "Preparing Word Preview…"
         case .markdown, .other: "Preparing Preview…"
@@ -490,6 +554,7 @@ struct PreviewPane: View {
         return switch tab.kind {
         case .latex: "Compiling the main document with the local LaTeX installation."
         case .json: "Validating and formatting the JSON file."
+        case .csv: "Reading and formatting the CSV file as a table."
         case .pdf: "Reading the PDF file."
         case .docx: "Preparing the Word document view."
         case .markdown: "Reading the Markdown file and generating HTML."

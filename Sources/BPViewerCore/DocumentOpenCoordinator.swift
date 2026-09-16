@@ -54,7 +54,7 @@ public struct DocumentOpenCoordinator: Sendable {
 
     public func isPreviewable(_ kind: DocumentKind) -> Bool {
         switch kind {
-        case .markdown, .latex, .json, .docx, .pdf: true
+        case .markdown, .latex, .json, .csv, .docx, .pdf: true
         case .other: false
         }
     }

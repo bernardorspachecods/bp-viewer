@@ -9,12 +9,15 @@ BPViewerApp
 ├── WorkspaceTreeSession      árvore lazy, filtros e watchers do workspace
 ├── DocumentRenderCoordinator renders e cancelamento por tab
 ├── DocumentEditCoordinator  sessões, conflitos e gravação de documentos
+├── DocumentDiffCoordinator  baselines de disco/Git e composição do diff
 ├── RootView / WorkspaceView  composição da janela
 ├── SidebarView               árvore e navegação do workspace
 ├── MarkdownPreviewView       composição do preview e edição Markdown
 ├── MarkdownWebPreview        ponte WebKit, JavaScript e navegação Markdown
-├── SourceEditorView          editor AppKit partilhado por Markdown e JSON
-├── JSONPreviewView           preview JSON formatado
+├── SourceEditorView          editor AppKit, gutter e decorações partilhados
+│                             por Markdown, JSON e diff
+├── JSONPreviewView           preview JSON raw numerado
+├── CSVPreviewView            preview CSV tabular
 ├── PDFPreviewView            preview LaTeX/PDF
 ├── DocxPreviewView           preview Word através de HTML/WebKit
 ├── SettingsView              preferências da app
@@ -28,6 +31,8 @@ BPViewerCore
 ├── DocumentOpenCoordinator   resolução de documentos e contexto LaTeX
 ├── MarkdownAdapter            Markdown → HTML
 ├── MarkdownEditing / Merge   edição e merge de Markdown
+├── DocumentDiff              diff puro entre duas fontes de texto
+├── CSVAdapter                 parsing e HTML estático para preview CSV
 ├── MarkdownPreviewLink       resolução de links
 ├── MathMLRenderer            matemática TeX → MathML
 ├── LatexRootDiscovery        descoberta de roots
@@ -45,15 +50,17 @@ partilhada.
 
 `AppModel`, isolado no `MainActor`, é o coordenador efetivo da apresentação.
 Mantém o estado observável das tabs e encaminha intents para os módulos de
-sessão e para os três coordenadores especializados. `DocumentTabSession`
+sessão e para os coordenadores especializados. `DocumentTabSession`
 mantém as invariantes das tabs; `WorkspaceSessionCoordinator` concentra
 persistência e estado por workspace; `DocumentOpenCoordinator` resolve URLs e
 contexto LaTeX; `ActiveDocumentWatcher` adapta eventos Darwin para a UI.
 `WorkspaceTreeSession` encapsula o scanning lazy, filtro, expansão e watchers
 da árvore; `DocumentRenderCoordinator` encapsula gerações, cancelamento e
 renderização; `DocumentEditCoordinator` encapsula undo/redo, validação,
-autosave e conflitos. Estes módulos devolvem valores e eventos, sem mutar
-diretamente `AppModel`.
+gravação explícita e conflitos; `DocumentDiffCoordinator` seleciona e obtém
+baselines sem expor Git à UI. O `DocumentDiffEngine` no Core compara fontes em
+memória e devolve um resultado independente de Markdown ou JSON. Estes módulos
+devolvem valores e eventos, sem mutar diretamente `AppModel`.
 
 O fluxo principal é:
 
@@ -63,7 +70,7 @@ ação da UI
     → sessão de workspace / coordinator de render / coordinator de edição
         → scanner / watcher / adapter / process runner
         → DocumentTab e estado SwiftUI
-        → preview Markdown, JSON, PDF ou Quick Look
+        → preview Markdown, JSON, CSV, PDF ou Quick Look
 ```
 
 ## Filesystem e atualização
@@ -74,7 +81,8 @@ ação da UI
   expandida. Pesquisar ou desligar o filtro de compatibilidade pode exigir a
   indexação completa.
 - Watchers de diretórios atualizam a árvore. Watchers dos ficheiros ativos e das
-  dependências invalidam o preview.
+  dependências invalidam o preview. Durante a edição, uma alteração externa é
+  reconciliada como conflito; não dispara autosave Markdown.
 - Cada render usa uma geração. Resultados cancelados ou obsoletos não substituem
   o estado mais recente da tab.
 
@@ -97,7 +105,8 @@ produzido. O cache é indexado por root, dependências, compiler e configuraçã
 - O estado por documento guarda zoom, outline e posição de leitura.
 - O estado por workspace guarda tabs, expansão, scroll, filtro, seleção de root,
   autorizações externas e registos de snapshots.
-- HTML, PDF, logs e conteúdo raw não são usados como estado persistido da sessão.
+- O estado transitório do diff vive apenas na sessão em memória; HTML, PDF,
+  logs e conteúdo raw não são usados como estado persistido da sessão.
 - Os PNG dos snapshots ficam fora do repositório, em Application Support.
 
 ## Limites de segurança

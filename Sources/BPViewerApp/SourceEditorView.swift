@@ -2,13 +2,152 @@ import AppKit
 import BPViewerCore
 import SwiftUI
 
+enum SourceEditorLineNumbering {
+    static func lineCount(in source: String) -> Int {
+        source.utf16.reduce(into: 1) { count, codeUnit in
+            if codeUnit == 10 {
+                count += 1
+            }
+        }
+    }
+
+    static func lineNumber(atUTF16Offset offset: Int, in source: String) -> Int {
+        let sourceNSString = source as NSString
+        let clampedOffset = min(max(offset, 0), sourceNSString.length)
+        let prefix = sourceNSString.substring(to: clampedOffset)
+        return lineCount(in: prefix)
+    }
+}
+
 enum SourceEditorLayout {
     static let contentMaxWidth: CGFloat = 860
     static let horizontalPadding: CGFloat = 52
+    static let verticalPadding: CGFloat = 40
+    static let lineNumberGutterWidth: CGFloat = 44
+    static let lineNumberFontSize: CGFloat = 11
+    static let lineNumberTrailingPadding: CGFloat = 8
+    static let lineMarkerLeadingPadding: CGFloat = 5
+    static let lineNumberVerticalPadding: CGFloat = 4
+    static let editorFontSize: CGFloat = 13
     static let codeFontFamily = "SFMono-Regular"
     static let codeFontSize: CGFloat = 13
     static let codeLineHeight: CGFloat = 24
     static let lineHeightMultiple: CGFloat = 1.55
+
+    static func editorFont(monospaced: Bool, zoom: Double) -> NSFont {
+        let baseFont = monospaced
+            ? (NSFont(
+                name: codeFontFamily,
+                size: codeFontSize
+            ) ?? NSFont.monospacedSystemFont(ofSize: codeFontSize, weight: .regular))
+            : NSFont.systemFont(ofSize: editorFontSize)
+        return baseFont.withSize(baseFont.pointSize * zoom)
+    }
+
+    static func editorParagraphStyle(zoom: Double) -> NSMutableParagraphStyle {
+        let paragraphStyle = NSMutableParagraphStyle()
+        let lineHeight = codeLineHeight * zoom
+        paragraphStyle.minimumLineHeight = lineHeight
+        paragraphStyle.maximumLineHeight = lineHeight
+        return paragraphStyle
+    }
+
+    static func lineBaselineY(
+        lineFragmentRect: CGRect,
+        glyphLocationY: CGFloat
+    ) -> CGFloat {
+        lineFragmentRect.minY + glyphLocationY
+    }
+
+    static func extraLineBaselineOffset(
+        lineHeight: CGFloat,
+        defaultBaselineOffset: CGFloat,
+        defaultLineHeight: CGFloat
+    ) -> CGFloat {
+        defaultBaselineOffset + max(0, lineHeight - defaultLineHeight)
+    }
+
+    static func normalizedLineHeight(
+        extraLineHeight: CGFloat,
+        configuredLineHeight: CGFloat
+    ) -> CGFloat {
+        max(extraLineHeight, configuredLineHeight)
+    }
+
+    static func normalizedExtraLineRect(
+        extraLineRect: CGRect,
+        previousLineMaxY: CGFloat?,
+        configuredLineHeight: CGFloat
+    ) -> CGRect {
+        var rect = extraLineRect
+        if let previousLineMaxY {
+            rect.origin.y = max(rect.origin.y, previousLineMaxY)
+        }
+        rect.size.height = normalizedLineHeight(
+            extraLineHeight: extraLineRect.height,
+            configuredLineHeight: configuredLineHeight
+        )
+        return rect
+    }
+
+    static func lineHighlightRect(
+        lineFragmentRect: CGRect,
+        textContainerOrigin: CGPoint,
+        viewWidth: CGFloat,
+        verticalOffset: CGFloat
+    ) -> CGRect {
+        var rect = lineFragmentRect.offsetBy(
+            dx: textContainerOrigin.x,
+            dy: textContainerOrigin.y
+        )
+        rect.origin.x = 0
+        rect.origin.y += verticalOffset
+        rect.size.width = viewWidth
+        return rect
+    }
+
+    static func textContainerWidth(panelWidth: CGFloat, zoom: Double) -> CGFloat {
+        max(1, panelWidth - (horizontalPadding * 2 * zoom))
+    }
+
+    static func measuredLineHeight(
+        for text: String?,
+        panelWidth: CGFloat,
+        zoom: Double,
+        monospaced: Bool
+    ) -> CGFloat {
+        let minimum = codeLineHeight * zoom
+        guard let text, !text.isEmpty else { return minimum }
+
+        let storage = NSTextStorage(string: text)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(
+            containerSize: NSSize(
+                width: textContainerWidth(panelWidth: panelWidth, zoom: zoom),
+                height: .greatestFiniteMagnitude
+            )
+        )
+        textContainer.lineFragmentPadding = 0
+        layoutManager.addTextContainer(textContainer)
+        storage.addLayoutManager(layoutManager)
+
+        let range = NSRange(location: 0, length: storage.length)
+        storage.addAttribute(.font, value: editorFont(monospaced: monospaced, zoom: zoom), range: range)
+        storage.addAttribute(
+            .paragraphStyle,
+            value: editorParagraphStyle(zoom: zoom),
+            range: range
+        )
+        layoutManager.ensureLayout(for: textContainer)
+
+        return max(minimum, ceil(layoutManager.usedRect(for: textContainer).height))
+    }
+}
+
+enum SourceEditorFindSelectionPolicy {
+    static func shouldSelectMatch(query: String, matchCount: Int) -> Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && matchCount > 0
+    }
 }
 
 enum SourceSyntaxHighlighting: Equatable {
@@ -34,6 +173,11 @@ struct SourceTextView: NSViewRepresentable {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
+    let isEditable: Bool
+    let lineNumbers: Bool
+    let lineNumberOverrides: [Int: Int]
+    let lineHighlights: [Int: DocumentDiffCellKind]
+    let lineSpacingBefore: [Int: CGFloat]
     let monospaced: Bool
     let syntaxHighlighting: SourceSyntaxHighlighting?
     let markdownShortcutsEnabled: Bool
@@ -45,6 +189,7 @@ struct SourceTextView: NSViewRepresentable {
     let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
+    let onDoubleClick: ((Int) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -65,8 +210,14 @@ struct SourceTextView: NSViewRepresentable {
             guard markdownShortcutsEnabled, let textView else { return }
             applyMarkdownShortcut(formatting, to: textView, onSourceChanged: onSourceChanged)
         }
+        textView.onDoubleClick = { [weak textView] event in
+            guard let textView else { return }
+            let point = textView.convert(event.locationInWindow, from: nil)
+            let utf16Offset = textView.characterIndexForInsertion(at: point)
+            onDoubleClick?(Self.utf8Offset(in: textView.string, utf16Offset: utf16Offset))
+        }
         textView.isRichText = false
-        textView.isEditable = true
+        textView.isEditable = isEditable
         textView.isSelectable = true
         if monospaced {
             // JSON syntax requires ASCII quotes; macOS smart quotes would turn
@@ -85,9 +236,15 @@ struct SourceTextView: NSViewRepresentable {
         applySyntaxHighlighting(to: textView, source: source)
         textView.delegate = context.coordinator
         textView.textContainerInset = NSSize(
-            width: SourceEditorLayout.horizontalPadding * CGFloat(zoom),
-            height: 40 * CGFloat(zoom)
+            width: textContainerHorizontalInset(zoom: zoom),
+            height: SourceEditorLayout.verticalPadding * CGFloat(zoom)
         )
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.showsLineNumbers = lineNumbers
+        textView.lineNumberGutterWidth = SourceEditorLayout.lineNumberGutterWidth * CGFloat(zoom)
+        textView.lineNumberFontSize = SourceEditorLayout.lineNumberFontSize * CGFloat(zoom)
+        textView.lineNumberOverrides = lineNumberOverrides
+        textView.lineHighlights = lineHighlights
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
@@ -102,26 +259,45 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
         scrollView.drawsBackground = syntaxHighlighting == nil
         scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
         DispatchQueue.main.async { [weak textView] in
             guard let textView, let window = textView.window else { return }
-            window.makeFirstResponder(textView)
+            if isEditable {
+                window.makeFirstResponder(textView)
+            }
         }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
         context.coordinator.onSourceChanged = onSourceChanged
         context.coordinator.onEndEditing = onEndEditing
         context.coordinator.onFindMatchCount = onFindMatchCount
 
-        if !context.coordinator.didRequestInitialFocus {
+        textView.lineHighlights = lineHighlights
+        textView.onDoubleClick = { [weak textView] event in
+            guard let textView else { return }
+            let point = textView.convert(event.locationInWindow, from: nil)
+            let utf16Offset = textView.characterIndexForInsertion(at: point)
+            onDoubleClick?(Self.utf8Offset(in: textView.string, utf16Offset: utf16Offset))
+        }
+
+        textView.showsLineNumbers = lineNumbers
+        textView.lineNumberGutterWidth = SourceEditorLayout.lineNumberGutterWidth * CGFloat(zoom)
+        textView.lineNumberFontSize = SourceEditorLayout.lineNumberFontSize * CGFloat(zoom)
+        textView.lineNumberOverrides = lineNumberOverrides
+        textView.isEditable = isEditable
+
+        if !context.coordinator.didRequestInitialFocus, isEditable {
             focus(textView, selection: nil) {
                 context.coordinator.didRequestInitialFocus = true
             }
+        } else if !isEditable {
+            context.coordinator.didRequestInitialFocus = true
         }
 
         applyBaseColors(to: textView)
@@ -147,9 +323,10 @@ struct SourceTextView: NSViewRepresentable {
             isFindTarget: isFindTarget
         )
         textView.textContainerInset = NSSize(
-            width: SourceEditorLayout.horizontalPadding * CGFloat(zoom),
-            height: 40 * CGFloat(zoom)
+            width: textContainerHorizontalInset(zoom: zoom),
+            height: SourceEditorLayout.verticalPadding * CGFloat(zoom)
         )
+        textView.textContainer?.lineFragmentPadding = 0
 
         guard let cursorUTF8Offset,
               context.coordinator.appliedCursorUTF8Offset != cursorUTF8Offset else { return }
@@ -161,21 +338,8 @@ struct SourceTextView: NSViewRepresentable {
     }
 
     private func applyTypography(to textView: NSTextView) {
-        let bodyFont = monospaced
-            ? (NSFont(
-                name: SourceEditorLayout.codeFontFamily,
-                size: SourceEditorLayout.codeFontSize
-            ) ?? NSFont.monospacedSystemFont(ofSize: SourceEditorLayout.codeFontSize, weight: .regular))
-            : NSFont.preferredFont(forTextStyle: .body)
-        let font = bodyFont.withSize(bodyFont.pointSize * zoom)
-        let paragraphStyle = NSMutableParagraphStyle()
-        if monospaced {
-            let lineHeight = SourceEditorLayout.codeLineHeight * zoom
-            paragraphStyle.minimumLineHeight = lineHeight
-            paragraphStyle.maximumLineHeight = lineHeight
-        } else {
-            paragraphStyle.lineHeightMultiple = SourceEditorLayout.lineHeightMultiple
-        }
+        let font = SourceEditorLayout.editorFont(monospaced: monospaced, zoom: zoom)
+        let paragraphStyle = SourceEditorLayout.editorParagraphStyle(zoom: zoom)
 
         textView.font = font
         textView.defaultParagraphStyle = paragraphStyle
@@ -190,6 +354,57 @@ struct SourceTextView: NSViewRepresentable {
         let range = NSRange(location: 0, length: textLength)
         textView.textStorage?.addAttribute(.font, value: font, range: range)
         textView.textStorage?.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+        applyLineSpacingBefore(
+            to: textView,
+            paragraphStyle: paragraphStyle
+        )
+    }
+
+    private func applyLineSpacingBefore(
+        to textView: NSTextView,
+        paragraphStyle: NSParagraphStyle
+    ) {
+        guard !lineSpacingBefore.isEmpty else { return }
+
+        let source = textView.string as NSString
+        var lineStart = 0
+        var lineNumber = 1
+        for position in 0...source.length {
+            let isEnd = position == source.length
+            let isNewline = !isEnd && source.character(at: position) == 10
+            guard isEnd || isNewline else { continue }
+
+            let length = position - lineStart + (isNewline ? 1 : 0)
+            guard length > 0 else {
+                lineStart = position + 1
+                lineNumber += 1
+                continue
+            }
+
+            let style = (paragraphStyle.mutableCopy() as? NSMutableParagraphStyle)
+                ?? NSMutableParagraphStyle()
+            style.paragraphSpacingBefore = lineSpacingBefore[lineNumber] ?? 0
+            textView.textStorage?.addAttribute(
+                .paragraphStyle,
+                value: style,
+                range: NSRange(location: lineStart, length: length)
+            )
+            lineStart = position + 1
+            lineNumber += 1
+        }
+    }
+
+    private static func utf8Offset(in source: String, utf16Offset: Int) -> Int {
+        let sourceNSString = source as NSString
+        let clampedOffset = min(max(utf16Offset, 0), sourceNSString.length)
+        return sourceNSString.substring(to: clampedOffset).utf8.count
+    }
+
+    private func textContainerHorizontalInset(zoom: Double) -> CGFloat {
+        // The gutter occupies the leading part of the editor's existing
+        // padding. Keeping the text origin stable avoids shifting documents
+        // when numbering is toggled and keeps the gutter inside the document.
+        SourceEditorLayout.horizontalPadding * CGFloat(zoom)
     }
 
     private func applySyntaxHighlighting(to textView: NSTextView, source: String) {
@@ -406,6 +621,13 @@ struct SourceTextView: NSViewRepresentable {
                 )
             }
 
+            guard SourceEditorFindSelectionPolicy.shouldSelectMatch(
+                query: findQuery,
+                matchCount: findMatches.count
+            ) else {
+                return
+            }
+
             guard let currentFindIndex,
                   findMatches.indices.contains(currentFindIndex) else {
                 textView.setSelectedRange(NSRange(location: 0, length: 0))
@@ -436,9 +658,31 @@ private extension NSColor {
 }
 
 private final class MarkdownNSTextView: NSTextView {
+    private struct LineFragment {
+        let physicalLine: Int
+        let rect: NSRect
+        let baselineY: CGFloat
+    }
+
     var onEscape: (() -> Void)?
     var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
     var onFindFocus: (() -> Void)?
+    var onDoubleClick: ((NSEvent) -> Void)?
+    var showsLineNumbers = false {
+        didSet { needsDisplay = true }
+    }
+    var lineNumberGutterWidth: CGFloat = 0 {
+        didSet { needsDisplay = true }
+    }
+    var lineNumberFontSize: CGFloat = 11 {
+        didSet { needsDisplay = true }
+    }
+    var lineNumberOverrides: [Int: Int] = [:] {
+        didSet { needsDisplay = true }
+    }
+    var lineHighlights: [Int: DocumentDiffCellKind] = [:] {
+        didSet { needsDisplay = true }
+    }
 
     override func becomeFirstResponder() -> Bool {
         let becameFirstResponder = super.becomeFirstResponder()
@@ -451,6 +695,222 @@ private final class MarkdownNSTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         onFindFocus?()
         super.mouseDown(with: event)
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        drawLineHighlights(in: rect)
+        drawLineNumberSeparator()
+        if showsLineNumbers {
+            drawLineNumbers(in: visibleRect)
+        }
+    }
+
+    private func drawLineNumbers(in rect: NSRect) {
+        guard lineNumberGutterWidth > 0 else { return }
+
+        let fragments = lineFragments()
+        var drawnPhysicalLines = Set<Int>()
+
+        for fragment in fragments {
+            guard fragment.rect.intersects(rect),
+                  drawnPhysicalLines.insert(fragment.physicalLine).inserted else {
+                continue
+            }
+            drawLineNumber(
+                lineNumber: lineNumber(forPhysicalLine: fragment.physicalLine),
+                kind: lineHighlights[fragment.physicalLine],
+                baselineY: fragment.baselineY
+            )
+        }
+    }
+
+    private func lineFragments() -> [LineFragment] {
+        guard let layoutManager,
+              let textContainer else { return [] }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let origin = textContainerOrigin
+        let sourceFont = font ?? NSFont.systemFont(ofSize: SourceEditorLayout.editorFontSize)
+        let glyphRange = NSRange(
+            location: 0,
+            length: layoutManager.numberOfGlyphs
+        )
+        var fragments: [LineFragment] = []
+
+        // Both the gutter and the diff background consume this exact list.
+        // In particular, a logical line can produce several visual fragments
+        // when it wraps, while the gutter still draws its number only once.
+        if glyphRange.length > 0 {
+            layoutManager.enumerateLineFragments(forGlyphRange: glyphRange) {
+                [weak self] lineFragmentRect, _, _, glyphRange, _ in
+                guard let self,
+                      glyphRange.location < layoutManager.numberOfGlyphs else { return }
+
+                let rect = lineFragmentRect.offsetBy(dx: origin.x, dy: origin.y)
+                let physicalLine = SourceEditorLineNumbering.lineNumber(
+                    atUTF16Offset: layoutManager.characterIndexForGlyph(at: glyphRange.location),
+                    in: string
+                )
+                let baselineY = SourceEditorLayout.lineBaselineY(
+                    lineFragmentRect: rect,
+                    glyphLocationY: layoutManager.location(forGlyphAt: glyphRange.location).y
+                )
+                fragments.append(LineFragment(
+                    physicalLine: physicalLine,
+                    rect: rect,
+                    baselineY: baselineY
+                ))
+            }
+        }
+
+        let extraLineRect = layoutManager.extraLineFragmentRect.offsetBy(
+            dx: origin.x,
+            dy: origin.y
+        )
+        if extraLineRect.height > 0 {
+            let configuredLineHeight = fragments.first?.rect.height
+                ?? (textStorage?.attribute(
+                    .paragraphStyle,
+                    at: 0,
+                    effectiveRange: nil
+                ) as? NSParagraphStyle)?.minimumLineHeight
+                ?? SourceEditorLayout.codeLineHeight
+            let normalizedExtraLineRect = SourceEditorLayout.normalizedExtraLineRect(
+                extraLineRect: extraLineRect,
+                previousLineMaxY: fragments.last?.rect.maxY,
+                configuredLineHeight: configuredLineHeight
+            )
+            let extraLineBaselineOffset = SourceEditorLayout.extraLineBaselineOffset(
+                lineHeight: normalizedExtraLineRect.height,
+                defaultBaselineOffset: layoutManager.defaultBaselineOffset(for: sourceFont),
+                defaultLineHeight: layoutManager.defaultLineHeight(for: sourceFont)
+            )
+            fragments.append(LineFragment(
+                physicalLine: SourceEditorLineNumbering.lineCount(in: string),
+                rect: normalizedExtraLineRect,
+                baselineY: normalizedExtraLineRect.minY + extraLineBaselineOffset
+            ))
+        }
+
+        return fragments
+    }
+
+    private func drawLineNumber(
+        lineNumber: Int?,
+        kind: DocumentDiffCellKind?,
+        baselineY: CGFloat
+    ) {
+        let font = NSFont.monospacedSystemFont(ofSize: lineNumberFontSize, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        let point: NSPoint
+        if let lineNumber {
+            let label = String(lineNumber) as NSString
+            let width = label.size(withAttributes: attributes).width
+            point = NSPoint(
+                x: lineNumberGutterWidth - width - SourceEditorLayout.lineNumberTrailingPadding,
+                y: baselineY
+            )
+            label.draw(with: NSRect(origin: point, size: .zero), options: [], attributes: attributes)
+        } else {
+            point = NSPoint(
+                x: SourceEditorLayout.lineMarkerLeadingPadding,
+                y: baselineY
+            )
+        }
+
+        let marker: String
+        let markerColor: NSColor
+        switch kind {
+        case .added:
+            marker = "+"
+            markerColor = .systemGreen
+        case .removed:
+            marker = "−"
+            markerColor = .systemRed
+        case .unchanged, .none:
+            return
+        }
+        (marker as NSString).draw(
+            with: NSRect(
+                x: SourceEditorLayout.lineMarkerLeadingPadding,
+                y: point.y,
+                width: 0,
+                height: 0
+            ),
+            options: [],
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: lineNumberFontSize, weight: .semibold),
+                .foregroundColor: markerColor
+            ]
+        )
+    }
+
+    private func lineNumber(forPhysicalLine physicalLine: Int) -> Int? {
+        lineNumberOverrides.isEmpty
+            ? physicalLine
+            : lineNumberOverrides[physicalLine]
+    }
+
+    private func drawLineNumberSeparator() {
+        guard showsLineNumbers, lineNumberGutterWidth > 0 else { return }
+        let fragments = lineFragments()
+        guard let top = fragments.map(\.rect.minY).min(),
+              let bottom = fragments.map(\.rect.maxY).max() else { return }
+        NSColor.separatorColor.withAlphaComponent(0.35).setStroke()
+        let separator = NSBezierPath()
+        separator.move(to: NSPoint(
+            x: lineNumberGutterWidth,
+            y: max(0, top - SourceEditorLayout.lineNumberVerticalPadding)
+        ))
+        separator.line(to: NSPoint(
+            x: lineNumberGutterWidth,
+            y: min(bounds.height, bottom + SourceEditorLayout.lineNumberVerticalPadding)
+        ))
+        separator.lineWidth = 1
+        separator.stroke()
+    }
+
+    private func drawLineHighlights(in rect: NSRect) {
+        guard !lineHighlights.isEmpty else { return }
+
+        for fragment in lineFragments() where fragment.rect.intersects(rect) {
+            drawLineHighlight(
+                for: lineHighlights[fragment.physicalLine],
+                lineRect: fragment.rect
+            )
+        }
+    }
+
+    private func drawLineHighlight(
+        for kind: DocumentDiffCellKind?,
+        lineRect: NSRect
+    ) {
+        guard let kind,
+              let color = lineHighlightColor(for: kind) else { return }
+
+        let backgroundRect = SourceEditorLayout.lineHighlightRect(
+            lineFragmentRect: lineRect,
+            textContainerOrigin: .zero,
+            viewWidth: bounds.width,
+            verticalOffset: font?.ascender ?? 0
+        )
+        color.setFill()
+        backgroundRect.fill()
+    }
+
+    private func lineHighlightColor(for kind: DocumentDiffCellKind) -> NSColor? {
+        switch kind {
+        case .added:
+            NSColor.systemGreen.withAlphaComponent(0.2)
+        case .removed:
+            NSColor.systemRed.withAlphaComponent(0.2)
+        case .unchanged:
+            nil
+        }
     }
 
     override func cancelOperation(_ sender: Any?) {
@@ -488,5 +948,12 @@ private final class MarkdownNSTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if event.clickCount == 2 {
+            onDoubleClick?(event)
+        }
+        super.mouseUp(with: event)
     }
 }

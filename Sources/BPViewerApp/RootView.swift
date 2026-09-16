@@ -18,6 +18,7 @@ struct RootView: View {
             }
         }
         .background(BPTokens.Color.canvas)
+        .background(WindowCloseGuard(model: model))
         .preferredColorScheme(model.theme.colorScheme)
         .frame(minWidth: 900, minHeight: 600)
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: nil) { providers in
@@ -41,17 +42,26 @@ struct RootView: View {
             "Unsaved Changes",
             isPresented: $model.showingPendingCloseConfirmation
         ) {
-            Button("Edit", role: .cancel, action: model.cancelPendingClose)
+            Button("Continue Editing", role: .cancel, action: model.cancelPendingClose)
             if model.pendingCloseCanSave {
                 Button("Save", action: model.savePendingClose)
             }
-            Button("Don't Save", role: .destructive, action: model.discardPendingClose)
+            Button("Discard Changes", role: .destructive, action: model.discardPendingClose)
         } message: {
             if model.pendingCloseCanSave {
                 Text("\(model.pendingCloseRequest?.title ?? "This file") has unsaved changes. Would you like to edit, save, or close without saving?")
             } else {
                 Text("\(model.pendingCloseRequest?.title ?? "This file") contains invalid JSON. Fix the content before saving, or close without saving.")
             }
+        }
+        .alert(
+            "Invalid JSON",
+            isPresented: $model.showingInvalidJSONConfirmation
+        ) {
+            Button("Continue Editing", role: .cancel, action: model.cancelInvalidJSONEditing)
+            Button("Discard Changes", role: .destructive, action: model.discardInvalidJSONEditing)
+        } message: {
+            Text("This JSON is invalid and cannot be saved. Continue editing or discard the changes?")
         }
         .sheet(item: $model.pendingLatexRootSelection) { request in
             LatexRootSelectionView(request: request)
@@ -314,6 +324,7 @@ struct TopBarView: View {
             if model.activeTab?.kind == .markdown
                 || model.activeTab?.kind == .latex
                 || model.activeTab?.kind == .json
+                || model.activeTab?.kind == .csv
                 || model.activeTab?.kind == .pdf
                 || model.activeTab?.kind == .docx {
                 if model.activeTab?.kind == .latex {
@@ -337,7 +348,7 @@ struct TopBarView: View {
                     .help("Advanced LaTeX Settings")
                 }
             if let kind = model.activeTab?.kind,
-               [.markdown, .latex, .pdf, .json, .docx].contains(kind) {
+               [.markdown, .latex, .pdf, .json, .csv, .docx].contains(kind) {
                     ToolbarIconButton(systemName: "magnifyingglass", help: "Find in Document") {
                         model.showFindBar()
                     }

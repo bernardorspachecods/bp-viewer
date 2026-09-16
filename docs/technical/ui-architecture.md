@@ -14,11 +14,12 @@ RootView
     └── superfície do documento
         ├── MarkdownPreviewView
         ├── JSONPreviewView
+        ├── CSVPreviewView
         ├── PDFPreviewView
         └── DocxPreviewView
 ```
 
-`DocumentOutlineView`, `SettingsView` e os overlays de erro, escolha de root,
+`DocumentOutlineView`, `DocumentDiffView`, `SettingsView` e os overlays de erro, escolha de root,
 permissão e mudança de workspace são apresentados pela camada da app. Os
 snapshots usam uma janela AppKit separada.
 
@@ -28,9 +29,10 @@ snapshots usam uma janela AppKit separada.
 tab ativa, pesquisa, alvo da pesquisa, filtro, expansão, sidebar, zoom, tema,
 estado de pesquisa, pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
 e resolução de documentos vivem no Core; a árvore é mantida por
-`WorkspaceTreeSession`; pedidos de renderização e edição são tratados,
-respetivamente, por `DocumentRenderCoordinator` e
-`DocumentEditCoordinator`, que devolvem eventos aplicados pelo `AppModel`.
+`WorkspaceTreeSession`; pedidos de renderização, edição e baselines de diff são
+tratados, respetivamente, por `DocumentRenderCoordinator`,
+`DocumentEditCoordinator` e `DocumentDiffCoordinator`, que devolvem eventos ou
+valores aplicados pelo `AppModel`.
 
 Os modelos principais são:
 
@@ -38,6 +40,8 @@ Os modelos principais são:
   artefacto atual, outline, zoom, posição de leitura, dependências e erro.
 - `MarkdownEditSession` — modo Markdown/split, source base e atual, gravação,
   histórico undo/redo e conflito externo.
+- `DocumentDiff` — resultado puro e reutilizável, independente do formato,
+  com linhas/hunks, números de linha e referência selecionada.
 - `AppState`, `WorkspaceState` e `DocumentState` — estado persistido no Core;
   `WorkspaceSessionCoordinator` gere a sua leitura e escrita.
 - `PreviewStatus` — `idle`, `updating`, `ready`, `stale`, `failed`,
@@ -67,6 +71,9 @@ editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
 source Markdown, cujo syntax highlighting usa uma paleta própria para os temas
 claro e escuro; a toolbar alterna entre o editor integral e o split view, que
 mantém o source à esquerda e o preview live à direita.
+`DocumentDiffView` é acionada pela toolbar e mantém a referência read-only à
+esquerda e o editor real à direita. Pode comparar o disco ou `HEAD`; ao sair,
+restaura o modo anterior.
 
 ### PDF
 
@@ -76,12 +83,25 @@ links. A pesquisa comum encaminha as operações para PDFKit.
 
 ### JSON
 
-`JSONPreviewView` apresenta o JSON validado e formatado numa superfície
-monoespaçada selecionável, preservando a ordem das propriedades do source, com
-zoom e captura de snapshots. Um duplo clique troca para o editor raw
+`JSONPreviewView` apresenta o JSON validado numa superfície raw read-only
+monoespaçada selecionável, preservando literalmente as linhas do source,
+incluindo vazias, com numeração, zoom e captura de snapshots. Um duplo clique troca para o editor raw
 monoespaçado, com undo/redo, gravação explícita apenas para JSON válido,
 validação antes de gravar e resolução de conflitos externos; não há split view.
-Preview e editor usam a mesma barra de pesquisa e o foco define o alvo.
+Preview e editor usam a mesma barra de pesquisa e o foco define o alvo. O diff
+usa a mesma `DocumentDiffView` que Markdown; o editor AppKit partilhado fornece
+o gutter de linhas e as decorações Git-like do lado direito. JSON inválido ao sair do editor
+abre uma confirmação para continuar ou descartar.
+
+### CSV
+
+`CSVPreviewView` apresenta os dados numa tabela HTML selecionável, com cabeçalho,
+números de linha, scroll horizontal, zoom, pesquisa e captura de snapshots.
+Duplo-clique permite editar células existentes; `Enter` confirma, `Esc` cancela
+ou confirma a célula no rascunho, e a gravação é feita com `Save` ou `⌘S`.
+`Undo`/`Redo` e os atalhos `⌘Z`/`⇧⌘Z` operam sobre o rascunho sem gravar.
+Não existem operações para criar/remover
+linhas ou colunas.
 
 ### Word
 

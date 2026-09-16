@@ -198,6 +198,7 @@ struct FileTreeRow: View {
         case .markdown: return "doc.richtext"
         case .latex: return "doc.text"
         case .json: return "curlybraces"
+        case .csv: return "tablecells"
         case .docx: return "doc.text.fill"
         case .pdf: return "doc.fill"
         case .other: return "doc"
@@ -209,6 +210,7 @@ struct FileTreeRow: View {
         case .markdown: .blue
         case .latex: .orange
         case .json: .yellow
+        case .csv: .green
         case .docx: .purple
         case .pdf: .red
         case .other: BPTokens.Color.muted

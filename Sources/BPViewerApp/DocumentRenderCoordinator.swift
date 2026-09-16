@@ -19,6 +19,7 @@ struct DocumentPreviewOutput: Sendable {
     let kind: DocumentKind
     let html: String?
     let json: String?
+    let csv: CSVDocument?
     let pdfData: Data?
     let source: String?
     let baseURL: URL?
@@ -66,6 +67,7 @@ final class DocumentRenderCoordinator {
     func render(_ request: DocumentRenderRequest) {
         guard request.kind == .markdown
                 || request.kind == .json
+                || request.kind == .csv
                 || request.kind == .latex
                 || request.kind == .pdf else { return }
 
@@ -133,6 +135,7 @@ final class DocumentRenderCoordinator {
                 kind: .markdown,
                 html: result.html,
                 json: nil,
+                csv: nil,
                 pdfData: nil,
                 source: source,
                 baseURL: result.baseURL,
@@ -148,6 +151,23 @@ final class DocumentRenderCoordinator {
                 kind: .json,
                 html: nil,
                 json: try JSONPreviewAdapter().format(source: source),
+                csv: nil,
+                pdfData: nil,
+                source: source,
+                baseURL: nil,
+                dependencies: [],
+                externalDependencies: [],
+                outline: [],
+                blocks: []
+            )
+
+        case .csv:
+            let source = try String(contentsOf: request.url, encoding: .utf8)
+            return DocumentPreviewOutput(
+                kind: .csv,
+                html: nil,
+                json: nil,
+                csv: try CSVPreviewAdapter().parse(source: source),
                 pdfData: nil,
                 source: source,
                 baseURL: nil,
@@ -166,6 +186,7 @@ final class DocumentRenderCoordinator {
                 kind: .pdf,
                 html: nil,
                 json: nil,
+                csv: nil,
                 pdfData: data,
                 source: nil,
                 baseURL: nil,
@@ -227,6 +248,7 @@ final class DocumentRenderCoordinator {
                     kind: .latex,
                     html: nil,
                     json: nil,
+                    csv: nil,
                     pdfData: cached.pdfData,
                     source: nil,
                     baseURL: nil,
@@ -243,6 +265,7 @@ final class DocumentRenderCoordinator {
                 kind: .latex,
                 html: nil,
                 json: nil,
+                csv: nil,
                 pdfData: result.pdfData,
                 source: nil,
                 baseURL: nil,

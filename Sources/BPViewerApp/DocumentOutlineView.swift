@@ -1,4 +1,5 @@
 import SwiftUI
+import BPViewerCore
 
 struct DocumentOutlineItem: Identifiable, Hashable {
     let id: String
@@ -48,6 +49,105 @@ struct DocumentOutlineToolbar: View {
         .padding(.vertical, BPTokens.Spacing.xs)
         .background(BPTokens.Color.surface)
         Divider()
+    }
+}
+
+struct DocumentInteractionToolbar: View {
+    let isOutlineAvailable: Bool
+    let isOutlineVisible: Bool
+    let onToggleOutline: () -> Void
+    let onSnapshot: (() -> Void)?
+    let editingSession: MarkdownEditSession?
+    let supportsSplitView: Bool
+    let onToggleSplitView: (() -> Void)?
+    let diffSession: DocumentDiffSession?
+    let onToggleDiff: (DocumentDiffMode) -> Void
+    let onUndo: () -> Void
+    let onRedo: () -> Void
+    let onDiscardEditing: () -> Void
+    let onSave: () -> Void
+
+    private var hasEditingChanges: Bool {
+        guard let editingSession else { return false }
+        return editingSession.currentSource != editingSession.baseSource
+            || editingSession.saveState != .saved
+    }
+
+    var body: some View {
+        HStack(spacing: BPTokens.Spacing.sm) {
+            HStack(spacing: BPTokens.Spacing.sm) {
+                if isOutlineAvailable {
+                    Button(action: onToggleOutline) {
+                        Label(
+                            isOutlineVisible ? "Hide Outline" : "Show Outline",
+                            systemImage: "list.bullet.rectangle"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                }
+
+                if let onSnapshot {
+                    Button(action: onSnapshot) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(BPTokens.Typography.body)
+                            .foregroundStyle(BPTokens.Color.muted)
+                    }
+                    .buttonStyle(.borderless)
+                    .focusable(false)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Capture")
+                    .help("Create Preview Snapshot")
+                }
+
+                if supportsSplitView, let onToggleSplitView {
+                    DocumentEditModeButton(
+                        title: "Split View",
+                        systemImage: "rectangle.split.2x1",
+                        isActive: editingSession?.mode == .split,
+                        action: onToggleSplitView
+                    )
+                }
+
+                DocumentEditModeButton(
+                    title: "Disk Diff",
+                    systemImage: "externaldrive",
+                    isActive: diffSession?.mode == .savedOnDisk,
+                    action: { onToggleDiff(.savedOnDisk) }
+                )
+
+                DocumentEditModeButton(
+                    title: "Git Diff",
+                    systemImage: "arrow.triangle.branch",
+                    isActive: diffSession?.mode == .gitHead,
+                    action: { onToggleDiff(.gitHead) }
+                )
+            }
+
+            Spacer()
+
+            if let editingSession {
+                if hasEditingChanges {
+                    Button(action: onUndo) {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(editingSession.undoSources.isEmpty)
+
+                    Button(action: onRedo) {
+                        Label("Redo", systemImage: "arrow.uturn.forward")
+                    }
+                    .disabled(editingSession.redoSources.isEmpty)
+                }
+
+                DocumentEditActionBar(
+                    saveState: editingSession.saveState,
+                    onDiscard: onDiscardEditing,
+                    onSave: onSave
+                )
+            }
+        }
+        .padding(.horizontal, BPTokens.Spacing.md)
+        .padding(.vertical, BPTokens.Spacing.xs)
+        .background(BPTokens.Color.surface)
     }
 }
 

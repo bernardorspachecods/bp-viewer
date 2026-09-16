@@ -10,6 +10,7 @@ public enum DocumentKind: String, Hashable, Sendable {
     case markdown
     case latex
     case json
+    case csv
     case docx
     case pdf
     case other
@@ -19,6 +20,7 @@ public enum DocumentKind: String, Hashable, Sendable {
         case "md", "markdown": self = .markdown
         case "tex", "latex": self = .latex
         case "json": self = .json
+        case "csv": self = .csv
         case "docx": self = .docx
         case "pdf": self = .pdf
         default: self = .other
@@ -30,6 +32,7 @@ public enum DocumentKind: String, Hashable, Sendable {
         case .markdown: "Markdown"
         case .latex: "LaTeX"
         case .json: "JSON"
+        case .csv: "CSV"
         case .docx: "Word"
         case .pdf: "PDF"
         case .other: "Unsupported"

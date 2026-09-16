@@ -1,8 +1,8 @@
 # Estado atual da app
 
 `bp-viewer` é uma aplicação macOS nativa para abrir uma pasta local, navegar
-pelos ficheiros Markdown, LaTeX, JSON e PDF e apresentar o resultado renderizado
-ou formatado.
+pelos ficheiros Markdown, LaTeX, JSON, CSV e PDF e apresentar o resultado
+renderizado ou formatado.
 
 ## Janela e navegação
 
@@ -14,12 +14,12 @@ ou formatado.
   nome ou caminho procura apenas pastas diretamente dentro da raiz, faz scroll
   automático até à primeira correspondência e aplica um highlight, sem filtrar
   a árvore nem percorrer descendentes.
-- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, Word e PDF por defeito; pode ser
+- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word e PDF por defeito; pode ser
   desligado para mostrar todos os ficheiros.
 - A árvore mantém expansão, scroll e filtro por workspace.
 - A abertura de uma nova raiz pede confirmação quando já existe um workspace
   aberto.
-- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.json`, `.docx` e `.pdf` podem ser
+- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.json`, `.csv`, `.docx` e `.pdf` podem ser
   abertos em tabs. Documentos Word são convertidos localmente para HTML rico e
   visualizados numa página com fundo e zoom responsivo.
 - O preview Word participa na pesquisa comum da tab ativa.
@@ -38,11 +38,26 @@ ou formatado.
 - O preview mantém o último resultado quando uma atualização falha e mostra o
   diagnóstico.
 - Um duplo clique no preview abre diretamente o editor de source Markdown.
-  A edição tem syntax highlighting adaptado aos temas claro/escuro, autosave,
+  A edição tem syntax highlighting adaptado aos temas claro/escuro, gravação
+  explícita,
   undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações externas e
   resolução de conflitos.
 - O editor pode ocupar a superfície inteira ou funcionar em split view, com o
   source Markdown à esquerda e o preview live à direita.
+- As alterações Markdown permanecem no rascunho enquanto o editor está aberto;
+  `Save` e `Esc` guardam explicitamente e saem do modo de edição, enquanto
+  `Discard Changes` repõe a versão guardada e mantém o editor aberto. Alterações
+  externas durante a edição abrem o painel de conflito sem gravar
+  automaticamente.
+- Na barra de ações comum, um documento já guardado não mostra o estado `Saved`
+  nem `Discard Changes`; o botão `Save` permanece visível mas desativado.
+- Durante a edição, a toolbar disponibiliza um diff com dois modos:
+  `Versão guardada no disco`, que compara o rascunho atual com o conteúdo
+  existente no ficheiro, e `Git diff`, que compara o rascunho atual com a
+  versão `HEAD`. A coluna esquerda é read-only e a coluna direita é o editor
+  real; alterações na direita continuam a atualizar o preview Markdown live.
+  O diff mantém `undo/redo` no rascunho e não mantém uma lista separada de
+  versões históricas.
 - `⌘F` abre uma barra de pesquisa comum para previews e editores source. A
   pesquisa fica limitada à tab ativa, ignora maiúsculas/minúsculas e acentos,
   permite avançar/recuar com Enter/Shift+Enter e fecha com Esc. Em split view,
@@ -70,20 +85,49 @@ ou formatado.
 
 ## JSON
 
-- Ficheiros `.json` são validados, formatados com indentação estável e
-  apresentados numa superfície de leitura monoespaçada.
+- Ficheiros `.json` são validados e apresentados numa superfície raw read-only
+  monoespaçada, preservando exatamente as linhas do ficheiro, incluindo vazias.
+  A superfície mostra números de linha.
 - Um duplo clique entra num editor raw monoespaçado, com undo/redo, gravação
   explícita apenas para JSON válido e resolução de conflitos externos, sem
   split view.
+- O editor JSON disponibiliza os modos de diff `Versão guardada no disco` e
+  `Git diff`, com a versão de referência read-only à esquerda e o editor raw
+  editável à direita, ambos com numeração de linhas. Linhas adicionadas no
+  lado direito têm marcador `+` e destaque verde, tal como num diff Git.
+  Ficheiros fora de Git ou sem versão `HEAD` mostram um
+  estado explicativo, sem retirar o modo de comparação com o disco.
 - O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
   automática quando o ficheiro muda.
 - O preview e o editor raw JSON usam a mesma barra de pesquisa da app.
 - Rascunhos JSON inválidos podem permanecer abertos no editor, mas não são
   gravados até voltarem a ser válidos; o editor mostra o estado “Não guardado”.
-- Ao fechar uma tab com alterações por guardar, a app permite editar, guardar
-  ou fechar sem guardar.
+- Ao sair do editor JSON com conteúdo inválido, a app permite continuar a editar
+  ou descartar as alterações; a opção de guardar só aparece para JSON válido.
+- A barra do editor JSON disponibiliza `Discard Changes` para repor a versão
+  guardada sem sair do modo de edição.
+- Ao fechar uma tab, janela ou workspace com alterações por guardar, a app
+  permite continuar a editar, guardar ou descartar as alterações.
 - JSON inválido mantém o último preview válido, quando existe, e mostra o
   diagnóstico da validação.
+
+## CSV
+
+- Ficheiros `.csv` são lidos e apresentados numa tabela de leitura, com suporte
+  para campos entre aspas, aspas escapadas, linhas multilinha e separadores
+  vírgula, ponto e vírgula ou tab detetados automaticamente.
+- O preview CSV apresenta uma grelha tipo folha de cálculo, com letras de
+  colunas, números de linhas, célula ativa e navegação por teclado. Um
+  duplo-clique permite editar uma célula; `Enter` ou `Esc` confirmam a célula
+  no rascunho sem gravar o ficheiro, mantendo disponíveis `Save` e
+  `Discard Changes`.
+- A barra de edição CSV disponibiliza `Undo` e `Redo`; `⌘Z` desfaz e `⇧⌘Z`
+  refaz alterações no rascunho sem gravar automaticamente o ficheiro.
+- O preview CSV participa na pesquisa, zoom, snapshots e atualização automática
+  quando o ficheiro muda.
+- `⌘S` grava as alterações mantendo o separador detetado e aplicando aspas apenas
+  quando necessárias. Alterações externas enquanto existe um rascunho mostram
+  um conflito com opções para manter o rascunho ou usar a versão externa.
 
 ## Tabs, preferências e snapshots
 

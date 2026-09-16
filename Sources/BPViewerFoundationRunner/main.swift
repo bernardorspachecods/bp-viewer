@@ -23,6 +23,7 @@ private struct Runner {
         runDocumentTabSessionContracts(root: fixture)
         runDocumentOpenContracts(root: fixture)
         runPathCopyContracts(root: fixture)
+        runCSVContracts()
         runMarkdownEditingContracts()
 
         print("Foundation contracts: " + String(passed) + " passed, " + String(failed) + " failed")
@@ -285,11 +286,59 @@ private struct Runner {
         )
     }
 
+    private mutating func runCSVContracts() {
+        do {
+            let document = try CSVPreviewAdapter().parse(
+                source: "Name,Note\nAlice,\"hello\nworld\"\nBob,\"He said \"\"hi\"\"\""
+            )
+            expect(
+                document.rows == [
+                    ["Name", "Note"],
+                    ["Alice", "hello\nworld"],
+                    ["Bob", "He said \"hi\""]
+                ],
+                "CSV parser preserves quoted values and escaped quotes"
+            )
+            let unsafeDocument = try CSVPreviewAdapter().parse(source: "Name\n<unsafe>")
+            let html = CSVPreviewAdapter().html(document: document, isDark: false)
+            let unsafeHTML = CSVPreviewAdapter().html(document: unsafeDocument, isDark: false)
+            expect(
+                html.contains("hello\nworld") && !unsafeHTML.contains("<td><unsafe>"),
+                "CSV preview escapes cell content"
+            )
+            expect(
+                html.contains("background: transparent"),
+                "CSV preview keeps the app canvas visible"
+            )
+            expect(
+                html.contains("<div class=\"sheet\" data-bp-csv")
+                    && !html.contains("<table data-bp-csv"),
+                "CSV preview uses a shared grid layout for frozen headers"
+            )
+            expect(
+                html.contains("background-color: #e9e9eb")
+                    && !html.contains("selected-header"),
+                "CSV coordinate headers stay opaque without selection tint"
+            )
+            let crlfDocument = try CSVPreviewAdapter().parse(source: "Name,Age\r\nAlice,42")
+            expect(
+                crlfDocument.rows.count == 2,
+                "CSV parser treats CRLF as a record separator"
+            )
+        } catch {
+            expect(false, "CSV parser preserves quoted values and escaped quotes")
+            expect(false, "CSV preview escapes cell content")
+            expect(false, "CSV parser treats CRLF as a record separator")
+        }
+    }
+
     private mutating func runDocumentOpenContracts(root: URL) {
         let coordinator = DocumentOpenCoordinator()
         let markdown = root.appendingPathComponent("README.md")
         let unsupported = root.appendingPathComponent("zeta.txt")
         let latex = root.appendingPathComponent("docs/nested/deep.tex")
+
+        expect(coordinator.isPreviewable(.csv), "document opening treats CSV as a previewable kind")
 
         if case let .preview(documentURL, kind, contextURL)? = coordinator.resolve(
             markdown,

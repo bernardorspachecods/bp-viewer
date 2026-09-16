@@ -9,6 +9,8 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
 - `FileSystemFoundation.swift` — tipos de documento e scanner lazy/recursivo.
 - `SessionModels.swift` — modelos puros de tabs, preview, edição, posições de
   leitura e estado persistido.
+- `DocumentDiff.swift` — modos e baselines de comparação, providers de disco/Git
+  e motor puro de diff reutilizável por Markdown, JSON e futuros editores.
 - `DocumentTabSession.swift` — invariantes de abertura, seleção, fecho e
   reordenação de tabs.
 - `WorkspaceSessionCoordinator.swift` — persistência de workspace, estado
@@ -17,6 +19,7 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
   contexto/root LaTeX sem ações de UI.
 - `JSONAdapter.swift` — validação e formatação determinística de JSON para
   preview.
+- `CSVAdapter.swift` — parsing e geração de HTML estático para preview CSV.
 - `TextSearch.swift` — correspondência textual normalizada e navegação circular
   reutilizável pela pesquisa da app.
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,

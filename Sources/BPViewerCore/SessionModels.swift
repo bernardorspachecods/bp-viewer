@@ -86,6 +86,34 @@ public struct MarkdownEditSession: Hashable, Sendable {
     }
 }
 
+public struct CSVEditSession: Hashable, Sendable {
+    public var isEditing: Bool
+    public var baseSource: String
+    public var currentSource: String
+    public var saveState: MarkdownSaveState
+    public var undoSources: [String]
+    public var redoSources: [String]
+    public var conflict: MarkdownConflict?
+
+    public init(
+        isEditing: Bool = true,
+        baseSource: String,
+        currentSource: String,
+        saveState: MarkdownSaveState = .saved,
+        undoSources: [String] = [],
+        redoSources: [String] = [],
+        conflict: MarkdownConflict? = nil
+    ) {
+        self.isEditing = isEditing
+        self.baseSource = baseSource
+        self.currentSource = currentSource
+        self.saveState = saveState
+        self.undoSources = undoSources
+        self.redoSources = redoSources
+        self.conflict = conflict
+    }
+}
+
 public struct DocumentTab: Identifiable, Hashable, Sendable {
     public let id: String
     public let url: URL
@@ -95,6 +123,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
     public var isStale: Bool
     public var previewHTML: String?
     public var previewJSON: String?
+    public var previewCSV: CSVDocument?
+    public var csvEditSession: CSVEditSession?
     public var previewPDFData: Data?
     public var markdownOutline: [MarkdownOutlineEntry]
     public var isOutlineVisible: Bool
@@ -114,6 +144,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
     public var jsonSource: String?
     public var jsonEditSession: MarkdownEditSession?
     public var jsonCursorUTF8Offset: Int?
+    public var diffSession: DocumentDiffSession?
 
     public init(
         id: String,
@@ -124,6 +155,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         isStale: Bool = false,
         previewHTML: String? = nil,
         previewJSON: String? = nil,
+        previewCSV: CSVDocument? = nil,
+        csvEditSession: CSVEditSession? = nil,
         previewPDFData: Data? = nil,
         markdownOutline: [MarkdownOutlineEntry] = [],
         isOutlineVisible: Bool = false,
@@ -142,7 +175,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         markdownEditSession: MarkdownEditSession? = nil,
         jsonSource: String? = nil,
         jsonEditSession: MarkdownEditSession? = nil,
-        jsonCursorUTF8Offset: Int? = nil
+        jsonCursorUTF8Offset: Int? = nil,
+        diffSession: DocumentDiffSession? = nil
     ) {
         self.id = id
         self.url = url
@@ -152,6 +186,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.isStale = isStale
         self.previewHTML = previewHTML
         self.previewJSON = previewJSON
+        self.previewCSV = previewCSV
+        self.csvEditSession = csvEditSession
         self.previewPDFData = previewPDFData
         self.markdownOutline = markdownOutline
         self.isOutlineVisible = isOutlineVisible
@@ -171,6 +207,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.jsonSource = jsonSource
         self.jsonEditSession = jsonEditSession
         self.jsonCursorUTF8Offset = jsonCursorUTF8Offset
+        self.diffSession = diffSession
     }
 
     public var title: String { url.deletingPathExtension().lastPathComponent }

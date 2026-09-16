@@ -1,7 +1,7 @@
 # bp-viewer
 
 Visualizador local para projetos académicos escritos em Markdown, LaTeX, JSON,
-CSV, Word e PDF no macOS.
+Word e PDF no macOS
 
 O `bp-viewer` abre uma pasta local, acompanha alterações aos ficheiros-fonte e
 apresenta o resultado renderizado ou formatado. Ficheiros Markdown podem ser

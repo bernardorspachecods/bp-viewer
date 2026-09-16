@@ -3,6 +3,7 @@ import BPViewerCore
 import AppKit
 
 struct MarkdownPreviewView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let html: String
     let baseURL: URL
     let documentID: String
@@ -10,13 +11,16 @@ struct MarkdownPreviewView: View {
     let outline: [MarkdownOutlineEntry]
     let markdownBlocks: [MarkdownEditableBlock]
     let editingSession: MarkdownEditSession?
+    let diffSession: DocumentDiffSession?
     let onNavigate: (URL) -> Void
     let onMarkdownTextChanged: @MainActor @Sendable (String) -> Void
     let onMarkdownEditEvent: (MarkdownWebEditEvent) -> Void
     let onUndo: () -> Void
     let onRedo: () -> Void
-    let onToggleMarkdownMode: () -> Void
+    let onToggleSplitView: () -> Void
+    let onToggleDiff: (DocumentDiffMode) -> Void
     let onEndMarkdownEditing: () -> Void
+    let onDiscardMarkdownEditing: () -> Void
     let onKeepLocalMarkdownEdit: () -> Void
     let onUseExternalMarkdownEdit: () -> Void
     let zoom: Double
@@ -50,29 +54,28 @@ struct MarkdownPreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !outlineItems.isEmpty || onSnapshot != nil {
-                DocumentOutlineToolbar(
-                    isVisible: isOutlineVisible,
-                    onToggle: { isOutlineVisible.toggle() },
-                    onSnapshot: onSnapshot
-                )
-            }
+            DocumentInteractionToolbar(
+                isOutlineAvailable: !outlineItems.isEmpty,
+                isOutlineVisible: isOutlineVisible,
+                onToggleOutline: { isOutlineVisible.toggle() },
+                onSnapshot: onSnapshot,
+                editingSession: editingSession,
+                supportsSplitView: true,
+                onToggleSplitView: onToggleSplitView,
+                diffSession: diffSession,
+                onToggleDiff: onToggleDiff,
+                onUndo: onUndo,
+                onRedo: onRedo,
+                onDiscardEditing: onDiscardMarkdownEditing,
+                onSave: onEndMarkdownEditing
+            )
 
-            if let editingSession {
-                MarkdownEditToolbar(
-                    session: editingSession,
-                    onUndo: onUndo,
-                    onRedo: onRedo,
-                    onToggleMarkdownMode: onToggleMarkdownMode,
-                    onEndEditing: onEndMarkdownEditing
+            if let editingSession, let conflict = editingSession.conflict {
+                MarkdownConflictView(
+                    conflict: conflict,
+                    onKeepLocal: onKeepLocalMarkdownEdit,
+                    onUseExternal: onUseExternalMarkdownEdit
                 )
-                if let conflict = editingSession.conflict {
-                    MarkdownConflictView(
-                        conflict: conflict,
-                        onKeepLocal: onKeepLocalMarkdownEdit,
-                        onUseExternal: onUseExternalMarkdownEdit
-                    )
-                }
             }
 
             HStack(spacing: 0) {
@@ -88,22 +91,44 @@ struct MarkdownPreviewView: View {
                 }
 
                 if let editingSession {
-                    MarkdownSourceEditor(
-                        source: editingSession.currentSource,
-                        zoom: zoom,
-                        cursorUTF8Offset: pendingCursorUTF8Offset,
-                        findQuery: findQuery,
-                        findRequestID: findRequestID,
-                        findBackwards: findBackwards,
-                        isFindTarget: findTarget == .source,
-                        onFindFocus: { onFindTargetChanged(.source) },
-                        onFindMatchCount: onFindMatchCount,
-                        onEndEditing: onEndMarkdownEditing,
-                        onSourceChanged: onMarkdownTextChanged
-                    )
-                    if editingSession.mode == .split {
-                        Divider()
-                        previewSurface
+                    if let diffSession {
+                        DocumentDiffView(
+                            baseline: diffSession.baseline,
+                            unavailableMessage: diffSession.unavailableMessage,
+                            editedSource: editingSession.currentSource,
+                            zoom: zoom,
+                            syntaxHighlighting: .markdown(
+                                MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
+                            ),
+                            monospaced: false,
+                            markdownShortcutsEnabled: true,
+                            findQuery: findQuery,
+                            findRequestID: findRequestID,
+                            findBackwards: findBackwards,
+                            isFindTarget: findTarget == .source,
+                            onFindFocus: { onFindTargetChanged(.source) },
+                            onFindMatchCount: onFindMatchCount,
+                            onSourceChanged: onMarkdownTextChanged,
+                            onEndEditing: { _ in onEndMarkdownEditing() }
+                        )
+                    } else {
+                        MarkdownSourceEditor(
+                            source: editingSession.currentSource,
+                            zoom: zoom,
+                            cursorUTF8Offset: pendingCursorUTF8Offset,
+                            findQuery: findQuery,
+                            findRequestID: findRequestID,
+                            findBackwards: findBackwards,
+                            isFindTarget: findTarget == .source,
+                            onFindFocus: { onFindTargetChanged(.source) },
+                            onFindMatchCount: onFindMatchCount,
+                            onEndEditing: onEndMarkdownEditing,
+                            onSourceChanged: onMarkdownTextChanged
+                        )
+                        if editingSession.mode == .split {
+                            Divider()
+                            previewSurface
+                        }
                     }
                 } else {
                     previewSurface
@@ -175,52 +200,6 @@ struct MarkdownWebEditEvent {
     let renderedTextOffset: Int?
 }
 
-private struct MarkdownEditToolbar: View {
-    let session: MarkdownEditSession
-    let onUndo: () -> Void
-    let onRedo: () -> Void
-    let onToggleMarkdownMode: () -> Void
-    let onEndEditing: () -> Void
-
-    var body: some View {
-        HStack(spacing: BPTokens.Spacing.sm) {
-            Label(
-                session.mode == .split ? "Split Editing" : "Markdown Editing",
-                systemImage: session.mode == .split ? "rectangle.split.2x1" : "chevron.left.forwardslash.chevron.right"
-            )
-            .font(BPTokens.Typography.caption.weight(.medium))
-
-            Button(session.mode == .split ? "Markdown Editing" : "Open Split View") {
-                onToggleMarkdownMode()
-            }
-            .buttonStyle(.bordered)
-
-            Button(action: onUndo) {
-                Label("Undo", systemImage: "arrow.uturn.backward")
-            }
-            .disabled(session.undoSources.isEmpty)
-
-            Button(action: onRedo) {
-                Label("Redo", systemImage: "arrow.uturn.forward")
-            }
-            .disabled(session.redoSources.isEmpty)
-
-            Spacer()
-
-            Text(session.saveState.label)
-                .font(BPTokens.Typography.caption)
-                .foregroundStyle(session.saveState == .conflict ? BPTokens.Color.warning : BPTokens.Color.muted)
-
-            Button("Done", action: onEndEditing)
-                .buttonStyle(.borderedProminent)
-        }
-        .padding(.horizontal, BPTokens.Spacing.md)
-        .padding(.vertical, BPTokens.Spacing.xs)
-        .background(BPTokens.Color.surface)
-    }
-}
-
-
 private struct MarkdownSourceEditor: View {
     @Environment(\.colorScheme) private var colorScheme
     let source: String
@@ -243,6 +222,11 @@ private struct MarkdownSourceEditor: View {
                     source: source,
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
+                    isEditable: true,
+                    lineNumbers: true,
+                    lineNumberOverrides: [:],
+                    lineHighlights: [:],
+                    lineSpacingBefore: [:],
                     monospaced: false,
                     syntaxHighlighting: .markdown(
                         MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
@@ -255,7 +239,8 @@ private struct MarkdownSourceEditor: View {
                     onFindFocus: onFindFocus,
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onSourceChanged,
-                    onEndEditing: { _ in onEndEditing() }
+                    onEndEditing: { _ in onEndEditing() },
+                    onDoubleClick: nil
                 )
                 .frame(
                     maxWidth: (
