@@ -218,7 +218,7 @@ struct JSONPreviewView: View {
                     .buttonStyle(.borderless)
                     .focusable(false)
                     .contentShape(Rectangle())
-                    .help("Criar snapshot do preview")
+                    .help("Create Preview Snapshot")
                 }
             }
             .padding(.horizontal, BPTokens.Spacing.md)
@@ -257,16 +257,16 @@ private struct JSONEditToolbar: View {
 
     var body: some View {
         HStack(spacing: BPTokens.Spacing.sm) {
-            Label("Edição JSON", systemImage: "curlybraces")
+            Label("JSON Editing", systemImage: "curlybraces")
                 .font(BPTokens.Typography.caption.weight(.medium))
 
             Button(action: onUndo) {
-                Label("Desfazer", systemImage: "arrow.uturn.backward")
+                Label("Undo", systemImage: "arrow.uturn.backward")
             }
             .disabled(session.undoSources.isEmpty)
 
             Button(action: onRedo) {
-                Label("Refazer", systemImage: "arrow.uturn.forward")
+                Label("Redo", systemImage: "arrow.uturn.forward")
             }
             .disabled(session.redoSources.isEmpty)
 
@@ -276,7 +276,7 @@ private struct JSONEditToolbar: View {
                 .font(BPTokens.Typography.caption)
                 .foregroundStyle(session.saveState == .conflict ? BPTokens.Color.warning : BPTokens.Color.muted)
 
-            Button("Concluir", action: onEndEditing)
+            Button("Done", action: onEndEditing)
                 .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, BPTokens.Spacing.md)
@@ -302,7 +302,8 @@ private struct JSONSourceEditor: View {
                 zoom: zoom,
                 cursorUTF8Offset: cursorUTF8Offset,
                 monospaced: true,
-                syntaxHighlightPalette: syntaxHighlightPalette,
+                syntaxHighlighting: .json(syntaxHighlightPalette),
+                markdownShortcutsEnabled: false,
                 onSourceChanged: onSourceChanged,
                 onEndEditing: onEndEditing
             )
@@ -416,13 +417,13 @@ private struct JSONConflictView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
-            Text("Este ficheiro JSON também foi alterado fora do bp-viewer.")
+            Text("This JSON file was also changed outside bp-viewer.")
                 .font(BPTokens.Typography.caption.weight(.medium))
 
             HStack {
                 Spacer()
-                Button("Usar versão externa", action: onUseExternal)
-                Button("Manter as minhas alterações", action: onKeepLocal)
+                Button("Use External Version", action: onUseExternal)
+                Button("Keep My Changes", action: onKeepLocal)
                     .buttonStyle(.borderedProminent)
             }
         }

@@ -107,14 +107,14 @@ private struct OrderedJSONParser {
         let value = try parseValue()
         skipWhitespace()
         guard index == bytes.count else {
-            throw error("carácter inesperado na posição \(index)")
+            throw error("unexpected character at position \(index)")
         }
         return value
     }
 
     private mutating func parseValue() throws -> OrderedJSONValue {
         guard let byte = currentByte else {
-            throw error("valor em falta na posição \(index)")
+            throw error("missing value at position \(index)")
         }
 
         switch byte {
@@ -136,7 +136,7 @@ private struct OrderedJSONParser {
             try parseLiteral("true")
             return .scalar("true")
         default:
-            throw error("valor inesperado na posição \(index)")
+            throw error("unexpected value at position \(index)")
         }
     }
 
@@ -151,12 +151,12 @@ private struct OrderedJSONParser {
 
         while true {
             guard currentByte == 34 else {
-                throw error("a chave do objeto tem de ser uma string na posição \(index)")
+                throw error("object key must be a string at position \(index)")
             }
             let key = try parseString()
             skipWhitespace()
             guard consume(58) else {
-                throw error("faltam dois pontos depois da chave na posição \(index)")
+                throw error("missing colon after key at position \(index)")
             }
             skipWhitespace()
             entries.append((key: key, value: try parseValue()))
@@ -166,7 +166,7 @@ private struct OrderedJSONParser {
                 return .object(entries)
             }
             guard consume(44) else {
-                throw error("faltam vírgula ou fim do objeto na posição \(index)")
+                throw error("missing comma or end of object at position \(index)")
             }
             skipWhitespace()
         }
@@ -189,7 +189,7 @@ private struct OrderedJSONParser {
                 return .array(values)
             }
             guard consume(44) else {
-                throw error("faltam vírgula ou fim do array na posição \(index)")
+                throw error("missing comma or end of array at position \(index)")
             }
             skipWhitespace()
         }
@@ -198,7 +198,7 @@ private struct OrderedJSONParser {
     private mutating func parseString() throws -> String {
         let start = index
         guard consume(34) else {
-            throw error("string esperada na posição \(index)")
+            throw error("expected string at position \(index)")
         }
 
         while let byte = currentByte {
@@ -209,29 +209,29 @@ private struct OrderedJSONParser {
             case 92:
                 advance()
                 guard let escape = currentByte else {
-                    throw error("escape incompleto na posição \(index)")
+                    throw error("incomplete escape at position \(index)")
                 }
                 if escape == 117 {
                     advance()
                     for _ in 0..<4 {
                         guard let hex = currentByte, isHexDigit(hex) else {
-                            throw error("escape Unicode inválido na posição \(index)")
+                            throw error("invalid Unicode escape at position \(index)")
                         }
                         advance()
                     }
                 } else if [34, 92, 47, 98, 102, 110, 114, 116].contains(escape) {
                     advance()
                 } else {
-                    throw error("escape inválido na posição \(index)")
+                    throw error("invalid escape at position \(index)")
                 }
             case 0...31:
-                throw error("carácter de controlo numa string na posição \(index)")
+                throw error("control character in string at position \(index)")
             default:
                 advance()
             }
         }
 
-        throw error("string não terminada na posição \(index)")
+        throw error("unterminated string at position \(index)")
     }
 
     private mutating func parseNumber() throws -> String {
@@ -240,17 +240,17 @@ private struct OrderedJSONParser {
 
         if consume(48) {
             if let byte = currentByte, byte >= 48 && byte <= 57 {
-                throw error("zero à esquerda num número na posição \(index)")
+                throw error("leading zero in number at position \(index)")
             }
         } else {
             guard consumeDigit(minimum: 1) else {
-                throw error("número inválido na posição \(index)")
+                throw error("invalid number at position \(index)")
             }
         }
 
         if consume(46) {
             guard consumeDigit(minimum: 1) else {
-                throw error("faltam dígitos depois do ponto na posição \(index)")
+                throw error("missing digits after decimal point at position \(index)")
             }
         }
 
@@ -258,7 +258,7 @@ private struct OrderedJSONParser {
             advance()
             _ = consume(43) || consume(45)
             guard consumeDigit(minimum: 1) else {
-                throw error("faltam dígitos no expoente na posição \(index)")
+                throw error("missing digits in exponent at position \(index)")
             }
         }
 
@@ -268,7 +268,7 @@ private struct OrderedJSONParser {
     private mutating func parseLiteral(_ literal: String) throws {
         let literalBytes = Array(literal.utf8)
         guard bytes[index...].starts(with: literalBytes) else {
-            throw error("literal inválido na posição \(index)")
+            throw error("invalid literal at position \(index)")
         }
         index += literalBytes.count
     }
@@ -309,11 +309,11 @@ private struct OrderedJSONParser {
     }
 
     private func error(_ message: String) -> ParseError {
-        let positionMarker = " na posição \(index)"
+        let positionMarker = " at position \(index)"
         let location = sourceLocation()
         let localizedMessage = message.replacingOccurrences(
             of: positionMarker,
-            with: " na linha \(location.line), carácter \(location.character)"
+            with: " at line \(location.line), character \(location.character)"
         )
         return ParseError(message: localizedMessage)
     }
@@ -338,9 +338,9 @@ public enum JSONPreviewError: LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .invalidEncoding:
-            return "O ficheiro JSON não está codificado em UTF-8."
+            return "The JSON file is not encoded in UTF-8."
         case let .invalidJSON(details):
-            return "JSON inválido: \(details)"
+            return "Invalid JSON: \(details)"
         }
     }
 }

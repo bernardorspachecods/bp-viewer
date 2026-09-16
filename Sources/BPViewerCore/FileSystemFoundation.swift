@@ -32,7 +32,7 @@ public enum DocumentKind: String, Hashable, Sendable {
         case .json: "JSON"
         case .docx: "Word"
         case .pdf: "PDF"
-        case .other: "Não suportado"
+        case .other: "Unsupported"
         }
     }
 }

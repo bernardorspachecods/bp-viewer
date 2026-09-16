@@ -19,40 +19,40 @@ struct BPViewerApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Abrir pasta…", action: model.openFolder)
+                Button("Open Folder…", action: model.openFolder)
                     .keyboardShortcut("o", modifiers: [.command])
             }
 
-            CommandMenu("Visualização") {
-                Button("Atualizar preview", action: model.refreshActiveTab)
+            CommandMenu("View") {
+                Button("Refresh Preview", action: model.refreshActiveTab)
                     .keyboardShortcut("r", modifiers: [.command])
 
-                Button("Pesquisar no preview", action: model.showFindBar)
+                Button("Find in Preview", action: model.showFindBar)
                     .keyboardShortcut("f", modifiers: [.command])
 
-                Button("Aumentar zoom", action: model.zoomIn)
+                Button("Zoom In", action: model.zoomIn)
                     .keyboardShortcut("+", modifiers: [.command])
 
-                Button("Diminuir zoom", action: model.zoomOut)
+                Button("Zoom Out", action: model.zoomOut)
                     .keyboardShortcut("-", modifiers: [.command])
 
-                Button("Repor zoom", action: model.resetPreviewZoom)
+                Button("Reset Zoom", action: model.resetPreviewZoom)
                     .keyboardShortcut("0", modifiers: [.command])
 
-                Button("Alternar sidebar", action: { model.setSidebarVisible(!model.sidebarVisible) })
+                Button("Toggle Sidebar", action: { model.setSidebarVisible(!model.sidebarVisible) })
                     .keyboardShortcut("b", modifiers: [.command, .option])
 
-                Button("Alternar tema", action: model.cycleTheme)
+                Button("Toggle Theme", action: model.cycleTheme)
                     .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             CommandGroup(replacing: .windowArrangement) {
-                Button("Fechar tab", action: model.closeActiveTab)
+                Button("Close Tab", action: model.closeActiveTab)
                 .keyboardShortcut("w", modifiers: [.command])
             }
 
             CommandMenu("Tabs") {
-                Button("Próxima tab", action: model.selectNextTab)
+                    Button("Next Tab", action: model.selectNextTab)
                     .keyboardShortcut(.tab, modifiers: [.control])
 
                 ForEach(Array(model.tabs.prefix(9).enumerated()), id: \.element.id) { index, tab in

@@ -68,7 +68,7 @@ private struct DocxHTMLPreview: NSViewRepresentable {
 @MainActor
 private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
     private let webView: ZoomableDocxWebView
-    private let statusLabel = NSTextField(labelWithString: "A preparar preview Word…")
+    private let statusLabel = NSTextField(labelWithString: "Preparing Word Preview…")
     private var previewURL: URL?
     private var previewTask: Task<Void, Never>?
     private var artifactDirectory: URL?
@@ -122,7 +122,7 @@ private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
         removeArtifact()
         webView.isHidden = true
         statusLabel.isHidden = false
-        statusLabel.stringValue = "A preparar preview Word…"
+        statusLabel.stringValue = "Preparing Word Preview…"
 
         previewTask = Task { @MainActor [weak self] in
             do {
@@ -137,7 +137,7 @@ private final class DocxHTMLPreviewContainer: NSView, WKNavigationDelegate {
                 self.loadPreview(url: artifact.htmlURL)
             } catch {
                 guard let self, self.previewURL == url, !Task.isCancelled else { return }
-                self.statusLabel.stringValue = "Não foi possível preparar o preview Word."
+                self.statusLabel.stringValue = "Unable to prepare the Word preview."
                 self.statusLabel.isHidden = false
             }
         }

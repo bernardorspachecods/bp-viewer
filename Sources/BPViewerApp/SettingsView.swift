@@ -16,7 +16,7 @@ struct SettingsView: View {
 
             AppearanceSettingsView()
                 .tabItem {
-                    Label("Aparência", systemImage: "paintbrush")
+                    Label("Appearance", systemImage: "paintbrush")
                 }
 
             LatexSettingsView()
@@ -34,7 +34,7 @@ private struct ZoomSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Zoom predefinido") {
+            Section("Default Zoom") {
                 ZoomPreferenceRow(
                     title: "Markdown",
                     value: Binding(
@@ -51,7 +51,7 @@ private struct ZoomSettingsView: View {
                 )
             }
 
-            Text("Aplica-se a documentos sem um zoom individual guardado.")
+            Text("Applies to documents without an individually saved zoom level.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -63,33 +63,39 @@ private struct ZoomSettingsView: View {
 private struct ShortcutsSettingsView: View {
     var body: some View {
         Form {
-            Section("Geral") {
-                ShortcutRow(title: "Abrir pasta", shortcut: "⌘O")
-                ShortcutRow(title: "Abrir definições", shortcut: "⌘,")
+            Section("General") {
+                ShortcutRow(title: "Open Folder", shortcut: "⌘O")
+                ShortcutRow(title: "Open Settings", shortcut: "⌘,")
             }
 
-            Section("Visualização") {
-                ShortcutRow(title: "Atualizar preview", shortcut: "⌘R")
-                ShortcutRow(title: "Pesquisar no preview", shortcut: "⌘F")
-                ShortcutRow(title: "Aumentar zoom", shortcut: "⌘+")
-                ShortcutRow(title: "Diminuir zoom", shortcut: "⌘−")
-                ShortcutRow(title: "Repor zoom", shortcut: "⌘0")
-                ShortcutRow(title: "Alternar sidebar", shortcut: "⌥⌘B")
-                ShortcutRow(title: "Alternar tema", shortcut: "⌥⌘T")
+            Section("Markdown Editing") {
+                ShortcutRow(title: "Bold", shortcut: "⌘B")
+                ShortcutRow(title: "Italic", shortcut: "⌘I")
+                ShortcutRow(title: "Inline Code", shortcut: "⌘K")
+            }
+
+            Section("View") {
+                ShortcutRow(title: "Refresh Preview", shortcut: "⌘R")
+                ShortcutRow(title: "Find in Preview", shortcut: "⌘F")
+                ShortcutRow(title: "Zoom In", shortcut: "⌘+")
+                ShortcutRow(title: "Zoom Out", shortcut: "⌘−")
+                ShortcutRow(title: "Reset Zoom", shortcut: "⌘0")
+                ShortcutRow(title: "Toggle Sidebar", shortcut: "⌥⌘B")
+                ShortcutRow(title: "Toggle Theme", shortcut: "⌥⌘T")
             }
 
             Section("Tabs") {
-                ShortcutRow(title: "Fechar tab", shortcut: "⌘W")
-                ShortcutRow(title: "Próxima tab", shortcut: "⌃Tab")
-                ShortcutRow(title: "Selecionar tab", shortcut: "⌘1–⌘9")
+                ShortcutRow(title: "Close Tab", shortcut: "⌘W")
+                ShortcutRow(title: "Next Tab", shortcut: "⌃Tab")
+                ShortcutRow(title: "Select Tab", shortcut: "⌘1–⌘9")
             }
 
             Section("Snapshots") {
-                ShortcutRow(title: "Fechar janela flutuante", shortcut: "⌘W")
-                ShortcutRow(title: "Cancelar seleção", shortcut: "Esc")
+                ShortcutRow(title: "Close Floating Window", shortcut: "⌘W")
+                ShortcutRow(title: "Cancel Selection", shortcut: "Esc")
             }
 
-            Text("Os shortcuts são definidos pela app e não são editáveis nesta versão.")
+            Text("Shortcuts are defined by the app and cannot be edited in this version.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -103,9 +109,9 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Tema") {
+            Section("Theme") {
                 Picker(
-                    "Tema",
+                    "Theme",
                     selection: Binding(
                         get: { model.theme },
                         set: { model.setTheme($0) }
@@ -118,7 +124,7 @@ private struct AppearanceSettingsView: View {
                 .pickerStyle(.radioGroup)
             }
 
-            Text("Também podes alternar rapidamente o tema com ⌥⌘T.")
+            Text("You can also quickly toggle the theme with ⌥⌘T.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -132,7 +138,7 @@ private struct LatexSettingsView: View {
 
     var body: some View {
         Form {
-            Section("Compilação") {
+            Section("Compilation") {
                 Picker(
                     "Shell escape",
                     selection: Binding(
@@ -147,7 +153,7 @@ private struct LatexSettingsView: View {
             }
 
             Label(
-                "Shell escape pode permitir que o processo LaTeX execute comandos externos. Ativa-o apenas para documentos em que confias.",
+                "Shell escape can allow the LaTeX process to run external commands. Enable it only for documents you trust.",
                 systemImage: "exclamationmark.triangle"
             )
             .font(.caption)
@@ -227,7 +233,7 @@ private struct ZoomValueControl: View {
                         .frame(width: 18, height: 11)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Aumentar zoom")
+                .accessibilityLabel("Zoom In")
 
                 Button {
                     adjust(by: -0.1)
@@ -237,7 +243,7 @@ private struct ZoomValueControl: View {
                         .frame(width: 18, height: 11)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Diminuir zoom")
+                .accessibilityLabel("Zoom Out")
             }
             .frame(width: 18, height: 24)
         }

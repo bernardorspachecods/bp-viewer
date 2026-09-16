@@ -30,7 +30,7 @@ public enum LatexRootDiscoveryError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case let .projectRootIsNotDirectory(url):
-            "A pasta do projeto LaTeX não existe ou não é uma pasta: \(url.path)"
+            "The LaTeX project folder does not exist or is not a folder: \(url.path)"
         }
     }
 }

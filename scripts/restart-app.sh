@@ -29,11 +29,11 @@ stop_running_app() {
     done
 }
 
-print "[bp-viewer] a fechar instâncias antigas…"
+print "[bp-viewer] closing old instances…"
 stop_running_app
 
-print "[bp-viewer] a compilar…"
+print "[bp-viewer] building…"
 "$repo_root/scripts/build-app.sh" debug >/dev/null
 
-print "[bp-viewer] a iniciar uma instância nova"
+print "[bp-viewer] starting a new instance"
 open -na "$app_bundle"

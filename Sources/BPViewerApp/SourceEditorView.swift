@@ -11,12 +11,32 @@ enum SourceEditorLayout {
     static let lineHeightMultiple: CGFloat = 1.55
 }
 
+enum SourceSyntaxHighlighting: Equatable {
+    case json(JSONSyntaxColorPalette)
+    case markdown(MarkdownSyntaxColorPalette)
+
+    var background: String {
+        switch self {
+        case let .json(palette): palette.background
+        case let .markdown(palette): palette.background
+        }
+    }
+
+    var foreground: String {
+        switch self {
+        case let .json(palette): palette.foreground
+        case let .markdown(palette): palette.foreground
+        }
+    }
+}
+
 struct SourceTextView: NSViewRepresentable {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
     let monospaced: Bool
-    let syntaxHighlightPalette: JSONSyntaxColorPalette?
+    let syntaxHighlighting: SourceSyntaxHighlighting?
+    let markdownShortcutsEnabled: Bool
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
 
@@ -30,6 +50,10 @@ struct SourceTextView: NSViewRepresentable {
             guard let textView else { return }
             coordinator?.onEndEditing(textView.string)
         }
+        textView.onMarkdownShortcut = { [weak textView] formatting in
+            guard markdownShortcutsEnabled, let textView else { return }
+            applyMarkdownShortcut(formatting, to: textView, onSourceChanged: onSourceChanged)
+        }
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
@@ -42,7 +66,7 @@ struct SourceTextView: NSViewRepresentable {
             textView.isAutomaticSpellingCorrectionEnabled = false
         }
         textView.usesFindPanel = true
-        textView.drawsBackground = syntaxHighlightPalette == nil
+        textView.drawsBackground = syntaxHighlighting == nil
         applyBaseColors(to: textView)
         textView.insertionPointColor = .controlAccentColor
         textView.string = source
@@ -67,7 +91,7 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = syntaxHighlightPalette == nil
+        scrollView.drawsBackground = syntaxHighlighting == nil
         scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
         DispatchQueue.main.async { [weak textView] in
@@ -89,7 +113,7 @@ struct SourceTextView: NSViewRepresentable {
         }
 
         applyBaseColors(to: textView)
-        scrollView.drawsBackground = syntaxHighlightPalette == nil
+        scrollView.drawsBackground = syntaxHighlighting == nil
         scrollView.backgroundColor = textView.backgroundColor
         if textView.string != source {
             let selectedRange = textView.selectedRange()
@@ -153,28 +177,78 @@ struct SourceTextView: NSViewRepresentable {
         guard textLength > 0 else { return }
         let range = NSRange(location: 0, length: textLength)
         textView.textStorage?.addAttribute(.foregroundColor, value: textView.textColor ?? NSColor.textColor, range: range)
-        guard let syntaxHighlightPalette else { return }
+        guard let syntaxHighlighting else { return }
 
-        for token in JSONSyntaxHighlighter().tokenize(source) {
-            let start = utf16Offset(in: source, utf8Offset: token.utf8Offset)
-            let end = utf16Offset(in: source, utf8Offset: token.utf8End)
-            guard end > start else { continue }
-            textView.textStorage?.addAttribute(
-                .foregroundColor,
-                value: NSColor(jsonHex: syntaxHighlightPalette.color(for: token.kind)),
-                range: NSRange(location: start, length: end - start)
-            )
+        switch syntaxHighlighting {
+        case let .json(palette):
+            for token in JSONSyntaxHighlighter().tokenize(source) {
+                apply(
+                    color: palette.color(for: token.kind),
+                    to: token.utf8Offset..<token.utf8End,
+                    in: source,
+                    textView: textView
+                )
+            }
+        case let .markdown(palette):
+            for token in MarkdownSyntaxHighlighter().tokenize(source) {
+                apply(
+                    color: palette.color(for: token.kind),
+                    to: token.utf8Offset..<token.utf8End,
+                    in: source,
+                    textView: textView
+                )
+            }
         }
     }
 
+    private func apply(
+        color: String,
+        to utf8Range: Range<Int>,
+        in source: String,
+        textView: NSTextView
+    ) {
+        let start = utf16Offset(in: source, utf8Offset: utf8Range.lowerBound)
+        let end = utf16Offset(in: source, utf8Offset: utf8Range.upperBound)
+        guard end > start else { return }
+        textView.textStorage?.addAttribute(
+            .foregroundColor,
+            value: NSColor(hex: color),
+            range: NSRange(location: start, length: end - start)
+        )
+    }
+
     private func applyBaseColors(to textView: NSTextView) {
-        guard let syntaxHighlightPalette else {
+        guard let syntaxHighlighting else {
             textView.backgroundColor = .textBackgroundColor
             textView.textColor = .textColor
             return
         }
         textView.backgroundColor = .clear
-        textView.textColor = NSColor(jsonHex: syntaxHighlightPalette.foreground)
+        textView.textColor = NSColor(hex: syntaxHighlighting.foreground)
+    }
+
+    private func applyMarkdownShortcut(
+        _ formatting: MarkdownInlineFormatting,
+        to textView: NSTextView,
+        onSourceChanged: @escaping @MainActor @Sendable (String) -> Void
+    ) {
+        let source = textView.string
+        let selection = textView.selectedRange()
+        let result = MarkdownShortcutFormatter.apply(
+            formatting,
+            to: source,
+            selectionUTF16Offset: selection.location,
+            selectionUTF16Length: selection.length
+        )
+        let fullRange = NSRange(location: 0, length: (source as NSString).length)
+        guard textView.shouldChangeText(in: fullRange, replacementString: result.source) else { return }
+        textView.replaceCharacters(in: fullRange, with: result.source)
+        textView.setSelectedRange(NSRange(
+            location: result.selectionUTF16Offset,
+            length: result.selectionUTF16Length
+        ))
+        textView.didChangeText()
+        onSourceChanged(result.source)
     }
 
     private func focus(
@@ -231,7 +305,7 @@ struct SourceTextView: NSViewRepresentable {
 }
 
 private extension NSColor {
-    convenience init(jsonHex hex: String) {
+    convenience init(hex: String) {
         let value = UInt64(hex.dropFirst(), radix: 16) ?? 0
         self.init(
             calibratedRed: CGFloat((value >> 16) & 0xFF) / 255,
@@ -244,12 +318,38 @@ private extension NSColor {
 
 private final class MarkdownNSTextView: NSTextView {
     var onEscape: (() -> Void)?
+    var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
 
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
     }
 
     override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.contains(.command),
+           !modifiers.contains(.option),
+           !modifiers.contains(.control),
+           let key = event.charactersIgnoringModifiers?.lowercased() {
+            switch key {
+            case "b":
+                if let onMarkdownShortcut {
+                    onMarkdownShortcut(.bold)
+                    return
+                }
+            case "i":
+                if let onMarkdownShortcut {
+                    onMarkdownShortcut(.italic)
+                    return
+                }
+            case "k":
+                if let onMarkdownShortcut {
+                    onMarkdownShortcut(.code)
+                    return
+                }
+            default:
+                break
+            }
+        }
         if event.keyCode == 53 {
             onEscape?()
             return

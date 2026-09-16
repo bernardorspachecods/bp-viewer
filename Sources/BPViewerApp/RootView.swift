@@ -11,9 +11,7 @@ struct RootView: View {
             Divider()
             HStack(spacing: 0) {
                 if model.sidebarVisible {
-                    SidebarView()
-                        .frame(width: model.sidebarWidth)
-                    SidebarResizeHandle()
+                    ResizableSidebarView()
                 }
 
                 DocumentWorkspaceView()
@@ -33,26 +31,26 @@ struct RootView: View {
             }
             return !providers.isEmpty
         }
-        .alert("Trocar pasta aberta?", isPresented: $model.showingRootChangeConfirmation) {
-            Button("Cancelar", role: .cancel, action: model.cancelRootChange)
-            Button("Trocar", role: .destructive, action: model.confirmRootChange)
+        .alert("Switch Open Folder?", isPresented: $model.showingRootChangeConfirmation) {
+            Button("Cancel", role: .cancel, action: model.cancelRootChange)
+            Button("Switch", role: .destructive, action: model.confirmRootChange)
         } message: {
-            Text("As tabs atuais serão fechadas e a nova pasta passará a ser a raiz do projeto.")
+            Text("The current tabs will be closed and the new folder will become the project root.")
         }
         .alert(
-            "Alterações por guardar",
+            "Unsaved Changes",
             isPresented: $model.showingPendingCloseConfirmation
         ) {
-            Button("Editar", role: .cancel, action: model.cancelPendingClose)
+            Button("Edit", role: .cancel, action: model.cancelPendingClose)
             if model.pendingCloseCanSave {
-                Button("Guardar", action: model.savePendingClose)
+                Button("Save", action: model.savePendingClose)
             }
-            Button("Não guardar", role: .destructive, action: model.discardPendingClose)
+            Button("Don't Save", role: .destructive, action: model.discardPendingClose)
         } message: {
             if model.pendingCloseCanSave {
-                Text("\(model.pendingCloseRequest?.title ?? "Este ficheiro") tem alterações por guardar. Quer editar, guardar ou fechar sem guardar?")
+                Text("\(model.pendingCloseRequest?.title ?? "This file") has unsaved changes. Would you like to edit, save, or close without saving?")
             } else {
-                Text("\(model.pendingCloseRequest?.title ?? "Este ficheiro") tem JSON inválido. Corrija o conteúdo antes de guardar ou feche sem guardar.")
+                Text("\(model.pendingCloseRequest?.title ?? "This file") contains invalid JSON. Fix the content before saving, or close without saving.")
             }
         }
         .sheet(item: $model.pendingLatexRootSelection) { request in
@@ -66,6 +64,30 @@ struct RootView: View {
     }
 }
 
+private struct ResizableSidebarView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var liveWidth: Double?
+
+    private var displayedWidth: Double {
+        liveWidth ?? model.sidebarWidth
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SidebarView()
+                .frame(width: displayedWidth)
+            SidebarResizeHandle(
+                width: displayedWidth,
+                onChanged: { liveWidth = $0 },
+                onEnded: { width in
+                    model.setSidebarWidth(width)
+                    liveWidth = nil
+                }
+            )
+        }
+    }
+}
+
 struct LatexRootSelectionView: View {
     @EnvironmentObject private var model: AppModel
     let request: LatexRootSelectionRequest
@@ -74,12 +96,12 @@ struct LatexRootSelectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.md) {
             VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                Text("Escolher documento principal LaTeX")
+                Text("Choose Main LaTeX Document")
                     .font(.title2.weight(.semibold))
                 Text(
                     request.candidates.isEmpty
-                        ? "Não foi possível identificar automaticamente o documento principal. A escolha manual fica guardada para as próximas compilações."
-                        : "Foram encontrados vários documentos principais neste projeto. A escolha fica guardada para as próximas compilações."
+                        ? "The main document could not be identified automatically. Your manual choice will be saved for future compilations."
+                        : "Several main documents were found in this project. Your choice will be saved for future compilations."
                 )
                     .font(BPTokens.Typography.body)
                     .foregroundStyle(BPTokens.Color.muted)
@@ -87,10 +109,10 @@ struct LatexRootSelectionView: View {
 
             if request.candidates.isEmpty {
                 VStack(alignment: .leading, spacing: BPTokens.Spacing.sm) {
-                    Text("Não foi encontrado automaticamente nenhum documento principal nesta pasta.")
+                    Text("No main document was found automatically in this folder.")
                         .font(BPTokens.Typography.body)
                         .foregroundStyle(BPTokens.Color.muted)
-                    Button("Escolher ficheiro principal…") {
+                    Button("Choose Main File…") {
                         model.chooseLatexRootFile()
                     }
                     .buttonStyle(.borderedProminent)
@@ -131,10 +153,10 @@ struct LatexRootSelectionView: View {
 
             HStack {
                 Spacer()
-                Button("Cancelar") {
+                Button("Cancel") {
                     model.cancelLatexRootSelection()
                 }
-                Button("Escolher") {
+                Button("Choose") {
                     guard let selectedRoot else { return }
                     model.chooseLatexRoot(selectedRoot)
                 }
@@ -163,9 +185,9 @@ struct LatexExternalDependencyView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.md) {
             VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                Text("Confirmar dependências externas")
+                Text("Confirm External Dependencies")
                     .font(.title2.weight(.semibold))
-                Text("O documento principal referencia ficheiros fora da pasta do projeto. A compilação só continuará depois desta confirmação.")
+                Text("The main document references files outside the project folder. Compilation will continue only after you confirm.")
                     .font(BPTokens.Typography.body)
                     .foregroundStyle(BPTokens.Color.muted)
             }
@@ -177,7 +199,7 @@ struct LatexExternalDependencyView: View {
                             Text(dependency.url.path)
                                 .font(BPTokens.Typography.code)
                                 .textSelection(.enabled)
-                            Text("Referenciado por \(dependency.sourceURL.lastPathComponent)")
+                            Text("Referenced by \(dependency.sourceURL.lastPathComponent)")
                                 .font(BPTokens.Typography.caption)
                                 .foregroundStyle(BPTokens.Color.muted)
                         }
@@ -191,10 +213,10 @@ struct LatexExternalDependencyView: View {
 
             HStack {
                 Spacer()
-                Button("Cancelar") {
+                Button("Cancel") {
                     model.cancelLatexExternalDependencies()
                 }
-                Button("Permitir e compilar") {
+                Button("Allow and Compile") {
                     model.approveLatexExternalDependencies()
                 }
                 .buttonStyle(.borderedProminent)
@@ -206,14 +228,22 @@ struct LatexExternalDependencyView: View {
 }
 
 struct SidebarResizeHandle: View {
-    @EnvironmentObject private var model: AppModel
+    let width: Double
+    let onChanged: (Double) -> Void
+    let onEnded: (Double) -> Void
+
     @State private var initialWidth: Double?
     @State private var isHovering = false
 
     var body: some View {
         Rectangle()
-            .fill(isHovering ? Color.accentColor.opacity(0.45) : BPTokens.Color.separator)
+            .fill(.clear)
             .frame(width: 5)
+            .overlay {
+                Rectangle()
+                    .fill(isHovering ? Color.accentColor.opacity(0.45) : BPTokens.Color.separator)
+                    .frame(width: 1)
+            }
             .contentShape(Rectangle())
             .onHover { hovering in
                 isHovering = hovering
@@ -224,20 +254,33 @@ struct SidebarResizeHandle: View {
                 }
             }
             .gesture(
-                DragGesture(minimumDistance: 1)
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         if initialWidth == nil {
-                            initialWidth = model.sidebarWidth
+                            initialWidth = width
                         }
-                        guard let initialWidth else { return }
-                        model.resizeSidebar(to: initialWidth + value.translation.width)
+                        guard let baseWidth = initialWidth else { return }
+                        let minWidth = Double(BPTokens.Size.sidebarMin)
+                        let maxWidth = Double(BPTokens.Size.sidebarMax)
+                        let resizedWidth = min(
+                            max(baseWidth + value.translation.width, minWidth),
+                            maxWidth
+                        )
+                        onChanged(resizedWidth)
                     }
-                    .onEnded { _ in
-                        model.setSidebarWidth(model.sidebarWidth)
+                    .onEnded { value in
+                        guard let baseWidth = initialWidth else { return }
+                        let minWidth = Double(BPTokens.Size.sidebarMin)
+                        let maxWidth = Double(BPTokens.Size.sidebarMax)
+                        let resizedWidth = min(
+                            max(baseWidth + value.translation.width, minWidth),
+                            maxWidth
+                        )
+                        onEnded(resizedWidth)
                         initialWidth = nil
                     }
             )
-            .help("Redimensionar sidebar")
+            .help("Resize Sidebar")
     }
 }
 
@@ -248,19 +291,19 @@ struct TopBarView: View {
         HStack(spacing: BPTokens.Spacing.sm) {
             ToolbarIconButton(
                 systemName: "sidebar.left",
-                help: model.sidebarVisible ? "Esconder sidebar" : "Mostrar sidebar"
+                help: model.sidebarVisible ? "Hide Sidebar" : "Show Sidebar"
             ) {
                 model.setSidebarVisible(!model.sidebarVisible)
             }
 
-            ToolbarIconButton(systemName: "folder", help: "Abrir pasta") {
+            ToolbarIconButton(systemName: "folder", help: "Open Folder") {
                 model.openFolder()
             }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.rootURL?.lastPathComponent ?? "bp-viewer")
                     .font(BPTokens.Typography.title)
-                Text(model.rootURL?.path ?? "Nenhuma pasta aberta")
+                Text(model.rootURL?.path ?? "No Folder Open")
                     .font(BPTokens.Typography.caption)
                     .foregroundStyle(BPTokens.Color.muted)
                     .lineLimit(1)
@@ -274,7 +317,7 @@ struct TopBarView: View {
                 || model.activeTab?.kind == .pdf
                 || model.activeTab?.kind == .docx {
                 if model.activeTab?.kind == .latex {
-                    ToolbarIconButton(systemName: "list.bullet.rectangle", help: "Escolher documento principal LaTeX") {
+                    ToolbarIconButton(systemName: "list.bullet.rectangle", help: "Choose Main LaTeX Document") {
                         model.changeLatexRoot()
                     }
                     Menu {
@@ -291,31 +334,31 @@ struct TopBarView: View {
                             .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
                     }
                     .menuStyle(.borderlessButton)
-                    .help("Configuração avançada LaTeX")
+                    .help("Advanced LaTeX Settings")
                 }
                 if model.activeTab?.kind == .markdown || model.activeTab?.kind == .latex || model.activeTab?.kind == .pdf {
-                    ToolbarIconButton(systemName: "magnifyingglass", help: "Pesquisar no preview") {
+                    ToolbarIconButton(systemName: "magnifyingglass", help: "Find in Preview") {
                         model.showFindBar()
                     }
                 }
-                ToolbarIconButton(systemName: "minus.magnifyingglass", help: "Diminuir zoom") {
+                ToolbarIconButton(systemName: "minus.magnifyingglass", help: "Zoom Out") {
                     model.zoomOut()
                 }
                 Button("\(Int(model.previewZoom * 100))%", action: model.resetPreviewZoom)
                     .buttonStyle(.plain)
                     .font(BPTokens.Typography.caption)
                     .frame(minWidth: 42)
-                    .help("Repor zoom")
-                ToolbarIconButton(systemName: "plus.magnifyingglass", help: "Aumentar zoom") {
+                    .help("Reset Zoom")
+                ToolbarIconButton(systemName: "plus.magnifyingglass", help: "Zoom In") {
                     model.zoomIn()
                 }
             }
 
-            ToolbarIconButton(systemName: "arrow.clockwise", help: "Atualizar preview") {
+            ToolbarIconButton(systemName: "arrow.clockwise", help: "Refresh Preview") {
                 model.refreshActiveTab()
             }
 
-            ToolbarIconButton(systemName: model.theme == .dark ? "sun.max" : "moon", help: "Alternar tema") {
+            ToolbarIconButton(systemName: model.theme == .dark ? "sun.max" : "moon", help: "Toggle Theme") {
                 model.cycleTheme()
             }
 

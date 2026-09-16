@@ -8,13 +8,13 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("Ficheiros", systemImage: "folder.fill")
+                Label("Files", systemImage: "folder.fill")
                     .font(BPTokens.Typography.title)
                 Spacer()
                 if model.isScanningTree || model.isFilteringTree {
                     ProgressView()
                         .controlSize(.small)
-                        .help(model.isScanningTree ? "A indexar a pasta…" : "A pesquisar ficheiros…")
+                        .help(model.isScanningTree ? "Indexing folder…" : "Searching files…")
                 }
                 Text(model.nodes.count, format: .number)
                     .font(BPTokens.Typography.caption)
@@ -24,7 +24,7 @@ struct SidebarView: View {
             .padding(.top, BPTokens.Spacing.md)
             .padding(.bottom, BPTokens.Spacing.sm)
 
-            Toggle("Apenas ficheiros suportados", isOn: Binding(
+            Toggle("Supported files only", isOn: Binding(
                 get: { model.compatibleOnly },
                 set: { model.updateCompatibleOnly($0) }
             ))
@@ -33,7 +33,7 @@ struct SidebarView: View {
             .padding(.horizontal, BPTokens.Spacing.md)
             .padding(.bottom, BPTokens.Spacing.sm)
 
-            TextField("Pesquisar ficheiros", text: Binding(
+            TextField("Search files", text: Binding(
                 get: { model.treeQuery },
                 set: { model.updateTreeQuery($0) }
             ))
@@ -46,16 +46,16 @@ struct SidebarView: View {
             if model.rootURL == nil {
                 EmptyStateView(
                     systemImage: "folder",
-                    title: "Nenhuma pasta aberta",
-                    message: "Abre a pasta da tese para começar.",
-                    actionTitle: "Abrir pasta",
+                    title: "No Folder Open",
+                    message: "Open the thesis folder to get started.",
+                    actionTitle: "Open Folder",
                     action: model.openFolder
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if model.isScanningTree && model.nodes.isEmpty {
                 VStack(spacing: BPTokens.Spacing.sm) {
                     ProgressView()
-                    Text("A indexar a pasta…")
+                    Text("Indexing folder…")
                         .font(BPTokens.Typography.caption)
                         .foregroundStyle(BPTokens.Color.muted)
                 }
@@ -140,7 +140,7 @@ struct FileTreeRow: View {
                         HStack(spacing: BPTokens.Spacing.xs) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("A carregar…")
+                            Text("Loading…")
                                 .font(BPTokens.Typography.caption)
                                 .foregroundStyle(BPTokens.Color.muted)
                         }
@@ -166,7 +166,7 @@ struct FileTreeRow: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contextMenu {
-            Button("Copiar path") { model.copyPath(node.url) }
+            Button("Copy Path") { model.copyPath(node.url) }
         }
     }
 

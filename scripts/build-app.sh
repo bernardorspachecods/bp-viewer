@@ -20,5 +20,5 @@ cp "$binary_directory/BPViewer" "$app_bundle/Contents/MacOS/BPViewer"
 cp "$repo_root/Resources/BPViewer-Info.plist" "$app_bundle/Contents/Info.plist"
 cp "$repo_root/Resources/BPViewer.icns" "$app_bundle/Contents/Resources/BPViewer.icns"
 
-print "Criada: $app_bundle"
-print "Abrir ficheiro: open -a '$app_bundle' /caminho/para/main.tex"
+print "Created: $app_bundle"
+print "Open file: open -a '$app_bundle' /path/to/main.tex"

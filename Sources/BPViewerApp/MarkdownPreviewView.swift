@@ -173,23 +173,23 @@ private struct MarkdownEditToolbar: View {
     var body: some View {
         HStack(spacing: BPTokens.Spacing.sm) {
             Label(
-                session.mode == .split ? "Edição dividida" : "Edição Markdown",
+                session.mode == .split ? "Split Editing" : "Markdown Editing",
                 systemImage: session.mode == .split ? "rectangle.split.2x1" : "chevron.left.forwardslash.chevron.right"
             )
             .font(BPTokens.Typography.caption.weight(.medium))
 
-            Button(session.mode == .split ? "Edição Markdown" : "Abrir split view") {
+            Button(session.mode == .split ? "Markdown Editing" : "Open Split View") {
                 onToggleMarkdownMode()
             }
             .buttonStyle(.bordered)
 
             Button(action: onUndo) {
-                Label("Desfazer", systemImage: "arrow.uturn.backward")
+                Label("Undo", systemImage: "arrow.uturn.backward")
             }
             .disabled(session.undoSources.isEmpty)
 
             Button(action: onRedo) {
-                Label("Refazer", systemImage: "arrow.uturn.forward")
+                Label("Redo", systemImage: "arrow.uturn.forward")
             }
             .disabled(session.redoSources.isEmpty)
 
@@ -199,7 +199,7 @@ private struct MarkdownEditToolbar: View {
                 .font(BPTokens.Typography.caption)
                 .foregroundStyle(session.saveState == .conflict ? BPTokens.Color.warning : BPTokens.Color.muted)
 
-            Button("Concluir", action: onEndEditing)
+            Button("Done", action: onEndEditing)
                 .buttonStyle(.borderedProminent)
         }
         .padding(.horizontal, BPTokens.Spacing.md)
@@ -210,6 +210,7 @@ private struct MarkdownEditToolbar: View {
 
 
 private struct MarkdownSourceEditor: View {
+    @Environment(\.colorScheme) private var colorScheme
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
@@ -225,7 +226,10 @@ private struct MarkdownSourceEditor: View {
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
                     monospaced: false,
-                    syntaxHighlightPalette: nil,
+                    syntaxHighlighting: .markdown(
+                        MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
+                    ),
+                    markdownShortcutsEnabled: true,
                     onSourceChanged: onSourceChanged,
                     onEndEditing: { _ in onEndEditing() }
                 )
@@ -252,16 +256,16 @@ private struct MarkdownConflictView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
-            Text("Este documento também foi alterado fora do bp-viewer.")
+            Text("This document was also changed outside bp-viewer.")
                 .font(BPTokens.Typography.caption.weight(.medium))
             HStack(spacing: BPTokens.Spacing.sm) {
-                conflictColumn(title: "As minhas alterações", source: conflict.localSource)
-                conflictColumn(title: "Versão externa", source: conflict.externalSource)
+                conflictColumn(title: "My Changes", source: conflict.localSource)
+                conflictColumn(title: "External Version", source: conflict.externalSource)
             }
             HStack {
                 Spacer()
-                Button("Usar versão externa", action: onUseExternal)
-                Button("Manter as minhas alterações", action: onKeepLocal)
+                Button("Use External Version", action: onUseExternal)
+                Button("Keep My Changes", action: onKeepLocal)
                     .buttonStyle(.borderedProminent)
             }
         }

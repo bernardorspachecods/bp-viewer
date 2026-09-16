@@ -9,8 +9,8 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .light: "Claro"
-        case .dark: "Escuro"
+        case .light: "Light"
+        case .dark: "Dark"
         }
     }
 
@@ -25,13 +25,13 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
 extension PreviewStatus {
     var label: String {
         switch self {
-        case .idle: "Sem preview"
-        case .updating: "A atualizar"
-        case .ready: "Atualizado"
-        case .stale: "Desatualizado"
-        case .failed: "Erro"
-        case .unavailable: "Indisponível"
-        case .cancelled: "Cancelado"
+        case .idle: "No Preview"
+        case .updating: "Updating"
+        case .ready: "Updated"
+        case .stale: "Out of Date"
+        case .failed: "Error"
+        case .unavailable: "Unavailable"
+        case .cancelled: "Cancelled"
         case .timeout: "Timeout"
         }
     }
@@ -64,11 +64,11 @@ extension PreviewStatus {
 extension MarkdownSaveState {
     var label: String {
         switch self {
-        case .saved: "Guardado"
-        case .unsaved: "Alterações por guardar"
-        case .saving: "A guardar…"
-        case .conflict: "Conflito externo"
-        case .failed: "Não guardado"
+        case .saved: "Saved"
+        case .unsaved: "Unsaved Changes"
+        case .saving: "Saving…"
+        case .conflict: "External Conflict"
+        case .failed: "Not Saved"
         }
     }
 }

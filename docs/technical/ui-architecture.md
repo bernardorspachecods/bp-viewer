@@ -63,7 +63,8 @@ ações de fecho. A ordenação, unicidade e tab ativa são mantidas por
 renderização e os erros. `MarkdownWebPreview` contém a `WKWebView`, o
 JavaScript, a navegação e a posição de leitura. `SourceEditorView` contém o
 editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
-source Markdown; a toolbar alterna entre o editor integral e o split view, que
+source Markdown, cujo syntax highlighting usa uma paleta própria para os temas
+claro e escuro; a toolbar alterna entre o editor integral e o split view, que
 mantém o source à esquerda e o preview live à direita.
 
 ### PDF

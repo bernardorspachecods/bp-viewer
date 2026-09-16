@@ -232,7 +232,7 @@ final class AppModel: ObservableObject {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "Abrir pasta"
+        panel.prompt = "Open Folder"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         pendingOpenURLs = []
@@ -1117,7 +1117,7 @@ final class AppModel: ObservableObject {
         if let texType = UTType(filenameExtension: "tex") {
             panel.allowedContentTypes = [texType]
         }
-        panel.prompt = "Escolher root"
+        panel.prompt = "Choose Root"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         chooseLatexRoot(url)
     }

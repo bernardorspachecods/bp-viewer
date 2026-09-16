@@ -26,7 +26,7 @@ struct DocumentOutlineToolbar: View {
         HStack {
             Button(action: onToggle) {
                 Label(
-                    isVisible ? "Esconder índice" : "Mostrar índice",
+                    isVisible ? "Hide Outline" : "Show Outline",
                     systemImage: "list.bullet.rectangle"
                 )
             }
@@ -41,7 +41,7 @@ struct DocumentOutlineToolbar: View {
                 .buttonStyle(.borderless)
                 .focusable(false)
                 .contentShape(Rectangle())
-                .help("Criar snapshot do preview")
+                .help("Create Preview Snapshot")
             }
         }
         .padding(.horizontal, BPTokens.Spacing.md)

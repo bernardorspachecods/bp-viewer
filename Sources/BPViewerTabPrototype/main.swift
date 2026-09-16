@@ -53,7 +53,7 @@ final class TabPrototypeViewController: NSViewController {
         let title = NSTextField(labelWithString: "Native macOS tab surfaces")
         title.font = .systemFont(ofSize: 20, weight: .semibold)
 
-        let instructions = NSTextField(labelWithString: "Experimenta clicar, arrastar e reordenar as tabs. Compara diretamente com o Terminal.")
+        let instructions = NSTextField(labelWithString: "Try clicking, dragging, and reordering the tabs. Compare directly with Terminal.")
         instructions.textColor = .secondaryLabelColor
         instructions.lineBreakMode = .byWordWrapping
 
@@ -144,7 +144,7 @@ final class SampleContentView: NSView {
         heading.font = .systemFont(ofSize: 28, weight: .semibold)
         heading.translatesAutoresizingMaskIntoConstraints = false
 
-        let subtitle = NSTextField(labelWithString: "Conteúdo fictício para testar seleção, largura, drag-and-drop e animação.")
+        let subtitle = NSTextField(labelWithString: "Placeholder content for testing selection, width, drag-and-drop, and animation.")
         subtitle.textColor = .secondaryLabelColor
         subtitle.translatesAutoresizingMaskIntoConstraints = false
 

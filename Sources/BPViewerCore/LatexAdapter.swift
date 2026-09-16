@@ -82,36 +82,36 @@ public enum LatexRenderError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case let .rootIsNotFile(url):
-            return "O root LaTeX não é um ficheiro: \(url.path)"
+            return "The LaTeX root is not a file: \(url.path)"
         case let .rootOutsideProject(url):
-            return "O root LaTeX está fora da pasta do projeto: \(url.path)"
+            return "The LaTeX root is outside the project folder: \(url.path)"
         case let .projectRootIsNotDirectory(url):
-            return "A pasta do projeto LaTeX não existe ou não é uma pasta: \(url.path)"
+            return "The LaTeX project folder does not exist or is not a folder: \(url.path)"
         case let .rootSelectionRequired(candidates):
             if candidates.isEmpty {
-                return "Não foi encontrado nenhum documento principal LaTeX nesta pasta."
+                return "No main LaTeX document was found in this folder."
             }
             let paths = candidates.map(\.url.path).joined(separator: ", ")
-            return "É necessário escolher o documento principal LaTeX entre: \(paths)"
+            return "You must choose the main LaTeX document from: \(paths)"
         case let .externalDependenciesRequireConfirmation(_, dependencies):
             let paths = dependencies.map(\.url.path).joined(separator: ", ")
-            return "O documento LaTeX referencia ficheiros fora da pasta do projeto e requer confirmação: \(paths)"
+            return "The LaTeX document references files outside the project folder and requires confirmation: \(paths)"
         case let .toolUnavailable(name):
-            return "Não foi encontrada a ferramenta LaTeX '\(name)'. Instala uma distribuição LaTeX local e tenta novamente."
+            return "The LaTeX tool '\(name)' was not found. Install a local LaTeX distribution and try again."
         case let .compilationFailed(result):
             let output = result.combinedOutput
             if output.isEmpty {
-                return "A compilação LaTeX falhou (código \(result.exitCode.map(String.init) ?? "desconhecido"))."
+                return "LaTeX compilation failed (code \(result.exitCode.map(String.init) ?? "unknown"))."
             }
-            return "A compilação LaTeX falhou:\n\(output)"
+            return "LaTeX compilation failed:\n\(output)"
         case let .outputPDFMissing(url, result):
-            return "A compilação terminou sem produzir o PDF esperado em \(url.path).\n\(result.combinedOutput)"
+            return "Compilation finished without producing the expected PDF at \(url.path).\n\(result.combinedOutput)"
         case let .outputPDFUnreadable(url):
-            return "Não foi possível ler o PDF compilado: \(url.path)"
+            return "Unable to read the compiled PDF: \(url.path)"
         case let .outputPDFInvalid(url):
-            return "A ferramenta produziu um ficheiro que não é um PDF válido: \(url.path)"
+            return "The tool produced a file that is not a valid PDF: \(url.path)"
         case let .workspaceFailed(message):
-            return "Não foi possível preparar o workspace temporário LaTeX: \(message)"
+            return "Unable to prepare the temporary LaTeX workspace: \(message)"
         }
     }
 }
@@ -351,9 +351,9 @@ public enum LatexShellEscapeMode: String, CaseIterable, Codable, Sendable {
 
     public var label: String {
         switch self {
-        case .disabled: "Desativado"
-        case .restricted: "Restrito"
-        case .enabled: "Ativado"
+        case .disabled: "Disabled"
+        case .restricted: "Restricted"
+        case .enabled: "Enabled"
         }
     }
 }

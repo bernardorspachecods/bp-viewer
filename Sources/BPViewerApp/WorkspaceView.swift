@@ -145,11 +145,11 @@ struct TabItemView: View {
             }
         }
         .contextMenu {
-            Button("Copiar path") { model.copyPath(tab.url) }
+            Button("Copy Path") { model.copyPath(tab.url) }
             Divider()
-            Button("Fechar tab") { model.closeTab(tab) }
-            Button("Fechar as outras") { model.closeOtherTabs(keeping: tab) }
-            Button("Fechar as tabs à direita") { model.closeTabsToRight(of: tab) }
+            Button("Close Tab") { model.closeTab(tab) }
+            Button("Close Other Tabs") { model.closeOtherTabs(keeping: tab) }
+            Button("Close Tabs to the Right") { model.closeTabsToRight(of: tab) }
         }
     }
 
@@ -175,10 +175,10 @@ struct DocumentSurfaceView: View {
             } else {
                 EmptyStateView(
                     systemImage: "doc.text.magnifyingglass",
-                    title: "Nenhum documento selecionado",
+                    title: "No Document Selected",
                     message: model.rootURL == nil
-                        ? "Abre uma pasta e escolhe um ficheiro Markdown, LaTeX, JSON, DOCX ou PDF."
-                        : "Escolhe um ficheiro na árvore para abrir uma tab."
+                        ? "Open a folder and choose a Markdown, LaTeX, JSON, DOCX, or PDF file."
+                        : "Choose a file in the tree to open a tab."
                 )
             }
         }
@@ -207,7 +207,7 @@ struct PreviewPane: View {
                         .font(.title2.weight(.semibold))
                         .textSelection(.enabled)
                         .contextMenu {
-                            Button("Copiar título") { model.copyText(tab.title) }
+                            Button("Copy Title") { model.copyText(tab.title) }
                         }
                     CopyTextButton(text: tab.title, isVisible: isTitleRowHovered) {
                         model.copyText($0)
@@ -224,9 +224,9 @@ struct PreviewPane: View {
                         .layoutPriority(1)
                         .textSelection(.enabled)
                         .contextMenu {
-                            Button("Copiar path") { model.copyPath(tab.url) }
+                            Button("Copy Path") { model.copyPath(tab.url) }
                         }
-                    CopyTextButton(text: path, isVisible: isPathRowHovered, helpText: "Copiar path") {
+                    CopyTextButton(text: path, isVisible: isPathRowHovered, helpText: "Copy Path") {
                         model.copyText($0)
                     }
                 }
@@ -236,7 +236,7 @@ struct PreviewPane: View {
             VStack(alignment: .trailing, spacing: BPTokens.Spacing.xxs) {
                 StatusBadge(status: tab.status)
                 if let updatedAt = tab.previewUpdatedAt {
-                    Text("Atualizado em \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                    Text("Updated \(updatedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(BPTokens.Typography.caption)
                         .foregroundStyle(BPTokens.Color.muted)
                 }
@@ -428,7 +428,7 @@ struct PreviewPane: View {
                 PreviewErrorBanner(
                     message: errorMessage,
                     showingStalePreview: showingStalePreview,
-                    title: "JSON inválido — não guardado"
+                    title: "Invalid JSON — Not Saved"
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, BPTokens.Spacing.md)
@@ -458,27 +458,27 @@ struct PreviewPane: View {
     }
 
     private var emptyStateTitle: String {
-        guard tab.errorMessage == nil else { return "Não foi possível gerar o preview" }
+        guard tab.errorMessage == nil else { return "Unable to Generate Preview" }
         return switch tab.kind {
-        case .latex: "A preparar preview LaTeX…"
-        case .json: "A preparar preview JSON…"
-        case .pdf: "A preparar preview PDF…"
-        case .docx: "A preparar preview Word…"
-        case .markdown, .other: "A preparar preview…"
+        case .latex: "Preparing LaTeX Preview…"
+        case .json: "Preparing JSON Preview…"
+        case .pdf: "Preparing PDF Preview…"
+        case .docx: "Preparing Word Preview…"
+        case .markdown, .other: "Preparing Preview…"
         }
     }
 
     private var emptyStateMessage: String {
         guard tab.errorMessage == nil else {
-            return "Consulta os detalhes acima, corrige o problema e tenta novamente."
+            return "Review the details above, fix the problem, and try again."
         }
         return switch tab.kind {
-        case .latex: "A compilar o documento principal com a instalação LaTeX local."
-        case .json: "A validar e formatar o ficheiro JSON."
-        case .pdf: "A ler o ficheiro PDF."
-        case .docx: "A preparar a visualização do ficheiro Word."
-        case .markdown: "A ler o ficheiro Markdown e a gerar HTML."
-        case .other: "A preparar o ficheiro."
+        case .latex: "Compiling the main document with the local LaTeX installation."
+        case .json: "Validating and formatting the JSON file."
+        case .pdf: "Reading the PDF file."
+        case .docx: "Preparing the Word document view."
+        case .markdown: "Reading the Markdown file and generating HTML."
+        case .other: "Preparing the file."
         }
     }
 }
@@ -492,18 +492,18 @@ struct PreviewFindBar: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(BPTokens.Color.muted)
 
-            TextField("Pesquisar no preview", text: $model.findQuery)
+            TextField("Find in Preview", text: $model.findQuery)
                 .textFieldStyle(.roundedBorder)
                 .focused($isSearchFocused)
                 .onSubmit { model.findNext() }
 
-            ToolbarIconButton(systemName: "chevron.up", help: "Resultado anterior") {
+            ToolbarIconButton(systemName: "chevron.up", help: "Previous Result") {
                 model.findPrevious()
             }
-            ToolbarIconButton(systemName: "chevron.down", help: "Resultado seguinte") {
+            ToolbarIconButton(systemName: "chevron.down", help: "Next Result") {
                 model.findNext()
             }
-            ToolbarIconButton(systemName: "xmark", help: "Fechar pesquisa") {
+            ToolbarIconButton(systemName: "xmark", help: "Close Search") {
                 model.hideFindBar()
             }
         }
@@ -540,7 +540,7 @@ struct PreviewErrorBanner: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(BPTokens.Color.warning)
                 VStack(alignment: .leading, spacing: BPTokens.Spacing.xxs) {
-                    Text(title ?? (showingStalePreview ? "Erro — a mostrar o último preview" : "Erro ao gerar preview"))
+                    Text(title ?? (showingStalePreview ? "Error — Showing Last Preview" : "Error Generating Preview"))
                         .font(BPTokens.Typography.caption.weight(.semibold))
                 }
                 Text(message)
@@ -556,10 +556,10 @@ struct PreviewErrorBanner: View {
                     Image(systemName: didCopy ? "checkmark.circle" : "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
-                .help(didCopy ? "Copiado" : "Copiar mensagem")
+                .help(didCopy ? "Copied" : "Copy Message")
                 Spacer()
                 if let onRetry {
-                    Button("Tentar novamente", action: onRetry)
+                    Button("Try Again", action: onRetry)
                         .buttonStyle(.borderless)
                 }
             }

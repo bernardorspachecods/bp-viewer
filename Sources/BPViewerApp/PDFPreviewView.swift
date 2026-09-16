@@ -125,7 +125,7 @@ private struct PDFOutlineEntry: Identifiable {
 
             let entry = PDFOutlineEntry(
                 id: id,
-                title: title.isEmpty ? "Sem título" : title,
+                title: title.isEmpty ? "Untitled" : title,
                 level: level,
                 pageIndex: pageIndex,
             )

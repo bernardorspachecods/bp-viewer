@@ -26,10 +26,10 @@ build_and_start() {
     stop_app
     print "[bp-viewer] a compilar…"
     if ! (cd "$repo_root" && swift build --product BPViewer); then
-        print -u2 "[bp-viewer] build falhou; a app será reiniciada quando houver uma nova alteração"
+        print -u2 "[bp-viewer] build failed; the app will restart when a new change is detected"
         return 1
     fi
-    print "[bp-viewer] a iniciar a app"
+    print "[bp-viewer] starting the app"
     "$app_binary" &
     app_pid=$!
 }
@@ -39,7 +39,7 @@ trap stop_app EXIT INT TERM
 last_snapshot="$(snapshot)"
 build_and_start || exit 1
 
-print "[bp-viewer] modo de desenvolvimento ativo; alterações em Sources/ reiniciam a app"
+print "[bp-viewer] development mode active; changes in Sources/ restart the app"
 
 while true; do
     sleep 1

@@ -113,8 +113,8 @@ private struct Runner {
             expect(false, "JSON errors report line and character")
         } catch let error as JSONPreviewError {
             expect(
-                error.localizedDescription.contains("linha")
-                    && error.localizedDescription.contains("carácter"),
+                error.localizedDescription.contains("line")
+                    && error.localizedDescription.contains("character"),
                 "JSON errors report line and character"
             )
         } catch {
@@ -133,6 +133,96 @@ private struct Runner {
         expect(
             invalidSyntaxTokens.contains(where: { $0.kind == .invalid }),
             "JSON syntax highlighting marks invalid characters"
+        )
+
+        let markdownSyntaxSource = """
+        # Thesis foundation
+
+        - [fonte](https://example.com) — **forte**, *ênfase*, ~~riscado~~ e `código`
+        > citação
+
+        ```swift
+        let value = 1
+        ```
+        """
+        let markdownSyntaxKinds = Set(MarkdownSyntaxHighlighter().tokenize(markdownSyntaxSource).map(\.kind))
+        expect(
+            markdownSyntaxKinds.isSuperset(of: [
+                .heading,
+                .listMarker,
+                .linkText,
+                .linkDestination,
+                .strong,
+                .emphasis,
+                .strikethrough,
+                .code,
+                .quoteMarker
+            ]),
+            "Markdown syntax highlighting tokenizes editor markup"
+        )
+        let markdownFrontMatter = "---\ntitle: Thesis\n---\n# Content"
+        expect(
+            MarkdownSyntaxHighlighter().tokenize(markdownFrontMatter).contains(where: { $0.kind == .frontMatter }),
+            "Markdown syntax highlighting colors front matter"
+        )
+        expect(
+            MarkdownSyntaxColorPalette(isDark: false).foreground != MarkdownSyntaxColorPalette(isDark: true).foreground,
+            "Markdown syntax highlighting has light and dark palettes"
+        )
+        expect(
+            MarkdownSyntaxColorPalette.light.emphasis == MarkdownSyntaxColorPalette.light.heading
+                && MarkdownSyntaxColorPalette.light.strong == MarkdownSyntaxColorPalette.light.heading
+                && MarkdownSyntaxColorPalette.dark.emphasis == MarkdownSyntaxColorPalette.dark.heading
+                && MarkdownSyntaxColorPalette.dark.strong == MarkdownSyntaxColorPalette.dark.heading,
+            "Markdown emphasis uses the heading blue"
+        )
+
+        let boldShortcut = MarkdownShortcutFormatter.apply(
+            .bold,
+            to: "texto",
+            selectionUTF16Offset: 0,
+            selectionUTF16Length: 5
+        )
+        expect(
+            boldShortcut.source == "**texto**"
+                && boldShortcut.selectionUTF16Offset == 2
+                && boldShortcut.selectionUTF16Length == 5,
+            "Markdown Cmd+B wraps selected text"
+        )
+        let italicShortcut = MarkdownShortcutFormatter.apply(
+            .italic,
+            to: "texto",
+            selectionUTF16Offset: 5,
+            selectionUTF16Length: 0
+        )
+        expect(
+            italicShortcut.source == "texto**"
+                && italicShortcut.selectionUTF16Offset == 6,
+            "Markdown Cmd+I inserts empty formatting"
+        )
+        let unwrapShortcut = MarkdownShortcutFormatter.apply(
+            .bold,
+            to: "**texto**",
+            selectionUTF16Offset: 2,
+            selectionUTF16Length: 5
+        )
+        expect(
+            unwrapShortcut.source == "texto"
+                && unwrapShortcut.selectionUTF16Offset == 0
+                && unwrapShortcut.selectionUTF16Length == 5,
+            "Markdown formatting shortcuts toggle existing markup"
+        )
+        let codeShortcut = MarkdownShortcutFormatter.apply(
+            .code,
+            to: "texto",
+            selectionUTF16Offset: 0,
+            selectionUTF16Length: 5
+        )
+        expect(
+            codeShortcut.source == "`texto`"
+                && codeShortcut.selectionUTF16Offset == 1
+                && codeShortcut.selectionUTF16Length == 5,
+            "Markdown Cmd+K wraps selected text as inline code"
         )
 
         do {

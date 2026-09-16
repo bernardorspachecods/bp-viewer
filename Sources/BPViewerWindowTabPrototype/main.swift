@@ -63,11 +63,11 @@ final class TabCloseButton: NSButton {
     init(window: NSWindow) {
         windowToClose = window
         super.init(frame: NSRect(x: 0, y: 0, width: 18, height: 18))
-        image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Fechar tab")
+        image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")
         imagePosition = .imageOnly
         isBordered = false
         bezelStyle = .texturedRounded
-        toolTip = "Fechar tab"
+        toolTip = "Close Tab"
         target = self
         action = #selector(closeTab)
         setContentHuggingPriority(.required, for: .horizontal)
@@ -93,12 +93,12 @@ final class WindowTabContentView: NSView {
         heading.font = .systemFont(ofSize: 30, weight: .semibold)
         heading.translatesAutoresizingMaskIntoConstraints = false
 
-        let description = NSTextField(labelWithString: "NSWindowTab / NSWindowTabGroup — tenta arrastar esta tab, reordená-la e destacá-la para uma nova janela.")
+        let description = NSTextField(labelWithString: "NSWindowTab / NSWindowTabGroup — try dragging, reordering, and detaching this tab into a new window.")
         description.textColor = .secondaryLabelColor
         description.lineBreakMode = .byWordWrapping
         description.translatesAutoresizingMaskIntoConstraints = false
 
-        let hint = NSTextField(labelWithString: "Também testa ⌃Tab, fechar tabs e o menu nativo de tabs da janela.")
+        let hint = NSTextField(labelWithString: "Also try ⌃Tab, closing tabs, and the window's native tab menu.")
         hint.textColor = .secondaryLabelColor
         hint.translatesAutoresizingMaskIntoConstraints = false
 

@@ -330,7 +330,7 @@ private enum PDFPreviewError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .invalidDocument:
-            "O ficheiro não contém um PDF válido."
+            "The file does not contain a valid PDF."
         }
     }
 }
@@ -342,9 +342,9 @@ private enum DocumentRenderError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .missingProjectRoot:
-            "Não existe um workspace LaTeX ativo."
+            "There is no active LaTeX workspace."
         case .unsupportedKind:
-            "Este tipo de documento não tem um renderer disponível."
+            "No renderer is available for this document type."
         }
     }
 }

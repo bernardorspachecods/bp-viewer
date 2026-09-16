@@ -37,8 +37,9 @@ ou formatado.
 - O preview mantém o último resultado quando uma atualização falha e mostra o
   diagnóstico.
 - Um duplo clique no preview abre diretamente o editor de source Markdown.
-  A edição tem autosave, undo/redo, deteção de alterações externas e resolução
-  de conflitos.
+  A edição tem syntax highlighting adaptado aos temas claro/escuro, autosave,
+  undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações externas e
+  resolução de conflitos.
 - O editor pode ocupar a superfície inteira ou funcionar em split view, com o
   source Markdown à esquerda e o preview live à direita.
 

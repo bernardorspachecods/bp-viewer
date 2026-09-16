@@ -79,7 +79,7 @@ struct CopyTextButton: View {
     init(
         text: String,
         isVisible: Bool = true,
-        helpText: String = "Copiar texto",
+        helpText: String = "Copy Text",
         onCopy: @escaping (String) -> Void
     ) {
         self.text = text
@@ -105,7 +105,7 @@ struct CopyTextButton: View {
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
         .accessibilityHidden(!isVisible)
-        .help(didCopy ? "Texto copiado" : helpText)
+        .help(didCopy ? "Text Copied" : helpText)
     }
 }
 
