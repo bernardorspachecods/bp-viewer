@@ -12,6 +12,7 @@ struct MarkdownPreviewView: View {
     let markdownBlocks: [MarkdownEditableBlock]
     let editingSession: MarkdownEditSession?
     let diffSession: DocumentDiffSession?
+    let presentationMode: DocumentPresentationMode
     let onNavigate: (URL) -> Void
     let onMarkdownTextChanged: @MainActor @Sendable (String) -> Void
     let onMarkdownEditEvent: (MarkdownWebEditEvent) -> Void
@@ -60,6 +61,7 @@ struct MarkdownPreviewView: View {
                 onToggleOutline: { isOutlineVisible.toggle() },
                 onSnapshot: onSnapshot,
                 editingSession: editingSession,
+                presentationMode: presentationMode,
                 supportsSplitView: true,
                 onToggleSplitView: onToggleSplitView,
                 diffSession: diffSession,

@@ -917,8 +917,8 @@ final class AppModel: ObservableObject {
 
     func toggleDocumentDiff(mode: DocumentDiffMode, tabID: String) {
         guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        if tabs[initialIndex].diffSession?.mode == mode {
-            tabs[initialIndex].diffSession = nil
+        if tabs[initialIndex].presentationMode == .diff(mode) {
+            tabs[initialIndex].selectPresentationMode(.source)
             return
         }
 
@@ -944,15 +944,15 @@ final class AppModel: ObservableObject {
 
         switch documentDiffCoordinator.baseline(for: mode, url: tabs[index].url) {
         case let .available(baseline):
-            tabs[index].diffSession = DocumentDiffSession(
+            tabs[index].activateDiff(DocumentDiffSession(
                 mode: mode,
                 baseline: baseline
-            )
+            ))
         case let .unavailable(message):
-            tabs[index].diffSession = DocumentDiffSession(
+            tabs[index].activateDiff(DocumentDiffSession(
                 mode: mode,
                 unavailableMessage: message
-            )
+            ))
         }
     }
 
@@ -1320,14 +1320,16 @@ final class AppModel: ObservableObject {
 
     func toggleMarkdownSplitView(tabID: String) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
-        guard var session = tabs[index].markdownEditSession,
-              session.isEditing else {
+        guard tabs[index].markdownEditSession?.isEditing == true else {
             beginMarkdownEditing(tabID: tabID, mode: .split)
             return
         }
-        session.mode = session.mode == .markdown ? .split : .markdown
-        tabs[index].markdownEditSession = session
-        if session.mode == .split {
+        let nextMode: DocumentPresentationMode = tabs[index].presentationMode == .split
+            ? .source
+            : .split
+        tabs[index].selectPresentationMode(nextMode)
+        if nextMode == .split,
+           let session = tabs[index].markdownEditSession {
             renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
         }
     }

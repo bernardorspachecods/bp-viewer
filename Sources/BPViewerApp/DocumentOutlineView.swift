@@ -58,6 +58,7 @@ struct DocumentInteractionToolbar: View {
     let onToggleOutline: () -> Void
     let onSnapshot: (() -> Void)?
     let editingSession: MarkdownEditSession?
+    let presentationMode: DocumentPresentationMode
     let supportsSplitView: Bool
     let onToggleSplitView: (() -> Void)?
     let diffSession: DocumentDiffSession?
@@ -103,7 +104,7 @@ struct DocumentInteractionToolbar: View {
                     DocumentEditModeButton(
                         title: "Split View",
                         systemImage: "rectangle.split.2x1",
-                        isActive: editingSession?.mode == .split,
+                        isActive: presentationMode == .split,
                         action: onToggleSplitView
                     )
                 }
@@ -111,14 +112,14 @@ struct DocumentInteractionToolbar: View {
                 DocumentEditModeButton(
                     title: "Disk Diff",
                     systemImage: "externaldrive",
-                    isActive: diffSession?.mode == .savedOnDisk,
+                    isActive: presentationMode == .diff(.savedOnDisk),
                     action: { onToggleDiff(.savedOnDisk) }
                 )
 
                 DocumentEditModeButton(
                     title: "Git Diff",
                     systemImage: "arrow.triangle.branch",
-                    isActive: diffSession?.mode == .gitHead,
+                    isActive: presentationMode == .diff(.gitHead),
                     action: { onToggleDiff(.gitHead) }
                 )
             }

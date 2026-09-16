@@ -9,6 +9,7 @@ struct JSONPreviewView: View {
     let cursorUTF8Offset: Int?
     let editingSession: MarkdownEditSession?
     let diffSession: DocumentDiffSession?
+    let presentationMode: DocumentPresentationMode
     let onBeginEditing: (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onUndo: () -> Void
@@ -38,6 +39,7 @@ struct JSONPreviewView: View {
                 onToggleOutline: {},
                 onSnapshot: onSnapshot,
                 editingSession: editingSession,
+                presentationMode: presentationMode,
                 supportsSplitView: false,
                 onToggleSplitView: nil,
                 diffSession: diffSession,

@@ -273,6 +273,7 @@ struct PreviewPane: View {
                                     ? tab.markdownEditSession
                                     : nil,
                                 diffSession: tab.diffSession,
+                                presentationMode: tab.presentationMode,
                                 onNavigate: model.openPreviewURL,
                                 onMarkdownTextChanged: { text in
                                     model.updateMarkdownEditing(tabID: tab.id, text: text)
@@ -349,6 +350,7 @@ struct PreviewPane: View {
                                     ? tab.jsonEditSession
                                     : nil,
                                 diffSession: tab.diffSession,
+                                presentationMode: tab.presentationMode,
                                 onBeginEditing: { offset in
                                     model.beginJSONEditing(
                                         tabID: tab.id,

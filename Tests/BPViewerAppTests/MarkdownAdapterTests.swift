@@ -572,12 +572,23 @@ func togglesDocumentEditingModesDirectly() {
 
     model.toggleMarkdownSplitView(tabID: tabID)
     #expect(model.tabs[0].markdownEditSession?.mode == .split)
-    model.toggleMarkdownSplitView(tabID: tabID)
-    #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
 
     model.toggleDocumentDiff(mode: .savedOnDisk, tabID: tabID)
+    #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
+    #expect(model.tabs[0].presentationMode == .diff(.savedOnDisk))
     #expect(model.tabs[0].diffSession?.mode == .savedOnDisk)
+
     model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .diff(.gitHead))
+    #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
+
+    model.toggleMarkdownSplitView(tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .split)
+    #expect(model.tabs[0].diffSession == nil)
+
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
+    #expect(model.tabs[0].presentationMode == .diff(.gitHead))
     #expect(model.tabs[0].diffSession?.mode == .gitHead)
     model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
     #expect(model.tabs[0].diffSession == nil)

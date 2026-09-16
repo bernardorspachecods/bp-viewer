@@ -114,6 +114,12 @@ public struct CSVEditSession: Hashable, Sendable {
     }
 }
 
+public enum DocumentPresentationMode: Hashable, Sendable {
+    case source
+    case split
+    case diff(DocumentDiffMode)
+}
+
 public struct DocumentTab: Identifiable, Hashable, Sendable {
     public let id: String
     public let url: URL
@@ -214,6 +220,35 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
 
     public var subtitle: String {
         contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
+    }
+
+    public var presentationMode: DocumentPresentationMode {
+        if let diffSession {
+            return .diff(diffSession.mode)
+        }
+        if markdownEditSession?.isEditing == true,
+           markdownEditSession?.mode == .split {
+            return .split
+        }
+        return .source
+    }
+
+    public mutating func selectPresentationMode(_ mode: DocumentPresentationMode) {
+        switch mode {
+        case .source, .diff:
+            diffSession = nil
+            markdownEditSession?.mode = .markdown
+            jsonEditSession?.mode = .markdown
+        case .split:
+            diffSession = nil
+            markdownEditSession?.mode = .split
+        }
+    }
+
+    public mutating func activateDiff(_ diffSession: DocumentDiffSession) {
+        self.diffSession = diffSession
+        markdownEditSession?.mode = .markdown
+        jsonEditSession?.mode = .markdown
     }
 }
 
