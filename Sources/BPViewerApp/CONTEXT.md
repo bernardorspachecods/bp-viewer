@@ -1,17 +1,23 @@
 # Contexto de `BPViewerApp`
 
-Este target contém a superfície macOS e a coordenação de sessão do `bp-viewer`.
-`AppModel` liga filesystem, tabs, watchers, persistência e renderização; as
-views SwiftUI/AppKit apresentam a árvore, tabs, preview Markdown/JSON/PDF/DOCX,
-definições e snapshots.
+Este target contém a superfície macOS e a coordenação de apresentação do
+`bp-viewer`. `AppModel` mantém o estado observável, recebe intents e aplica
+eventos dos módulos de sessão; as views SwiftUI/AppKit apresentam a árvore,
+tabs, preview Markdown/JSON/PDF/DOCX, definições e snapshots.
 
-- `AppModel.swift`, `AppState.swift` e `Models.swift` — estado da sessão,
-  persistência e modelos específicos da UI.
+- `AppModel.swift` e `Models.swift` — estado publicado, intents e extensões
+  específicas da UI; a sessão/persistência vive em `BPViewerCore`.
+- `ActiveDocumentWatcher.swift` — adaptação AppKit/Darwin para eventos de
+  alterações em ficheiros ativos e dependências.
+- `WorkspaceTreeSession.swift`, `DocumentRenderCoordinator.swift` e
+  `DocumentEditCoordinator.swift` — seams de filesystem, renderização e
+  edição usados pelo coordenador da sessão.
 - `RootView.swift`, `WorkspaceView.swift`, `SidebarView.swift` e
   `DocumentOutlineView.swift` — composição da janela e navegação.
-- `MarkdownPreviewView.swift`, `JSONPreviewView.swift`, `PDFPreviewView.swift`
-  e `DocxPreviewView.swift` — superfícies de preview e integração com
-  WebKit/PDFKit.
+- `MarkdownPreviewView.swift`, `MarkdownWebPreview.swift`,
+  `SourceEditorView.swift`, `JSONPreviewView.swift`, `PDFPreviewView.swift` e
+  `DocxPreviewView.swift` — superfícies de preview, editor partilhado e
+  integração com WebKit/PDFKit.
 - `DesignSystem.swift`, `SettingsView.swift` e `SnapshotSupport.swift` —
   tokens/controles, preferências e snapshots flutuantes.
 

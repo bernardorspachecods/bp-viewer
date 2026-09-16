@@ -3,7 +3,8 @@
 Este diretório contém os targets Swift definidos em [Package.swift](../Package.swift).
 
 - [`BPViewerCore/`](BPViewerCore/CONTEXT.md) — modelos e lógica partilhável
-  para filesystem, tabs, Markdown, LaTeX e merge/edição.
+  para filesystem, sessão/tabs, persistência, abertura de documentos, Markdown,
+  LaTeX e merge/edição.
 - [`BPViewerApp/`](BPViewerApp/CONTEXT.md) — app macOS SwiftUI/AppKit e a
   coordenação do estado da sessão.
 - `BPViewerContractRunner/` — contratos executáveis do adapter Markdown e da

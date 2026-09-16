@@ -1,4 +1,5 @@
 import AppKit
+import BPViewerCore
 import SwiftUI
 
 enum PreviewCanvasStyle {

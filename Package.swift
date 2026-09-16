@@ -12,7 +12,8 @@ let package = Package(
         .library(name: "BPViewerCore", targets: ["BPViewerCore"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.8.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown.git", from: "0.8.0"),
+        .package(url: "https://github.com/apple/swift-testing.git", from: "0.6.0")
     ],
     targets: [
         .target(
@@ -29,7 +30,10 @@ let package = Package(
         ),
         .testTarget(
             name: "BPViewerAppTests",
-            dependencies: ["BPViewerCore"]
+            dependencies: [
+                "BPViewerCore",
+                .product(name: "Testing", package: "swift-testing")
+            ]
         ),
         .executableTarget(
             name: "BPViewerContractRunner",

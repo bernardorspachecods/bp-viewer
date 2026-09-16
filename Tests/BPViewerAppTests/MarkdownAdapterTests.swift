@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import BPViewerCore
 
 @Test("renders core Markdown and keeps resource URLs relative")

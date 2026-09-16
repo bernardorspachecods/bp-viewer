@@ -26,7 +26,11 @@ snapshots usam uma janela AppKit separada.
 
 `AppModel` é o `ObservableObject` principal e publica a raiz, árvore, tabs,
 tab ativa, pesquisa, filtro, expansão, sidebar, zoom, tema, estado de pesquisa,
-pedidos de seleção LaTeX e captura de snapshots.
+pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
+e resolução de documentos vivem no Core; a árvore é mantida por
+`WorkspaceTreeSession`; pedidos de renderização e edição são tratados,
+respetivamente, por `DocumentRenderCoordinator` e
+`DocumentEditCoordinator`, que devolvem eventos aplicados pelo `AppModel`.
 
 Os modelos principais são:
 
@@ -34,7 +38,8 @@ Os modelos principais são:
   artefacto atual, outline, zoom, posição de leitura, dependências e erro.
 - `MarkdownEditSession` — modo Markdown/split, source base e atual, gravação,
   histórico undo/redo e conflito externo.
-- `AppState` — estado persistido global, por documento e por workspace.
+- `AppState`, `WorkspaceState` e `DocumentState` — estado persistido no Core;
+  `WorkspaceSessionCoordinator` gere a sua leitura e escrita.
 - `PreviewStatus` — `idle`, `updating`, `ready`, `stale`, `failed`,
   `unavailable`, `cancelled` e `timeout`.
 
@@ -49,16 +54,17 @@ o estado de indexação e a árvore lazy. Selecionar um ficheiro pede ao
 ### Tabs
 
 A tab bar apresenta o nome e o contexto do ficheiro, o estado do preview e as
-ações de fecho. A ordenação e a unicidade das tabs são mantidas por
-`TabSessionState` no core.
+ações de fecho. A ordenação, unicidade e tab ativa são mantidas por
+`DocumentTabSession` no Core.
 
 ### Markdown
 
-`MarkdownPreviewView` apresenta o HTML na `WKWebView`, a pesquisa, o outline,
-o zoom, o estado de renderização e os erros. Um duplo clique abre o editor de
+`MarkdownPreviewView` compõe o HTML, a pesquisa, o outline, o zoom, o estado de
+renderização e os erros. `MarkdownWebPreview` contém a `WKWebView`, o
+JavaScript, a navegação e a posição de leitura. `SourceEditorView` contém o
+editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
 source Markdown; a toolbar alterna entre o editor integral e o split view, que
-mantém o source à esquerda e o preview live à direita, além de hospedar
-autosave e resolução de conflitos.
+mantém o source à esquerda e o preview live à direita.
 
 ### PDF
 

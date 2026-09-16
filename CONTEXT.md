@@ -16,6 +16,8 @@ Este ficheiro orienta a repo-mãe `bp-viewer`.
 - [`scripts/CONTEXT.md`](scripts/CONTEXT.md) — launchers locais de build e
   desenvolvimento.
 - [`Resources/CONTEXT.md`](Resources/CONTEXT.md) — recursos do bundle macOS.
+- [`PLAN.md`](PLAN.md) — plano sequencial para desconcentrar o coordenador da
+  app e o preview Markdown.
 - [`AGENTS.md`](AGENTS.md) — regra específica para fechar rondas que alterem a
   app.
 

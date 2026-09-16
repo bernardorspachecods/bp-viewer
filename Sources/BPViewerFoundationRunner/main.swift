@@ -20,7 +20,8 @@ private struct Runner {
         defer { try? FileManager.default.removeItem(at: fixture) }
 
         runScannerContracts(root: fixture)
-        runTabContracts(root: fixture)
+        runDocumentTabSessionContracts(root: fixture)
+        runDocumentOpenContracts(root: fixture)
         runPathCopyContracts(root: fixture)
         runMarkdownEditingContracts()
 
@@ -185,58 +186,6 @@ private struct Runner {
         }
     }
 
-    private mutating func runTabContracts(root: URL) {
-        let first = root.appendingPathComponent("first.md")
-        let second = root.appendingPathComponent("second.md")
-        let third = root.appendingPathComponent("third.tex")
-        let missing = root.appendingPathComponent("missing.md")
-
-        var state = TabSessionState()
-        expect(state.open(first), "opening a new tab inserts it")
-        expect(state.open(second), "opening a second tab inserts it")
-        expect(!state.open(first), "opening an existing tab does not duplicate it")
-        expect(state.paths == [first.standardizedFileURL, second.standardizedFileURL], "tab order remains stable after duplicate open")
-        expect(state.activePath == first.standardizedFileURL, "duplicate open focuses existing tab")
-        expect(state.select(second), "selecting an existing tab succeeds")
-        expect(!state.select(missing), "selecting an unknown tab is ignored")
-        expect(state.select(first), "selecting the first tab succeeds")
-        expect(state.selectNext(), "control-tab advances to the next tab")
-        expect(state.activePath == second.standardizedFileURL, "control-tab selects the next tab")
-        expect(state.selectNext(), "control-tab wraps after the last tab")
-        expect(state.activePath == first.standardizedFileURL, "control-tab cycles to the first tab")
-        expect(state.close(second), "closing an existing tab succeeds")
-        expect(state.activePath == first.standardizedFileURL, "closing active tab selects adjacent remaining tab")
-
-        _ = state.open(second)
-        _ = state.open(third)
-        _ = state.select(first)
-        expect(state.closeToRight(of: first), "closing tabs to the right succeeds")
-        expect(state.paths == [first.standardizedFileURL], "closing right removes only later tabs")
-        expect(state.activePath == first.standardizedFileURL, "closing right preserves active tab when retained")
-
-        let restored = TabSessionState.restored(
-            paths: [first.path, first.path, missing.path, second.path],
-            activePath: missing.path,
-            fileExists: { $0 == first || $0 == second }
-        )
-        expect(restored.paths == [first.standardizedFileURL, second.standardizedFileURL], "restore removes missing and duplicate tabs")
-        expect(restored.activePath == first.standardizedFileURL, "restore falls back to first available tab")
-        expect(restored.persistedPaths == [first.standardizedFileURL.path, second.standardizedFileURL.path], "persistence emits stable paths")
-
-        var keepState = TabSessionState(paths: [first, second, third], activePath: third)
-        expect(keepState.closeOthers(keeping: second), "close others keeps requested tab")
-        expect(keepState.paths == [second.standardizedFileURL] && keepState.activePath == second.standardizedFileURL, "close others selects kept tab")
-
-        var reorderState = TabSessionState(paths: [first, second, third], activePath: second)
-        expect(reorderState.move(third, before: first), "moving a tab before another tab succeeds")
-        expect(reorderState.paths == [third.standardizedFileURL, first.standardizedFileURL, second.standardizedFileURL], "tab order changes after drag and drop")
-        expect(reorderState.activePath == second.standardizedFileURL, "reordering keeps the active tab")
-        expect(reorderState.moveToEnd(third), "moving a tab to the end succeeds")
-        expect(reorderState.paths == [first.standardizedFileURL, second.standardizedFileURL, third.standardizedFileURL], "tab can be dropped after the last tab")
-        expect(reorderState.reorder([second, third, first]), "accepting a native tab order succeeds")
-        expect(reorderState.paths == [second.standardizedFileURL, third.standardizedFileURL, first.standardizedFileURL], "native tab order is applied")
-        expect(!reorderState.reorder([second, second, first]), "invalid native tab order is ignored")
-    }
 
     private mutating func runPathCopyContracts(root: URL) {
         let path = root.appendingPathComponent("chapters/../working.md")
@@ -244,6 +193,120 @@ private struct Runner {
             FilePathCopy.string(for: path) == root.appendingPathComponent("working.md").path,
             "copy path is normalized and absolute"
         )
+    }
+
+    private mutating func runDocumentOpenContracts(root: URL) {
+        let coordinator = DocumentOpenCoordinator()
+        let markdown = root.appendingPathComponent("README.md")
+        let unsupported = root.appendingPathComponent("zeta.txt")
+        let latex = root.appendingPathComponent("docs/nested/deep.tex")
+
+        if case let .preview(documentURL, kind, contextURL)? = coordinator.resolve(
+            markdown,
+            workspaceRoot: root
+        ) {
+            expect(documentURL == markdown.standardizedFileURL, "document opening resolves Markdown preview")
+            expect(kind == .markdown && contextURL == nil, "document opening preserves Markdown context")
+        } else {
+            expect(false, "document opening resolves Markdown preview")
+            expect(false, "document opening preserves Markdown context")
+        }
+
+        if case let .external(externalURL)? = coordinator.resolve(
+            unsupported,
+            workspaceRoot: root
+        ) {
+            expect(externalURL == unsupported.standardizedFileURL, "document opening exposes unsupported files externally")
+        } else {
+            expect(false, "document opening exposes unsupported files externally")
+        }
+
+        if case let .preview(documentURL, kind, contextURL)? = coordinator.resolve(
+            latex,
+            workspaceRoot: root
+        ) {
+            expect(documentURL == latex.standardizedFileURL, "document opening resolves automatic LaTeX root")
+            expect(kind == .latex && contextURL == nil, "document opening keeps selected LaTeX root context")
+        } else {
+            expect(false, "document opening resolves automatic LaTeX root")
+            expect(false, "document opening keeps selected LaTeX root context")
+        }
+
+        expect(
+            coordinator.inferredLatexProjectRoot(for: latex) == latex.deletingLastPathComponent().standardizedFileURL,
+            "document opening infers the nearest LaTeX project directory"
+        )
+        expect(
+            coordinator.resolve(root.appendingPathComponent("missing.md"), workspaceRoot: root) == nil,
+            "document opening ignores missing files"
+        )
+    }
+
+    private mutating func runDocumentTabSessionContracts(root: URL) {
+        let first = DocumentTab(
+            id: "first",
+            url: root.appendingPathComponent("first.md"),
+            kind: .markdown
+        )
+        let second = DocumentTab(
+            id: "second",
+            url: root.appendingPathComponent("second.json"),
+            kind: .json
+        )
+        let third = DocumentTab(
+            id: "third",
+            url: root.appendingPathComponent("third.pdf"),
+            kind: .pdf
+        )
+
+        var session = DocumentTabSession()
+        expect(session.open(first), "document session opens first tab")
+        expect(session.open(second), "document session opens second tab")
+        expect(!session.open(first), "document session focuses duplicate tab")
+        expect(session.activeTabID == "first", "document session tracks active duplicate")
+        expect(session.select(id: "second"), "document session selects tab")
+        expect(!session.select(id: "missing"), "document session rejects unknown tab")
+        expect(session.open(third), "document session opens third tab")
+        expect(session.move("third", before: "first"), "document session moves tab")
+        expect(session.tabs.map(\.id) == ["third", "first", "second"], "document session preserves moved order")
+        expect(session.moveToEnd("third"), "document session moves tab to end")
+        expect(session.tabs.map(\.id) == ["first", "second", "third"], "document session preserves end order")
+        expect(session.closeToRight(of: "second"), "document session closes tabs to right")
+        expect(session.tabs.map(\.id) == ["first", "second"], "document session removes only right tabs")
+        expect(session.closeOthers(keeping: "first"), "document session closes other tabs")
+        expect(session.tabs.map(\.id) == ["first"] && session.activeTabID == "first", "document session keeps requested tab active")
+
+        var cycling = DocumentTabSession(tabs: [first, second, third], activeTabID: "first")
+        expect(cycling.selectNext() && cycling.activeTabID == "second", "document session advances active tab")
+        expect(cycling.selectNext() && cycling.activeTabID == "third", "document session advances to last tab")
+        expect(cycling.selectNext() && cycling.activeTabID == "first", "document session wraps active tab")
+        expect(cycling.close(id: "first"), "document session closes active tab")
+        expect(cycling.activeTabID == "second", "document session selects adjacent tab after close")
+        expect(cycling.close(id: "second") && cycling.close(id: "third"), "document session closes remaining tabs")
+        expect(cycling.activeTabID == nil && cycling.tabs.isEmpty, "document session clears active tab when empty")
+
+        var reordered = DocumentTabSession(tabs: [first, second, third], activeTabID: "second")
+        expect(reordered.reorder(ids: ["third", "first", "second"]), "document session accepts valid native order")
+        expect(reordered.tabs.map(\.id) == ["third", "first", "second"], "document session applies native order")
+        expect(!reordered.reorder(ids: ["third", "third", "second"]), "document session rejects duplicate native order")
+        expect(reordered.move("third", before: "second"), "document session moves tab before target")
+        expect(reordered.tabs.map(\.id) == ["first", "third", "second"], "document session preserves move semantics")
+        expect(reordered.update(id: "first") { $0.isOutlineVisible = true }, "document session updates tab value")
+        expect(reordered.tab(id: "first")?.isOutlineVisible == true, "document session exposes updated tab")
+
+        let deduplicated = DocumentTabSession(tabs: [first, first], activeTabID: "missing")
+        expect(deduplicated.tabs.count == 1 && deduplicated.activeTabID == "first", "document session deduplicates and restores active fallback")
+
+        let suiteName = "bp-viewer-foundation-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var state = AppState()
+        state.global.sidebarWidth = 340
+        state.workspaceStates["workspace"] = WorkspaceState()
+        AppStateStore(defaults: defaults).save(state)
+        let restored = AppStateStore(defaults: defaults).load()
+        expect(restored.global.sidebarWidth == 340, "session models persist global state")
+        expect(restored.workspaceStates["workspace"] != nil, "session models persist workspace state")
     }
 
     private mutating func runMarkdownEditingContracts() {

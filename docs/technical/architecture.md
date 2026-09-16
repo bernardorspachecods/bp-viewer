@@ -4,10 +4,16 @@
 
 ```text
 BPViewerApp
-├── AppModel                  coordenação da sessão e do ciclo de vida
+├── AppModel                  intents da UI e coordenação da sessão
+├── ActiveDocumentWatcher     adaptação de eventos de ficheiros ativos
+├── WorkspaceTreeSession      árvore lazy, filtros e watchers do workspace
+├── DocumentRenderCoordinator renders e cancelamento por tab
+├── DocumentEditCoordinator  sessões, conflitos e gravação de documentos
 ├── RootView / WorkspaceView  composição da janela
 ├── SidebarView               árvore e navegação do workspace
-├── MarkdownPreviewView       preview e edição Markdown
+├── MarkdownPreviewView       composição do preview e edição Markdown
+├── MarkdownWebPreview        ponte WebKit, JavaScript e navegação Markdown
+├── SourceEditorView          editor AppKit partilhado por Markdown e JSON
 ├── JSONPreviewView           preview JSON formatado
 ├── PDFPreviewView            preview LaTeX/PDF
 ├── DocxPreviewView           preview Word através de HTML/WebKit
@@ -15,7 +21,11 @@ BPViewerApp
 └── SnapshotSupport           seleção e janelas de snapshots
 
 BPViewerCore
-├── FileSystemFoundation      nós, scanner e estado de tabs
+├── FileSystemFoundation      nós e scanner
+├── SessionModels             modelos puros de sessão e persistência
+├── DocumentTabSession        invariantes e transições das tabs
+├── WorkspaceSessionCoordinator persistência e sessão de workspace
+├── DocumentOpenCoordinator   resolução de documentos e contexto LaTeX
 ├── MarkdownAdapter            Markdown → HTML
 ├── MarkdownEditing / Merge   edição e merge de Markdown
 ├── MarkdownPreviewLink       resolução de links
@@ -33,16 +43,25 @@ partilhada.
 
 ## Coordenação
 
-`AppModel`, isolado no `MainActor`, é o coordenador efetivo da aplicação. Ele
-mantém a raiz aberta, a árvore, as tabs, os renders, os watchers, a persistência
-e as janelas de snapshot.
+`AppModel`, isolado no `MainActor`, é o coordenador efetivo da apresentação.
+Mantém o estado observável das tabs e encaminha intents para os módulos de
+sessão e para os três coordenadores especializados. `DocumentTabSession`
+mantém as invariantes das tabs; `WorkspaceSessionCoordinator` concentra
+persistência e estado por workspace; `DocumentOpenCoordinator` resolve URLs e
+contexto LaTeX; `ActiveDocumentWatcher` adapta eventos Darwin para a UI.
+`WorkspaceTreeSession` encapsula o scanning lazy, filtro, expansão e watchers
+da árvore; `DocumentRenderCoordinator` encapsula gerações, cancelamento e
+renderização; `DocumentEditCoordinator` encapsula undo/redo, validação,
+autosave e conflitos. Estes módulos devolvem valores e eventos, sem mutar
+diretamente `AppModel`.
 
 O fluxo principal é:
 
 ```text
 ação da UI
   → AppModel
-    → scanner / watcher / adapter / process runner
+    → sessão de workspace / coordinator de render / coordinator de edição
+        → scanner / watcher / adapter / process runner
         → DocumentTab e estado SwiftUI
         → preview Markdown, JSON, PDF ou Quick Look
 ```
@@ -71,8 +90,9 @@ produzido. O cache é indexado por root, dependências, compiler e configuraçã
 
 ## Persistência e artefactos
 
-- `AppState` é um modelo `Codable` com versão de schema.
-- `AppStateStore` guarda o estado JSON em `UserDefaults`.
+- `AppState` é um modelo `Codable` com versão de schema em `SessionModels.swift`.
+- `AppStateStore` guarda o estado JSON em `UserDefaults`; o acesso é encapsulado
+  por `WorkspaceSessionCoordinator`.
 - O estado global guarda tema, sidebar, zooms predefinidos e `shell escape`.
 - O estado por documento guarda zoom, outline e posição de leitura.
 - O estado por workspace guarda tabs, expansão, scroll, filtro, seleção de root,

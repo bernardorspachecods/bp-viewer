@@ -1,5 +1,4 @@
 import BPViewerCore
-import Foundation
 import SwiftUI
 
 enum AppThemePreference: String, CaseIterable, Identifiable {
@@ -23,16 +22,7 @@ enum AppThemePreference: String, CaseIterable, Identifiable {
     }
 }
 
-enum PreviewStatus: Hashable {
-    case idle
-    case updating
-    case ready
-    case stale
-    case failed
-    case unavailable
-    case cancelled
-    case timeout
-
+extension PreviewStatus {
     var label: String {
         switch self {
         case .idle: "Sem preview"
@@ -71,25 +61,7 @@ enum PreviewStatus: Hashable {
     }
 }
 
-struct MarkdownReadingPosition: Codable, Hashable {
-    let scrollY: Double
-    let anchorID: String?
-    let anchorOffset: Double
-}
-
-struct PDFReadingPosition: Codable, Hashable {
-    let pageIndex: Int
-    let x: Double?
-    let y: Double?
-}
-
-enum MarkdownSaveState: String, Hashable {
-    case saved
-    case unsaved
-    case saving
-    case conflict
-    case failed
-
+extension MarkdownSaveState {
     var label: String {
         switch self {
         case .saved: "Guardado"
@@ -101,60 +73,8 @@ enum MarkdownSaveState: String, Hashable {
     }
 }
 
-struct MarkdownConflict: Hashable {
-    let localSource: String
-    let externalSource: String
-    let blockIDs: [String]
-}
-
 struct PendingCloseRequest: Identifiable {
     let id: String
     let tabID: String
     let title: String
-}
-
-struct MarkdownEditSession: Hashable {
-    var mode: MarkdownEditingMode = .markdown
-    var isEditing = true
-    var baseSource: String
-    var currentSource: String
-    var saveState: MarkdownSaveState = .saved
-    var undoSources: [String] = []
-    var redoSources: [String] = []
-    var conflict: MarkdownConflict?
-}
-
-struct DocumentTab: Identifiable, Hashable {
-    let id: String
-    let url: URL
-    let kind: DocumentKind
-    var contextURL: URL?
-    var status: PreviewStatus = .idle
-    var isStale: Bool = false
-    var previewHTML: String?
-    var previewJSON: String?
-    var previewPDFData: Data?
-    var markdownOutline: [MarkdownOutlineEntry] = []
-    var isOutlineVisible = false
-    var previewZoom: Double = 1.0
-    var isPreviewZoomCustomized = false
-    var previewPageIndex: Int = 0
-    var markdownReadingPosition: MarkdownReadingPosition?
-    var pdfReadingPosition: PDFReadingPosition?
-    var previewUpdatedAt: Date?
-    var previewBaseURL: URL?
-    var previewDependencies: [URL] = []
-    var previewExternalDependencies: [URL] = []
-    var errorMessage: String?
-    var markdownSource: String?
-    var markdownBlocks: [MarkdownEditableBlock] = []
-    var markdownEditSession: MarkdownEditSession?
-    var jsonSource: String?
-    var jsonEditSession: MarkdownEditSession?
-    var jsonCursorUTF8Offset: Int?
-
-    var title: String { url.deletingPathExtension().lastPathComponent }
-    var subtitle: String {
-        contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
-    }
 }
