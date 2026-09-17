@@ -84,3 +84,13 @@ struct PendingCloseRequest: Identifiable {
     let title: String
     let closesTab: Bool
 }
+
+struct PendingFileMoveRequest: Identifiable {
+    let id: String
+    let sourceURLs: [URL]
+    let destinationDirectory: URL
+
+    var itemTitles: [String] {
+        sourceURLs.map(\.lastPathComponent)
+    }
+}

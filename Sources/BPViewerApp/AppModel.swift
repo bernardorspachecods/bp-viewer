@@ -57,6 +57,8 @@ final class AppModel: ObservableObject {
     @Published var pendingCloseRequest: PendingCloseRequest?
     @Published var showingPendingCloseConfirmation = false
     @Published private(set) var isPendingWindowClose = false
+    @Published var pendingFileMoveRequest: PendingFileMoveRequest?
+    @Published var showingFileMoveConfirmation = false
     @Published var pendingInvalidJSONTabID: String?
     @Published var showingInvalidJSONConfirmation = false
     @Published private(set) var pendingGitDiscardTabID: String?
@@ -146,8 +148,9 @@ final class AppModel: ObservableObject {
             if flags == [.command],
                event.charactersIgnoringModifiers?.lowercased() == "s",
                let tabID = self?.activeTabID,
-               let session = self?.activeTab?.markdownEditSession,
-               session.currentSource != session.baseSource {
+               let tab = self?.activeTab,
+               let session = tab.markdownEditSession,
+               tab.isUntitled || session.currentSource != session.baseSource {
                 Task { @MainActor [weak self] in
                     await self?.saveMarkdownEdit(tabID: tabID)
                 }
@@ -466,6 +469,23 @@ final class AppModel: ObservableObject {
         openDocument(url: node.url)
     }
 
+    func createNewMarkdownDocument() {
+        var tab = DocumentTab.untitledMarkdown()
+        let transition = documentEditCoordinator.beginMarkdown(source: "")
+        var editSession = transition.session
+        editSession.saveState = .unsaved
+        tab.markdownSource = transition.source
+        tab.markdownBlocks = transition.markdownBlocks
+        tab.markdownEditSession = editSession
+
+        var session = documentTabSession
+        _ = session.open(tab)
+        applyDocumentTabSession(session)
+        syncPreviewZoomToActiveTab()
+        renderActiveTabIfNeeded()
+        persistState()
+    }
+
     func reload(_ node: FileNode) {
         guard !node.isDirectory else { return }
         let tabIDsBeforeOpening = Set(tabs.map(\.id))
@@ -520,31 +540,88 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
+    func moveFiles(at sourceURLs: [URL], to destinationDirectory: URL) -> Bool {
+        guard rootURL != nil,
+              !sourceURLs.isEmpty,
+              !showingFileMoveConfirmation else { return false }
+
+        pendingFileMoveRequest = PendingFileMoveRequest(
+            id: UUID().uuidString,
+            sourceURLs: sourceURLs.map { $0.standardizedFileURL },
+            destinationDirectory: destinationDirectory.standardizedFileURL
+        )
+        showingFileMoveConfirmation = true
+        return true
+    }
+
+    @discardableResult
     func moveFile(at sourceURL: URL, to destinationDirectory: URL) -> Bool {
-        guard let rootURL else { return false }
-        let sourceIsDirectory = isDirectory(sourceURL)
-        do {
-            let newURL = try WorkspaceFileOperations.move(
-                itemAt: sourceURL,
-                to: destinationDirectory,
-                in: rootURL
-            )
-            relocateOpenTabs(from: sourceURL, to: newURL)
-            if sourceIsDirectory {
-                workspaceTreeSession.relocateExpandedPaths(
-                    from: relativePath(of: sourceURL, from: rootURL),
-                    to: relativePath(of: newURL, from: rootURL)
-                )
-            }
-            refreshTreeAfterFileOperation(in: [
-                sourceURL.deletingLastPathComponent(),
-                destinationDirectory
-            ])
-            return true
-        } catch {
-            showFileOperationError(error)
-            return false
+        moveFiles(at: [sourceURL], to: destinationDirectory)
+    }
+
+    var pendingFileMoveTitle: String {
+        guard let request = pendingFileMoveRequest else { return "Move Item?" }
+        if request.sourceURLs.count == 1,
+           let title = request.itemTitles.first {
+            return "Move \(title)?"
         }
+        return "Move \(request.sourceURLs.count) items?"
+    }
+
+    var pendingFileMoveMessage: String {
+        guard let request = pendingFileMoveRequest else { return "" }
+        let destination = request.destinationDirectory.lastPathComponent
+        if request.sourceURLs.count == 1,
+           let title = request.itemTitles.first {
+            return "\(title) will be moved to \(destination)."
+        }
+        let titles = request.itemTitles.joined(separator: ", ")
+        return "\(titles) will be moved to \(destination)."
+    }
+
+    func cancelFileMove() {
+        pendingFileMoveRequest = nil
+        showingFileMoveConfirmation = false
+    }
+
+    func confirmFileMove() {
+        guard let request = pendingFileMoveRequest,
+              let rootURL else {
+            cancelFileMove()
+            return
+        }
+
+        pendingFileMoveRequest = nil
+        showingFileMoveConfirmation = false
+
+        var affectedDirectories = Set<URL>()
+        var movedAny = false
+        for sourceURL in request.sourceURLs {
+            let sourceIsDirectory = isDirectory(sourceURL)
+            do {
+                let newURL = try WorkspaceFileOperations.move(
+                    itemAt: sourceURL,
+                    to: request.destinationDirectory,
+                    in: rootURL
+                )
+                relocateOpenTabs(from: sourceURL, to: newURL)
+                if sourceIsDirectory {
+                    workspaceTreeSession.relocateExpandedPaths(
+                        from: relativePath(of: sourceURL, from: rootURL),
+                        to: relativePath(of: newURL, from: rootURL)
+                    )
+                }
+                affectedDirectories.insert(sourceURL.deletingLastPathComponent())
+                affectedDirectories.insert(request.destinationDirectory)
+                movedAny = true
+            } catch {
+                showFileOperationError(error)
+            }
+        }
+
+        guard movedAny else { return }
+        refreshTreeAfterFileOperation(in: Array(affectedDirectories))
+        persistState()
     }
 
     func duplicate(_ node: FileNode) {
@@ -905,6 +982,7 @@ final class AppModel: ObservableObject {
     func shouldCloseWindow(_ window: NSWindow) -> Bool {
         if isPendingWindowClose
             || showingPendingCloseConfirmation
+            || showingFileMoveConfirmation
             || showingInvalidJSONConfirmation
             || showingGitDiscardConfirmation {
             return false
@@ -1198,6 +1276,11 @@ final class AppModel: ObservableObject {
     }
 
     private func hasUnsavedChanges(in tab: DocumentTab) -> Bool {
+        if tab.isUntitled,
+           let session = tab.markdownEditSession,
+           session.currentSource.isEmpty {
+            return false
+        }
         if let session = tab.markdownEditSession {
             return session.currentSource != session.baseSource || session.saveState != .saved
         }
@@ -1338,9 +1421,12 @@ final class AppModel: ObservableObject {
     func toggleDocumentDiff(mode: DocumentDiffMode, tabID: String) {
         guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         if tabs[initialIndex].presentationMode == .diff(mode) {
-            tabs[initialIndex].selectPresentationMode(.source)
+            tabs[initialIndex].restorePreviousPresentationMode()
             return
         }
+
+        let returnMode = tabs[initialIndex].diffSession?.returnMode
+            ?? tabs[initialIndex].presentationMode
 
         switch tabs[initialIndex].kind {
         case .markdown:
@@ -1359,10 +1445,14 @@ final class AppModel: ObservableObject {
             return
         }
 
-        openDocumentDiff(tabID: tabID, mode: mode)
+        openDocumentDiff(tabID: tabID, mode: mode, returningTo: returnMode)
     }
 
-    private func openDocumentDiff(tabID: String, mode: DocumentDiffMode) {
+    private func openDocumentDiff(
+        tabID: String,
+        mode: DocumentDiffMode,
+        returningTo returnMode: DocumentPresentationMode
+    ) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .markdown
                 || tabs[index].kind == .json
@@ -1372,12 +1462,14 @@ final class AppModel: ObservableObject {
         case let .available(baseline):
             tabs[index].activateDiff(DocumentDiffSession(
                 mode: mode,
-                baseline: baseline
+                baseline: baseline,
+                returnMode: returnMode
             ))
         case let .unavailable(message):
             tabs[index].activateDiff(DocumentDiffSession(
                 mode: mode,
-                unavailableMessage: message
+                unavailableMessage: message,
+                returnMode: returnMode
             ))
         }
     }
@@ -1402,6 +1494,14 @@ final class AppModel: ObservableObject {
     func endMarkdownEditing(tabID: String) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].markdownEditSession else { return }
+        if tabs[index].isUntitled,
+           session.currentSource != session.baseSource || session.saveState != .saved {
+            tabs[index].markdownEditSession?.saveState = .saving
+            Task { @MainActor [weak self] in
+                _ = await self?.saveMarkdownEdit(tabID: tabID, finishEditing: true)
+            }
+            return
+        }
         if session.currentSource == session.baseSource {
             tabs[index].markdownEditSession?.isEditing = false
             tabs[index].diffSession = nil
@@ -1808,15 +1908,28 @@ final class AppModel: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .latex else { return }
         guard tabs[index].latexEditSession?.isEditing == true else {
+            let returnMode = tabs[index].presentationMode
             beginLatexEditing(tabID: tabID)
             tabs[index].latexEditSession?.mode = .split
+            tabs[index].latexEditSession?.splitReturnMode = returnMode
             renderLatex(tabID: tabID)
             return
         }
-        let nextMode: DocumentPresentationMode = tabs[index].presentationMode == .split
-            ? .source
-            : .split
-        tabs[index].selectPresentationMode(nextMode)
+
+        if tabs[index].presentationMode == .split {
+            let returnMode = tabs[index].latexEditSession?.splitReturnMode ?? .source
+            let modeAfterClosing = returnMode == .preview && hasUnsavedChanges(in: tabs[index])
+                ? .source
+                : returnMode
+            tabs[index].selectPresentationMode(modeAfterClosing)
+            tabs[index].latexEditSession?.splitReturnMode = nil
+            renderLatex(tabID: tabID)
+            return
+        }
+
+        let returnMode = tabs[index].latexEditSession?.splitReturnMode ?? .source
+        tabs[index].latexEditSession?.splitReturnMode = returnMode
+        tabs[index].selectPresentationMode(.split)
         renderLatex(tabID: tabID)
     }
 
@@ -2153,15 +2266,29 @@ final class AppModel: ObservableObject {
     func toggleMarkdownSplitView(tabID: String) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         guard tabs[index].markdownEditSession?.isEditing == true else {
+            let returnMode = tabs[index].presentationMode
             beginMarkdownEditing(tabID: tabID, mode: .split)
+            tabs[index].markdownEditSession?.splitReturnMode = returnMode
             return
         }
-        let nextMode: DocumentPresentationMode = tabs[index].presentationMode == .split
-            ? .source
-            : .split
-        tabs[index].selectPresentationMode(nextMode)
-        if nextMode == .split,
-           let session = tabs[index].markdownEditSession {
+
+        if tabs[index].presentationMode == .split {
+            let returnMode = tabs[index].markdownEditSession?.splitReturnMode ?? .source
+            let modeAfterClosing = returnMode == .preview && hasUnsavedChanges(in: tabs[index])
+                ? .source
+                : returnMode
+            tabs[index].selectPresentationMode(modeAfterClosing)
+            tabs[index].markdownEditSession?.splitReturnMode = nil
+            if modeAfterClosing == .preview {
+                renderMarkdown(tabID: tabID)
+            }
+            return
+        }
+
+        let returnMode = tabs[index].markdownEditSession?.splitReturnMode ?? .source
+        tabs[index].markdownEditSession?.splitReturnMode = returnMode
+        tabs[index].selectPresentationMode(.split)
+        if let session = tabs[index].markdownEditSession {
             renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
         }
     }
@@ -2224,6 +2351,14 @@ final class AppModel: ObservableObject {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].markdownEditSession else { return false }
 
+        if tabs[index].isUntitled {
+            return await saveUntitledMarkdown(
+                tabID: tabID,
+                session: session,
+                finishEditing: finishEditing
+            )
+        }
+
         guard session.currentSource != session.baseSource else {
             if finishEditing {
                 tabs[index].markdownEditSession?.isEditing = false
@@ -2250,6 +2385,85 @@ final class AppModel: ObservableObject {
             renderWhenNotEditing: true,
             finishEditing: finishEditing
         )
+    }
+
+    private func saveUntitledMarkdown(
+        tabID: String,
+        session: MarkdownEditSession,
+        finishEditing: Bool
+    ) async -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].isUntitled else { return false }
+        tabs[index].markdownEditSession?.saveState = .saving
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        panel.nameFieldStringValue = "Untitled.md"
+        panel.title = "Save Markdown File"
+        panel.prompt = "Save"
+
+        guard panel.runModal() == .OK,
+              let selectedURL = panel.url else {
+            tabs[index].markdownEditSession?.saveState = .unsaved
+            return false
+        }
+
+        let targetURL = markdownSaveURL(for: selectedURL)
+        let outcome = documentEditCoordinator.commitMarkdown(
+            url: targetURL,
+            source: session.currentSource
+        )
+        guard case let .saved(source) = outcome else {
+            guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
+            if case let .failed(message) = outcome {
+                tabs[index].markdownEditSession?.saveState = .failed
+                tabs[index].errorMessage = message
+            }
+            return false
+        }
+
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
+        let normalizedURL = targetURL.resolvingSymlinksInPath().standardizedFileURL
+        let oldID = tabs[index].id
+        documentRenderCoordinator.cancel(tabIDs: [oldID])
+        tabs[index].id = normalizedURL.path
+        tabs[index].url = normalizedURL
+        tabs[index].kind = .markdown
+        tabs[index].contextURL = nil
+        tabs[index].status = .updating
+        tabs[index].isStale = false
+        tabs[index].previewBaseURL = nil
+        tabs[index].previewDependencies = []
+        tabs[index].previewExternalDependencies = []
+        tabs[index].markdownSource = source
+        tabs[index].markdownBlocks = MarkdownBlockDocument(source: source).blocks
+        tabs[index].markdownEditSession?.baseSource = source
+        tabs[index].markdownEditSession?.currentSource = source
+        tabs[index].markdownEditSession?.saveState = .saved
+        tabs[index].markdownEditSession?.conflict = nil
+        tabs[index].markdownEditSession?.isEditing = !finishEditing
+        if finishEditing {
+            tabs[index].diffSession = nil
+        }
+        if activeTabID == oldID {
+            activeTabID = normalizedURL.path
+        }
+        renderMarkdown(tabID: normalizedURL.path)
+        if activeTabID == normalizedURL.path {
+            restartWatchingActiveFilesIfNeeded()
+        }
+        syncPreviewZoomToActiveTab()
+        persistState()
+        return true
+    }
+
+    private func markdownSaveURL(for url: URL) -> URL {
+        let extensionName = url.pathExtension.lowercased()
+        guard extensionName == "md" || extensionName == "markdown" else {
+            return url.appendingPathExtension("md")
+        }
+        return url
     }
 
     private func applyMarkdownTransition(
@@ -2779,7 +2993,10 @@ final class AppModel: ObservableObject {
 
     private func startWatchingActiveFiles(_ urls: [URL]) {
         guard let activeTabID else { return }
-        activeDocumentWatcher.start(tabID: activeTabID, urls: urls)
+        activeDocumentWatcher.start(
+            tabID: activeTabID,
+            urls: urls.filter(\.isFileURL)
+        )
     }
 
     private func stopWatchingActiveFiles() {
@@ -3084,12 +3301,14 @@ final class AppModel: ObservableObject {
 
     private func renderMarkdown(tabID: String, sourceOverride: String? = nil) {
         guard let tab = tabs.first(where: { $0.id == tabID }), tab.kind == .markdown else { return }
+        let effectiveSourceOverride = sourceOverride
+            ?? (tab.isUntitled ? tab.markdownEditSession?.currentSource ?? tab.markdownSource ?? "" : nil)
         documentRenderCoordinator.render(DocumentRenderRequest(
             tabID: tabID,
             url: tab.url,
             kind: .markdown,
             projectRoot: rootURL,
-            markdownSourceOverride: sourceOverride,
+            markdownSourceOverride: effectiveSourceOverride,
             latexRootURL: nil,
             latexShellEscapeMode: latexShellEscapeMode,
             approvedLatexExternalPaths: [:],

@@ -310,12 +310,10 @@ struct SidebarView: View {
                     isRootDropTarget = false
                     return false
                 }
-                let didMove = items.reduce(false) { movedAny, path in
-                    model.moveFile(
-                        at: URL(fileURLWithPath: path),
-                        to: rootURL
-                    ) || movedAny
-                }
+                let didMove = model.moveFiles(
+                    at: items.map { URL(fileURLWithPath: $0) },
+                    to: rootURL
+                )
                 isRootDropTarget = false
                 return didMove
             } isTargeted: { isTargeted in
@@ -350,12 +348,10 @@ struct FileTreeRow: View {
                         .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
                 }
                 .dropDestination(for: String.self) { items, _ in
-                    let didMove = items.reduce(false) { movedAny, path in
-                        model.moveFile(
-                            at: URL(fileURLWithPath: path),
-                            to: node.url
-                        ) || movedAny
-                    }
+                    let didMove = model.moveFiles(
+                        at: items.map { URL(fileURLWithPath: $0) },
+                        to: node.url
+                    )
                     isDropTarget = false
                     return didMove
                 } isTargeted: { isTargeted in

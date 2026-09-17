@@ -19,6 +19,9 @@ struct BPViewerApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
+                Button("New Markdown File", action: model.createNewMarkdownDocument)
+                    .keyboardShortcut("t", modifiers: [.command])
+
                 Button("Open Folder…", action: model.openFolder)
                     .keyboardShortcut("o", modifiers: [.command])
             }

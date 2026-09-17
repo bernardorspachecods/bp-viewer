@@ -38,6 +38,12 @@ struct RootView: View {
         } message: {
             Text("The current tabs will be closed and the new folder will become the project root.")
         }
+        .alert(model.pendingFileMoveTitle, isPresented: $model.showingFileMoveConfirmation) {
+            Button("Cancel", role: .cancel, action: model.cancelFileMove)
+            Button("Move", role: .destructive, action: model.confirmFileMove)
+        } message: {
+            Text(model.pendingFileMoveMessage)
+        }
         .alert(
             "Unsaved Changes",
             isPresented: $model.showingPendingCloseConfirmation

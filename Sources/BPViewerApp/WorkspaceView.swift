@@ -55,6 +55,11 @@ struct TabBarView: View {
                     }
                 }
 
+                ToolbarIconButton(systemName: "plus", help: "New Markdown File") {
+                    model.createNewMarkdownDocument()
+                }
+                .padding(.leading, BPTokens.Spacing.sm)
+
                 Rectangle()
                     .fill(.clear)
                     .frame(minWidth: 36, maxWidth: .infinity, minHeight: 36)
@@ -177,19 +182,21 @@ struct TabItemView: View {
         }
         .animation(.easeOut(duration: 0.16), value: isIndicatorActive)
         .contextMenu {
-            Button {
-                model.copyPath(tab.url)
-            } label: {
-                Label("Copy Path", systemImage: "doc.on.doc")
-            }
+            if !tab.isUntitled {
+                Button {
+                    model.copyPath(tab.url)
+                } label: {
+                    Label("Copy Path", systemImage: "doc.on.doc")
+                }
 
-            Button {
-                model.revealInSidebar(tab.url)
-            } label: {
-                Label("Reveal in Finder", systemImage: "folder")
-            }
+                Button {
+                    model.revealInSidebar(tab.url)
+                } label: {
+                    Label("Reveal in Finder", systemImage: "folder")
+                }
 
-            Divider()
+                Divider()
+            }
             Button {
                 model.closeTab(tab)
             } label: {
@@ -254,9 +261,11 @@ struct PreviewPane: View {
     }
 
     private var previewHeader: some View {
-        let path = FilePathCopy.string(
-            for: tab.kind == .latex ? tab.editableSourceURL : tab.url
-        )
+        let path = tab.isUntitled
+            ? "Not saved"
+            : FilePathCopy.string(
+                for: tab.kind == .latex ? tab.editableSourceURL : tab.url
+            )
 
         return HStack {
             HStack(alignment: .firstTextBaseline, spacing: BPTokens.Spacing.xs) {
@@ -283,13 +292,15 @@ struct PreviewPane: View {
                         .layoutPriority(1)
                         .textSelection(.enabled)
                         .contextMenu {
-                            Button("Copy Path") { model.copyPath(tab.url) }
+                            if !tab.isUntitled {
+                                Button("Copy Path") { model.copyPath(tab.url) }
+                            }
                         }
                     CopyTextButton(text: path, isVisible: isPathRowHovered, helpText: "Copy Path") {
                         model.copyText($0)
                     }
                 }
-                .onHover { isPathRowHovered = $0 }
+            .onHover { isPathRowHovered = $0 }
             }
             Spacer()
             HStack(alignment: .center, spacing: BPTokens.Spacing.xxs) {

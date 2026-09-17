@@ -12,9 +12,10 @@ renderizado ou formatado.
   ignora ficheiros ocultos.
 - O botão direito numa pasta permite copiar o caminho, renomeá-la e enviá-la
   para o Lixo. Num ficheiro, o menu também permite renomear, duplicar e enviá-lo
-  para o Lixo. Ficheiros podem ser movidos arrastando-os para uma pasta da
-  árvore. Tabs abertas acompanham renomeações e movimentos; itens com alterações
-  por guardar não podem ser enviados para o Lixo.
+  para o Lixo. Ficheiros e pastas podem ser movidos arrastando-os para uma pasta
+  da árvore; a app pede confirmação antes de executar o movimento. Tabs abertas
+  acompanham renomeações e movimentos; itens com alterações por guardar não
+  podem ser enviados para o Lixo.
 - A árvore carrega o primeiro nível e expande pastas sob pedido. Ficheiros
   arrastados para as extremidades laterais da lista são movidos para a root
   aberta, mesmo quando não existe espaço vazio abaixo dos itens. A pesquisa por
@@ -172,6 +173,8 @@ renderizado ou formatado.
 - Cada ficheiro tem no máximo uma tab. As tabs podem ser selecionadas,
   reordenadas, fechadas individualmente, fechadas à direita ou fechadas exceto
   a tab escolhida.
+- O botão `+` no fim da barra cria uma tab Markdown nova em memória, sem caminho
+  predefinido; o primeiro `Save` abre o painel para escolher o ficheiro `.md`.
 - Tabs, tab ativa, contexto LaTeX, tema, largura e visibilidade da sidebar,
   largura e visibilidade do outline por ficheiro, zooms predefinidos, filtro,
   expansão e posições de leitura são persistidos.

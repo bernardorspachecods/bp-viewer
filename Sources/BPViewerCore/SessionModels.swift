@@ -57,6 +57,7 @@ public struct MarkdownConflict: Hashable, Sendable {
 
 public struct SourceEditSession: Hashable, Sendable {
     public var mode: SourceEditingMode
+    public var splitReturnMode: DocumentPresentationMode?
     public var isEditing: Bool
     public var baseSource: String
     public var currentSource: String
@@ -67,6 +68,7 @@ public struct SourceEditSession: Hashable, Sendable {
 
     public init(
         mode: SourceEditingMode = .markdown,
+        splitReturnMode: DocumentPresentationMode? = nil,
         isEditing: Bool = true,
         baseSource: String,
         currentSource: String,
@@ -76,6 +78,7 @@ public struct SourceEditSession: Hashable, Sendable {
         conflict: MarkdownConflict? = nil
     ) {
         self.mode = mode
+        self.splitReturnMode = splitReturnMode
         self.isEditing = isEditing
         self.baseSource = baseSource
         self.currentSource = currentSource
@@ -117,6 +120,7 @@ public struct CSVEditSession: Hashable, Sendable {
 }
 
 public enum DocumentPresentationMode: Hashable, Sendable {
+    case preview
     case source
     case split
     case diff(DocumentDiffMode)
@@ -246,10 +250,27 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.diffSession = diffSession
     }
 
-    public var title: String { url.deletingPathExtension().lastPathComponent }
+    public static func untitledMarkdown() -> DocumentTab {
+        let id = UUID().uuidString.lowercased()
+        let url = URL(string: "bpviewer://untitled/\(id)")!
+        return DocumentTab(
+            id: url.absoluteString,
+            url: url,
+            kind: .markdown,
+            status: .updating
+        )
+    }
+
+    public var isUntitled: Bool {
+        url.scheme?.lowercased() == "bpviewer"
+            && url.host?.lowercased() == "untitled"
+    }
+
+    public var title: String { isUntitled ? "Untitled" : url.deletingPathExtension().lastPathComponent }
 
     public var subtitle: String {
-        contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
+        if isUntitled { return "Not saved" }
+        return contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
     }
 
     public var editableSourceURL: URL {
@@ -272,11 +293,24 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
            latexEditSession?.mode == .split {
             return .split
         }
-        return .source
+        if markdownEditSession?.isEditing == true
+            || markdownEditSession?.conflict != nil
+            || jsonEditSession?.isEditing == true
+            || jsonEditSession?.conflict != nil
+            || latexEditSession?.isEditing == true
+            || latexEditSession?.conflict != nil {
+            return .source
+        }
+        return .preview
     }
 
     public mutating func selectPresentationMode(_ mode: DocumentPresentationMode) {
         switch mode {
+        case .preview:
+            diffSession = nil
+            markdownEditSession?.isEditing = false
+            jsonEditSession?.isEditing = false
+            latexEditSession?.isEditing = false
         case .source, .diff:
             diffSession = nil
             markdownEditSession?.mode = .markdown
@@ -297,7 +331,14 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         latexEditSession?.mode = .markdown
     }
 
+    public mutating func restorePreviousPresentationMode() {
+        guard let diffSession else { return }
+        self.diffSession = nil
+        selectPresentationMode(diffSession.returnMode)
+    }
+
     public mutating func relocate(from oldURL: URL, to newURL: URL) {
+        guard !isUntitled else { return }
         guard let newLocation = relocatedURL(self.url, from: oldURL, to: newURL) else { return }
 
         url = newLocation

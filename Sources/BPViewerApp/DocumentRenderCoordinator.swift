@@ -160,9 +160,13 @@ final class DocumentRenderCoordinator {
         case .markdown:
             let source = try request.markdownSourceOverride
                 ?? String(contentsOf: request.url, encoding: .utf8)
+            let markdownBaseURL = request.url.isFileURL
+                ? request.url.deletingLastPathComponent()
+                : request.projectRoot
+                    ?? URL(fileURLWithPath: "/", isDirectory: true)
             let result = try markdownAdapter.render(
                 source: source,
-                baseURL: request.url.deletingLastPathComponent()
+                baseURL: markdownBaseURL
             )
             return DocumentPreviewOutput(
                 kind: .markdown,

@@ -96,6 +96,17 @@ struct MarkdownPreviewView: View {
             .animation(MarkdownOutlineLayout.animation, value: isOutlineVisible)
         }
         .id(documentID)
+        .onExitCommand(perform: exitEditing)
+    }
+
+    private var exitEditing: () -> Void {
+        if let diffSession {
+            return { onToggleDiff(diffSession.mode) }
+        }
+        if editingSession?.mode == .split {
+            return onSaveMarkdownEditing
+        }
+        return onEndMarkdownEditing
     }
 
     private var outlineSurface: some View {
@@ -134,7 +145,7 @@ struct MarkdownPreviewView: View {
                     onFindFocus: { onFindTargetChanged(.source) },
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onMarkdownTextChanged,
-                    onEndEditing: { _ in onEndMarkdownEditing() },
+                    onEndEditing: { _ in exitEditing() },
                     onDiscardGitChanges: onDiscardGitChanges
                 )
             } else {

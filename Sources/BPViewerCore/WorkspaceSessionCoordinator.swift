@@ -156,18 +156,19 @@ public final class WorkspaceSessionCoordinator {
 
         let rootKey = workspaceKey(for: rootURL)
         var workspace = state.workspaceStates[rootKey] ?? WorkspaceState()
-        workspace.tabPaths = tabs.map { $0.url.standardizedFileURL.path }
-        workspace.activeTabPath = activeTabID
+        let persistedTabs = tabs.filter { !$0.isUntitled }
+        workspace.tabPaths = persistedTabs.map { $0.url.standardizedFileURL.path }
+        workspace.activeTabPath = persistedTabs.first(where: { $0.id == activeTabID })?.url.standardizedFileURL.path
         workspace.expandedPaths = expandedPaths.sorted()
         workspace.treeScrollOffset = treeScrollOffset
         workspace.compatibleOnly = compatibleOnly
-        workspace.tabContexts = tabs.reduce(into: [String: String]()) { result, tab in
+        workspace.tabContexts = persistedTabs.reduce(into: [String: String]()) { result, tab in
             guard tab.kind == .latex, let contextURL = tab.contextURL else { return }
             LatexTabContextPersistence.store(contextURL: contextURL, forTabID: tab.id, in: &result)
         }
         state.workspaceStates[rootKey] = workspace
 
-        for tab in tabs {
+        for tab in persistedTabs {
             state.documentStates[documentKey(for: tab.url)] = DocumentState(
                 zoom: tab.isPreviewZoomCustomized ? tab.previewZoom : nil,
                 outlineVisible: tab.isOutlineVisible,

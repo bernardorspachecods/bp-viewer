@@ -49,8 +49,12 @@ public enum WorkspaceFileOperations {
             throw WorkspaceFileOperationError.invalidName
         }
 
+        let destinationName = namePreservingExistingExtension(
+            trimmedName,
+            for: itemURL
+        )
         let destinationURL = itemURL.deletingLastPathComponent()
-            .appendingPathComponent(trimmedName, isDirectory: isDirectory(itemURL, fileManager: fileManager))
+            .appendingPathComponent(destinationName, isDirectory: isDirectory(itemURL, fileManager: fileManager))
         guard destinationURL.standardizedFileURL != itemURL.standardizedFileURL else {
             return itemURL
         }
@@ -178,6 +182,15 @@ public enum WorkspaceFileOperations {
 
     private static func isValidName(_ name: String) -> Bool {
         !name.isEmpty && name != "." && name != ".." && !name.contains("/") && !name.contains(":")
+    }
+
+    private static func namePreservingExistingExtension(_ name: String, for url: URL) -> String {
+        guard !url.pathExtension.isEmpty,
+              !name.hasSuffix("."),
+              URL(fileURLWithPath: name).pathExtension.isEmpty else {
+            return name
+        }
+        return "\(name).\(url.pathExtension)"
     }
 
     private static func uniqueCopyURL(for url: URL, fileManager: FileManager) -> URL {

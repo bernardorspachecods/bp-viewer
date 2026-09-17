@@ -37,15 +37,18 @@ public struct DocumentDiffSession: Hashable, Sendable {
     public var mode: DocumentDiffMode
     public var baseline: DocumentDiffBaseline?
     public var unavailableMessage: String?
+    public var returnMode: DocumentPresentationMode
 
     public init(
         mode: DocumentDiffMode,
         baseline: DocumentDiffBaseline? = nil,
-        unavailableMessage: String? = nil
+        unavailableMessage: String? = nil,
+        returnMode: DocumentPresentationMode = .source
     ) {
         self.mode = mode
         self.baseline = baseline
         self.unavailableMessage = unavailableMessage
+        self.returnMode = returnMode
     }
 }
 

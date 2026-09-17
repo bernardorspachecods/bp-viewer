@@ -73,8 +73,10 @@ de espaço vazio no fim da árvore.
 ### Tabs
 
 A tab bar apresenta o nome e o contexto do ficheiro, o estado do preview e as
-ações de fecho. A ordenação, unicidade e tab ativa são mantidas por
-`DocumentTabSession` no Core.
+ações de fecho. O botão `+` cria uma tab Markdown transitória em memória; o
+local do ficheiro só é escolhido pelo painel de gravação. A ordenação,
+unicidade e tab ativa são mantidas por `DocumentTabSession` no Core, e tabs
+transitórias não entram na persistência do workspace.
 
 ### Markdown
 

@@ -73,6 +73,15 @@ enum SourceEditorLayout {
         max(extraLineHeight, configuredLineHeight)
     }
 
+    static func lineHeightForExtraFragment(
+        textStorageLength: Int,
+        paragraphStyleMinimumLineHeight: CGFloat?,
+        fallback: CGFloat
+    ) -> CGFloat {
+        guard textStorageLength > 0 else { return fallback }
+        return paragraphStyleMinimumLineHeight ?? fallback
+    }
+
     static func normalizedExtraLineRect(
         extraLineRect: CGRect,
         previousLineMaxY: CGFloat?,
@@ -92,15 +101,13 @@ enum SourceEditorLayout {
     static func lineHighlightRect(
         lineFragmentRect: CGRect,
         textContainerOrigin: CGPoint,
-        viewWidth: CGFloat,
-        verticalOffset: CGFloat
+        viewWidth: CGFloat
     ) -> CGRect {
         var rect = lineFragmentRect.offsetBy(
             dx: textContainerOrigin.x,
             dy: textContainerOrigin.y
         )
         rect.origin.x = 0
-        rect.origin.y += verticalOffset
         rect.size.width = viewWidth
         return rect
     }
@@ -787,13 +794,22 @@ private final class MarkdownNSTextView: NSTextView {
             dy: origin.y
         )
         if extraLineRect.height > 0 {
-            let configuredLineHeight = fragments.first?.rect.height
-                ?? (textStorage?.attribute(
+            let paragraphStyleMinimumLineHeight: CGFloat?
+            if let textStorage, textStorage.length > 0 {
+                paragraphStyleMinimumLineHeight = (textStorage.attribute(
                     .paragraphStyle,
                     at: 0,
                     effectiveRange: nil
                 ) as? NSParagraphStyle)?.minimumLineHeight
-                ?? SourceEditorLayout.codeLineHeight
+            } else {
+                paragraphStyleMinimumLineHeight = nil
+            }
+            let configuredLineHeight = fragments.first?.rect.height
+                ?? SourceEditorLayout.lineHeightForExtraFragment(
+                    textStorageLength: textStorage?.length ?? 0,
+                    paragraphStyleMinimumLineHeight: paragraphStyleMinimumLineHeight,
+                    fallback: SourceEditorLayout.codeLineHeight
+                )
             let normalizedExtraLineRect = SourceEditorLayout.normalizedExtraLineRect(
                 extraLineRect: extraLineRect,
                 previousLineMaxY: fragments.last?.rect.maxY,
@@ -913,8 +929,7 @@ private final class MarkdownNSTextView: NSTextView {
         let backgroundRect = SourceEditorLayout.lineHighlightRect(
             lineFragmentRect: lineRect,
             textContainerOrigin: .zero,
-            viewWidth: bounds.width,
-            verticalOffset: font?.ascender ?? 0
+            viewWidth: bounds.width
         )
         color.setFill()
         backgroundRect.fill()

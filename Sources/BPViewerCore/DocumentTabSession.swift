@@ -9,7 +9,7 @@ public struct DocumentTabSession: Equatable, Sendable {
         var uniqueTabs: [DocumentTab] = []
         var seenURLs = Set<URL>()
         for tab in tabs {
-            let normalizedURL = tab.url.standardizedFileURL
+            let normalizedURL = tab.isUntitled ? tab.url : tab.url.standardizedFileURL
             guard seenURLs.insert(normalizedURL).inserted else { continue }
             uniqueTabs.append(tab)
         }
@@ -130,6 +130,6 @@ public struct DocumentTabSession: Equatable, Sendable {
     }
 
     public var persistedPaths: [String] {
-        tabs.map(\.url.path)
+        tabs.filter { !$0.isUntitled }.map(\.url.path)
     }
 }

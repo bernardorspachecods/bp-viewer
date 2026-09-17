@@ -203,6 +203,64 @@ func performsWorkspaceFileOperationsWithinProjectRoot() throws {
     #expect(FileManager.default.fileExists(atPath: movedFolder.path))
 }
 
+@Test("keeps a supported file visible when its rename omits the extension")
+func preservesTheExistingExtensionDuringRename() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-extension-preservation-\(UUID().uuidString)", isDirectory: true)
+    let source = root.appendingPathComponent("notes.md")
+
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try "# Notes".write(to: source, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let renamed = try WorkspaceFileOperations.rename(
+        itemAt: source,
+        to: "temporary",
+        in: root
+    )
+
+    #expect(renamed.lastPathComponent == "temporary.md")
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: renamed.path))
+}
+
+@Test("asks for confirmation before moving a workspace item")
+@MainActor
+func asksForConfirmationBeforeMovingWorkspaceItem() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-move-confirmation-\(UUID().uuidString)", isDirectory: true)
+    let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+    let destinationDirectory = root.appendingPathComponent("destination", isDirectory: true)
+    let source = sourceDirectory.appendingPathComponent("notes.md")
+    let sourceFolder = sourceDirectory.appendingPathComponent("drafts", isDirectory: true)
+    let destination = destinationDirectory.appendingPathComponent("notes.md")
+    let destinationFolder = destinationDirectory.appendingPathComponent("drafts", isDirectory: true)
+
+    try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+    try "# Notes".write(to: source, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let model = AppModel()
+    model.rootURL = root
+
+    #expect(model.moveFiles(at: [source, sourceFolder], to: destinationDirectory))
+    #expect(model.showingFileMoveConfirmation)
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: sourceFolder.path))
+    #expect(!FileManager.default.fileExists(atPath: destination.path))
+    #expect(!FileManager.default.fileExists(atPath: destinationFolder.path))
+
+    model.confirmFileMove()
+
+    #expect(!model.showingFileMoveConfirmation)
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(!FileManager.default.fileExists(atPath: sourceFolder.path))
+    #expect(FileManager.default.fileExists(atPath: destination.path))
+    #expect(FileManager.default.fileExists(atPath: destinationFolder.path))
+}
+
 @Test("persists LaTeX approvals across coordinator instances")
 @MainActor
 func persistsLatexApprovalsAcrossCoordinatorInstances() {
@@ -401,6 +459,57 @@ func recognizesWordDocuments() {
     #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/report.doc")) == .other)
 }
 
+@Test("creates an untitled Markdown tab without a filesystem path")
+func createsUntitledMarkdownTabWithoutAFilesystemPath() {
+    let tab = DocumentTab.untitledMarkdown()
+
+    #expect(tab.kind == .markdown)
+    #expect(tab.isUntitled)
+    #expect(!tab.url.isFileURL)
+    #expect(tab.title == "Untitled")
+    #expect(tab.subtitle == "Not saved")
+}
+
+@Test("opens a new Markdown tab directly in the source editor")
+@MainActor
+func opensNewMarkdownTabDirectlyInTheSourceEditor() throws {
+    let model = AppModel()
+
+    model.createNewMarkdownDocument()
+
+    let tab = try #require(model.activeTab)
+    #expect(tab.kind == .markdown)
+    #expect(tab.isUntitled)
+    #expect(tab.markdownEditSession?.isEditing == true)
+    #expect(tab.markdownEditSession?.mode == .markdown)
+    #expect(tab.markdownEditSession?.saveState == .unsaved)
+}
+
+@Test("closes an empty untitled Markdown tab without confirmation")
+@MainActor
+func closesEmptyUntitledMarkdownTabWithoutConfirmation() throws {
+    let model = AppModel()
+
+    model.createNewMarkdownDocument()
+    let tab = try #require(model.activeTab)
+
+    model.closeTab(tab)
+
+    #expect(model.tabs.isEmpty)
+    #expect(model.showingPendingCloseConfirmation == false)
+}
+
+@Test("does not persist an untitled Markdown tab as a file path")
+func doesNotPersistUntitledMarkdownTabAsAFilePath() {
+    let savedURL = URL(fileURLWithPath: "/tmp/project/notes.md")
+    let session = DocumentTabSession(tabs: [
+        DocumentTab(id: savedURL.path, url: savedURL, kind: .markdown),
+        .untitledMarkdown()
+    ])
+
+    #expect(session.persistedPaths == [savedURL.path])
+}
+
 @Test("recognizes common image documents as supported preview files")
 func recognizesCommonImageDocuments() {
     #expect(DocumentKind(url: URL(fileURLWithPath: "/tmp/project/figure.png")) == .image)
@@ -459,6 +568,42 @@ func rendersValidImageIntoPreviewData() async throws {
 
     #expect(renderedOutput?.kind == .image)
     #expect(renderedOutput?.imageData == imageData)
+}
+
+@Test("renders an untitled Markdown draft from memory")
+@MainActor
+func rendersUntitledMarkdownDraftFromMemory() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-untitled-markdown-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let tab = DocumentTab.untitledMarkdown()
+    var renderedOutput: DocumentPreviewOutput?
+    let coordinator = DocumentRenderCoordinator { event in
+        if case let .ready(_, output) = event {
+            renderedOutput = output
+        }
+    }
+    coordinator.render(DocumentRenderRequest(
+        tabID: tab.id,
+        url: tab.url,
+        kind: .markdown,
+        projectRoot: root,
+        markdownSourceOverride: "# Draft",
+        latexRootURL: nil,
+        latexShellEscapeMode: .disabled,
+        approvedLatexExternalPaths: [:],
+        force: false
+    ))
+
+    for _ in 0..<20 where renderedOutput == nil {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(renderedOutput?.source == "# Draft")
+    #expect(renderedOutput?.baseURL == root)
+    #expect(renderedOutput?.html?.contains("<h1 id=\"draft\"") == true)
 }
 
 @Test("image previews support snapshot capture")
@@ -1339,6 +1484,17 @@ func keepsTrailingLineFragmentAtEditorLineHeight() {
     )
 }
 
+@Test("uses the fallback line height for an empty text storage")
+func usesFallbackLineHeightForEmptyTextStorage() {
+    #expect(
+        SourceEditorLayout.lineHeightForExtraFragment(
+            textStorageLength: 0,
+            paragraphStyleMinimumLineHeight: 24,
+            fallback: SourceEditorLayout.codeLineHeight
+        ) == SourceEditorLayout.codeLineHeight
+    )
+}
+
 @Test("starts the trailing line after the previous line fragment")
 func startsTrailingLineAfterPreviousLineFragment() {
     #expect(
@@ -1350,15 +1506,14 @@ func startsTrailingLineAfterPreviousLineFragment() {
     )
 }
 
-@Test("keeps the final diff line inside the full-width highlight row")
+@Test("keeps diff highlights aligned with the line fragment")
 func keepsFinalDiffLineInsideFullWidthHighlightRow() {
     #expect(
         SourceEditorLayout.lineHighlightRect(
             lineFragmentRect: CGRect(x: 0, y: 48, width: 240, height: 24),
             textContainerOrigin: CGPoint(x: 52, y: 40),
-            viewWidth: 360,
-            verticalOffset: 10
-        ) == CGRect(x: 0, y: 98, width: 360, height: 24)
+            viewWidth: 360
+        ) == CGRect(x: 0, y: 88, width: 360, height: 24)
     )
 }
 
@@ -1526,6 +1681,7 @@ func togglesDocumentEditingModesDirectly() {
 
     model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
     #expect(model.tabs[0].presentationMode == .diff(.gitHead))
+    #expect(model.tabs[0].markdownEditSession?.isEditing == true)
     #expect(model.tabs[0].markdownEditSession?.mode == .markdown)
 
     model.toggleMarkdownSplitView(tabID: tabID)
@@ -1538,6 +1694,98 @@ func togglesDocumentEditingModesDirectly() {
     #expect(model.tabs[0].diffSession?.mode == .gitHead)
     model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
     #expect(model.tabs[0].diffSession == nil)
+}
+
+@Test("returns to preview after closing a diff opened from preview")
+@MainActor
+func returnsToPreviewAfterClosingDiffOpenedFromPreview() {
+    let tabID = "file:///tmp/project/preview-notes.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: URL(fileURLWithPath: "/tmp/project/preview-notes.md"),
+            kind: .markdown,
+            previewHTML: "<p>Preview</p>",
+            markdownSource: "# Notes"
+        )
+    ]
+
+    #expect(model.tabs[0].markdownEditSession == nil)
+
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .diff(.gitHead))
+    #expect(model.tabs[0].markdownEditSession?.isEditing == true)
+    #expect(model.tabs[0].markdownEditSession != nil)
+
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    #expect(model.tabs[0].diffSession == nil)
+    #expect(model.tabs[0].presentationMode == .preview)
+    #expect(model.tabs[0].markdownEditSession!.isEditing == false)
+}
+
+@Test("restores editor and split modes after closing a diff")
+@MainActor
+func restoresEditorAndSplitModesAfterClosingDiff() {
+    let editorTabID = "file:///tmp/project/editor-notes.md"
+    let splitTabID = "file:///tmp/project/split-notes.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: editorTabID,
+            url: URL(fileURLWithPath: "/tmp/project/editor-notes.md"),
+            kind: .markdown,
+            markdownEditSession: MarkdownEditSession(
+                baseSource: "# Editor",
+                currentSource: "# Editor"
+            )
+        ),
+        DocumentTab(
+            id: splitTabID,
+            url: URL(fileURLWithPath: "/tmp/project/split-notes.md"),
+            kind: .markdown,
+            markdownEditSession: MarkdownEditSession(
+                mode: .split,
+                baseSource: "# Split",
+                currentSource: "# Split"
+            )
+        )
+    ]
+
+    model.toggleDocumentDiff(mode: .gitHead, tabID: editorTabID)
+    model.toggleDocumentDiff(mode: .gitHead, tabID: editorTabID)
+    #expect(model.tabs[0].presentationMode == .source)
+    #expect(model.tabs[0].markdownEditSession?.isEditing == true)
+
+    model.toggleDocumentDiff(mode: .savedOnDisk, tabID: splitTabID)
+    model.toggleDocumentDiff(mode: .gitHead, tabID: splitTabID)
+    #expect(model.tabs[1].presentationMode == .diff(.gitHead))
+    model.toggleDocumentDiff(mode: .gitHead, tabID: splitTabID)
+    #expect(model.tabs[1].presentationMode == .split)
+}
+
+@Test("keeps the original return mode when switching diff types")
+@MainActor
+func keepsOriginalReturnModeWhenSwitchingDiffTypes() {
+    let tabID = "file:///tmp/project/switched-diff.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: URL(fileURLWithPath: "/tmp/project/switched-diff.md"),
+            kind: .markdown,
+            previewHTML: "<p>Preview</p>",
+            markdownSource: "# Notes"
+        )
+    ]
+
+    model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
+    model.toggleDocumentDiff(mode: .savedOnDisk, tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .diff(.savedOnDisk))
+
+    model.toggleDocumentDiff(mode: .savedOnDisk, tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .preview)
+    #expect(model.tabs[0].markdownEditSession?.isEditing != true)
 }
 
 @Test("saves Markdown from split view without leaving split view")
@@ -1573,6 +1821,53 @@ func savesMarkdownFromSplitViewWithoutLeavingSplitView() async throws {
     #expect(model.tabs[0].markdownEditSession?.mode == .split)
     #expect(model.tabs[0].presentationMode == .split)
     #expect(model.tabs[0].markdownEditSession?.saveState == .saved)
+}
+
+@Test("returns to preview after closing a split view opened from preview")
+@MainActor
+func returnsToPreviewAfterClosingSplitViewOpenedFromPreview() {
+    let tabID = "file:///tmp/project/split-preview.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: URL(fileURLWithPath: "/tmp/project/split-preview.md"),
+            kind: .markdown,
+            previewHTML: "<p>Preview</p>",
+            markdownSource: "# Notes"
+        )
+    ]
+
+    model.toggleMarkdownSplitView(tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .split)
+
+    model.toggleMarkdownSplitView(tabID: tabID)
+    #expect(model.tabs[0].presentationMode == .preview)
+    #expect(model.tabs[0].markdownEditSession?.isEditing != true)
+}
+
+@Test("returns to the editor after closing a split view opened from the editor")
+@MainActor
+func returnsToEditorAfterClosingSplitViewOpenedFromEditor() {
+    let tabID = "file:///tmp/project/split-editor.md"
+    let model = AppModel()
+    model.tabs = [
+        DocumentTab(
+            id: tabID,
+            url: URL(fileURLWithPath: "/tmp/project/split-editor.md"),
+            kind: .markdown,
+            markdownEditSession: MarkdownEditSession(
+                baseSource: "# Notes",
+                currentSource: "# Notes"
+            )
+        )
+    ]
+
+    model.toggleMarkdownSplitView(tabID: tabID)
+    model.toggleMarkdownSplitView(tabID: tabID)
+
+    #expect(model.tabs[0].presentationMode == .source)
+    #expect(model.tabs[0].markdownEditSession?.isEditing == true)
 }
 
 @Test("discards Git changes and leaves Markdown in source mode")

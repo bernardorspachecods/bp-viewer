@@ -86,7 +86,7 @@ struct LatexPreviewView: View {
                             onFindFocus: { onFindTargetChanged(.source) },
                             onFindMatchCount: onFindMatchCount,
                             onSourceChanged: onSourceChanged,
-                            onEndEditing: { _ in onEndEditing() },
+                            onEndEditing: { _ in exitEditing() },
                             onDiscardGitChanges: onDiscardGitChanges
                         )
                     } else if editingSession.mode == .split {
@@ -104,6 +104,14 @@ struct LatexPreviewView: View {
             }
         }
         .id(documentID)
+        .onExitCommand(perform: exitEditing)
+    }
+
+    private var exitEditing: () -> Void {
+        if let diffSession {
+            return { onToggleDiff(diffSession.mode) }
+        }
+        return onEndEditing
     }
 
     private func latexSourceEditor(editingSession: SourceEditSession) -> some View {
