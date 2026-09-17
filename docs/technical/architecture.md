@@ -18,7 +18,10 @@ BPViewerApp
 │                             por Markdown, JSON e diff
 ├── JSONPreviewView           preview JSON raw numerado
 ├── CSVPreviewView            preview CSV tabular
-├── PDFPreviewView            preview LaTeX/PDF
+├── LatexPreviewView          edição LaTeX e split source/PDF
+├── LatexSyncTeXLookup        duplo clique PDF → source
+├── PDFPreviewView            preview PDF e superfície PDF partilhada
+├── ImagePreviewView          preview nativo de imagens raster
 ├── DocxPreviewView           preview Word através de HTML/WebKit
 ├── SettingsView              preferências da app
 └── SnapshotSupport           seleção e janelas de snapshots
@@ -36,7 +39,8 @@ BPViewerCore
 ├── MarkdownPreviewLink       resolução de links
 ├── MathMLRenderer            matemática TeX → MathML
 ├── LatexRootDiscovery        descoberta de roots
-├── LatexAdapter               compilação e diagnóstico LaTeX
+├── LatexAdapter               compilação, overrides e diagnóstico LaTeX
+├── LatexSyntaxHighlighter     tokens e paleta de source LaTeX
 ├── LatexRenderCache           cache de resultados
 └── LatexTabContextPersistence contexto de capítulos LaTeX
 ```
@@ -92,9 +96,14 @@ O `SwiftMarkdownAdapter` usa `swift-markdown` para produzir HTML próprio. Faz
 escaping de texto e atributos, controla esquemas de URL, embebe imagens locais,
 recolhe dependências e cria outline e blocos editáveis.
 
-O `LocalLatexAdapter` resolve a root, prepara um workspace temporário, executa
-o compiler através de `ProcessRunner`, recolhe dependências e valida o PDF
-produzido. O cache é indexado por root, dependências, compiler e configuração.
+O `LocalLatexAdapter` resolve a root, prepara um workspace temporário (ou uma
+overlay quando existe rascunho contextual), executa o compiler através de
+`ProcessRunner`, recolhe dependências, valida o PDF produzido e devolve dados
+SyncTeX quando disponíveis. O cache é indexado por root, dependências,
+compiler e configuração; previews de rascunho não entram no cache.
+
+Imagens suportadas são lidas como bytes e validadas através do ImageIO antes de
+serem entregues à superfície nativa. O preview não altera o ficheiro original.
 
 ## Persistência e artefactos
 

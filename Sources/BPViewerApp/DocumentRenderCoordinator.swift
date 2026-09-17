@@ -1,6 +1,7 @@
 import AppKit
 import BPViewerCore
 import Foundation
+import ImageIO
 @preconcurrency import PDFKit
 
 struct DocumentRenderRequest: Sendable {
@@ -9,10 +10,38 @@ struct DocumentRenderRequest: Sendable {
     let kind: DocumentKind
     let projectRoot: URL?
     let markdownSourceOverride: String?
+    let latexSourceURL: URL?
+    let latexSourceOverride: String?
     let latexRootURL: URL?
     let latexShellEscapeMode: LatexShellEscapeMode
     let approvedLatexExternalPaths: [String: Set<String>]
     let force: Bool
+
+    init(
+        tabID: String,
+        url: URL,
+        kind: DocumentKind,
+        projectRoot: URL?,
+        markdownSourceOverride: String?,
+        latexSourceURL: URL? = nil,
+        latexSourceOverride: String? = nil,
+        latexRootURL: URL?,
+        latexShellEscapeMode: LatexShellEscapeMode,
+        approvedLatexExternalPaths: [String: Set<String>],
+        force: Bool
+    ) {
+        self.tabID = tabID
+        self.url = url
+        self.kind = kind
+        self.projectRoot = projectRoot
+        self.markdownSourceOverride = markdownSourceOverride
+        self.latexSourceURL = latexSourceURL
+        self.latexSourceOverride = latexSourceOverride
+        self.latexRootURL = latexRootURL
+        self.latexShellEscapeMode = latexShellEscapeMode
+        self.approvedLatexExternalPaths = approvedLatexExternalPaths
+        self.force = force
+    }
 }
 
 struct DocumentPreviewOutput: Sendable {
@@ -21,12 +50,15 @@ struct DocumentPreviewOutput: Sendable {
     let json: String?
     let csv: CSVDocument?
     let pdfData: Data?
+    let imageData: Data?
     let source: String?
     let baseURL: URL?
     let dependencies: [URL]
     let externalDependencies: [URL]
     let outline: [MarkdownOutlineEntry]
     let blocks: [MarkdownEditableBlock]
+    let syncTeXData: Data?
+    let generatedBibliographySource: String?
 }
 
 struct DocumentRenderFailure: Sendable {
@@ -69,7 +101,8 @@ final class DocumentRenderCoordinator {
                 || request.kind == .json
                 || request.kind == .csv
                 || request.kind == .latex
-                || request.kind == .pdf else { return }
+                || request.kind == .pdf
+                || request.kind == .image else { return }
 
         tasks[request.tabID]?.cancel()
         let generation = (generations[request.tabID] ?? 0) + 1
@@ -137,12 +170,15 @@ final class DocumentRenderCoordinator {
                 json: nil,
                 csv: nil,
                 pdfData: nil,
+                imageData: nil,
                 source: source,
                 baseURL: result.baseURL,
                 dependencies: result.dependencies,
                 externalDependencies: [],
                 outline: result.outline,
-                blocks: result.blocks
+                blocks: result.blocks,
+                syncTeXData: nil,
+                generatedBibliographySource: nil
             )
 
         case .json:
@@ -153,12 +189,15 @@ final class DocumentRenderCoordinator {
                 json: try JSONPreviewAdapter().format(source: source),
                 csv: nil,
                 pdfData: nil,
+                imageData: nil,
                 source: source,
                 baseURL: nil,
                 dependencies: [],
                 externalDependencies: [],
                 outline: [],
-                blocks: []
+                blocks: [],
+                syncTeXData: nil,
+                generatedBibliographySource: nil
             )
 
         case .csv:
@@ -169,12 +208,15 @@ final class DocumentRenderCoordinator {
                 json: nil,
                 csv: try CSVPreviewAdapter().parse(source: source),
                 pdfData: nil,
+                imageData: nil,
                 source: source,
                 baseURL: nil,
                 dependencies: [],
                 externalDependencies: [],
                 outline: [],
-                blocks: []
+                blocks: [],
+                syncTeXData: nil,
+                generatedBibliographySource: nil
             )
 
         case .pdf:
@@ -188,12 +230,38 @@ final class DocumentRenderCoordinator {
                 json: nil,
                 csv: nil,
                 pdfData: data,
+                imageData: nil,
                 source: nil,
                 baseURL: nil,
                 dependencies: [],
                 externalDependencies: [],
                 outline: [],
-                blocks: []
+                blocks: [],
+                syncTeXData: nil,
+                generatedBibliographySource: nil
+            )
+
+        case .image:
+            let data = try Data(contentsOf: request.url)
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceGetCount(source) > 0 else {
+                throw ImagePreviewError.invalidDocument
+            }
+            return DocumentPreviewOutput(
+                kind: .image,
+                html: nil,
+                json: nil,
+                csv: nil,
+                pdfData: nil,
+                imageData: data,
+                source: nil,
+                baseURL: nil,
+                dependencies: [],
+                externalDependencies: [],
+                outline: [],
+                blocks: [],
+                syncTeXData: nil,
+                generatedBibliographySource: nil
             )
 
         case .latex:
@@ -216,9 +284,13 @@ final class DocumentRenderCoordinator {
                 resolvedRootURL = selectedRoot
             }
 
+            let sourceOverrides = request.latexSourceOverride.map {
+                [request.latexSourceURL ?? request.url: $0]
+            } ?? [:]
             let externalDependencies = adapter.externalDependencies(
                 rootURL: resolvedRootURL,
-                projectRoot: projectRoot
+                projectRoot: projectRoot,
+                sourceOverrides: sourceOverrides
             )
             let grantKey = latexExternalGrantKey(
                 projectRoot: projectRoot,
@@ -244,36 +316,50 @@ final class DocumentRenderCoordinator {
                 ),
                 shellEscapeMode: request.latexShellEscapeMode
             )
-            if !request.force, let cached = latexRenderCache.load(key: cacheKey) {
+            if request.latexSourceOverride == nil,
+               !request.force,
+               let cached = latexRenderCache.load(key: cacheKey) {
                 return DocumentPreviewOutput(
                     kind: .latex,
                     html: nil,
                     json: nil,
                     csv: nil,
                     pdfData: cached.pdfData,
+                    imageData: nil,
                     source: nil,
                     baseURL: nil,
                     dependencies: cached.dependencies,
                     externalDependencies: cached.externalDependencies,
                     outline: [],
-                    blocks: []
+                    blocks: [],
+                    syncTeXData: cached.syncTeXData,
+                    generatedBibliographySource: cached.generatedBibliographySource
                 )
             }
 
-            let result = try adapter.render(rootURL: resolvedRootURL, projectRoot: projectRoot)
-            try? latexRenderCache.store(key: cacheKey, result: result)
+            let result = try adapter.render(
+                rootURL: resolvedRootURL,
+                projectRoot: projectRoot,
+                sourceOverrides: sourceOverrides
+            )
+            if request.latexSourceOverride == nil {
+                try? latexRenderCache.store(key: cacheKey, result: result)
+            }
             return DocumentPreviewOutput(
                 kind: .latex,
                 html: nil,
                 json: nil,
                 csv: nil,
                 pdfData: result.pdfData,
+                imageData: nil,
                 source: nil,
                 baseURL: nil,
                 dependencies: result.dependencies,
                 externalDependencies: result.externalDependencies,
                 outline: [],
-                blocks: []
+                blocks: [],
+                syncTeXData: result.syncTeXData,
+                generatedBibliographySource: result.generatedBibliographySource
             )
 
         case .docx, .other:
@@ -355,6 +441,17 @@ private enum PDFPreviewError: LocalizedError, Sendable {
         switch self {
         case .invalidDocument:
             "The file does not contain a valid PDF."
+        }
+    }
+}
+
+private enum ImagePreviewError: LocalizedError, Sendable {
+    case invalidDocument
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDocument:
+            "The file does not contain a valid image."
         }
     }
 }

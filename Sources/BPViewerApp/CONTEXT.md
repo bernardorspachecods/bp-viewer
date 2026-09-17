@@ -3,7 +3,7 @@
 Este target contém a superfície macOS e a coordenação de apresentação do
 `bp-viewer`. `AppModel` mantém o estado observável, recebe intents e aplica
 eventos dos módulos de sessão; as views SwiftUI/AppKit apresentam a árvore,
-tabs, preview Markdown/JSON/PDF/DOCX, definições e snapshots.
+tabs, preview Markdown/JSON/PDF/DOCX/imagens, definições e snapshots.
 
 - `AppModel.swift` e `Models.swift` — estado publicado, intents e extensões
   específicas da UI; a sessão/persistência vive em `BPViewerCore`.
@@ -16,8 +16,8 @@ tabs, preview Markdown/JSON/PDF/DOCX, definições e snapshots.
 - `RootView.swift`, `WorkspaceView.swift`, `SidebarView.swift` e
   `DocumentOutlineView.swift` — composição da janela e navegação.
 - `MarkdownPreviewView.swift`, `MarkdownWebPreview.swift`,
-  `SourceEditorView.swift`, `JSONPreviewView.swift`, `CSVPreviewView.swift`, `PDFPreviewView.swift` e
-  `DocxPreviewView.swift` — superfícies de preview, editor partilhado e
+  `SourceEditorView.swift`, `JSONPreviewView.swift`, `CSVPreviewView.swift`, `PDFPreviewView.swift`,
+  `ImagePreviewView.swift` e `DocxPreviewView.swift` — superfícies de preview, editor partilhado e
   integração com WebKit/PDFKit. `SourceEditorView` também fornece o gutter
   reutilizável de linhas e as decorações Git-like do diff.
 - `FindSupport.swift` — adapters de foco para que a pesquisa comum acompanhe o

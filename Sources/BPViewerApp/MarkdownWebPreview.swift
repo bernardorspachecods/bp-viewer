@@ -183,8 +183,8 @@ struct MarkdownWebView: NSViewRepresentable {
         var isDocumentLoaded = false
         var canBeginEditing = true
         private var scrollObserver: ObserverToken?
-        private var captureWorkItem: DispatchWorkItem?
-        private var boundsObservationWorkItem: DispatchWorkItem?
+        private var captureTask: Task<Void, Never>?
+        private var boundsObservationTask: Task<Void, Never>?
         private var lastObservedScrollBounds: CGRect?
 
         deinit {
@@ -210,8 +210,10 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         func removeScrollObservation() {
-            boundsObservationWorkItem?.cancel()
-            boundsObservationWorkItem = nil
+            boundsObservationTask?.cancel()
+            boundsObservationTask = nil
+            captureTask?.cancel()
+            captureTask = nil
             guard let scrollObserver else { return }
             NotificationCenter.default.removeObserver(scrollObserver.value)
             self.scrollObserver = nil
@@ -220,9 +222,13 @@ struct MarkdownWebView: NSViewRepresentable {
 
         func scheduleBoundsObservation(in contentView: NSView?, webView: WKWebView?) {
             guard let contentView, let webView else { return }
-            boundsObservationWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self, weak webView, weak contentView] in
-                guard let self, let webView, let contentView else { return }
+            boundsObservationTask?.cancel()
+            boundsObservationTask = Task { @MainActor [weak self, weak webView, weak contentView] in
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled,
+                      let self,
+                      let webView,
+                      let contentView else { return }
                 let currentBounds = contentView.bounds
                 let previousBounds = self.lastObservedScrollBounds
                 self.lastObservedScrollBounds = currentBounds
@@ -232,18 +238,17 @@ struct MarkdownWebView: NSViewRepresentable {
                 ) else { return }
                 self.scheduleCapture(of: webView)
             }
-            boundsObservationWorkItem = workItem
-            DispatchQueue.main.async(execute: workItem)
         }
 
         func scheduleCapture(of webView: WKWebView) {
-            captureWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self, weak webView] in
-                guard let self, let webView else { return }
+            captureTask?.cancel()
+            captureTask = Task { @MainActor [weak self, weak webView] in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled,
+                      let self,
+                      let webView else { return }
                 self.captureReadingPosition(in: webView)
             }
-            captureWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: workItem)
         }
 
         func captureReadingPosition(in webView: WKWebView) {

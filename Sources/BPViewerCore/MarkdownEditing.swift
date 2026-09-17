@@ -1,10 +1,12 @@
 import Foundation
 import Markdown
 
-public enum MarkdownEditingMode: String, Codable, CaseIterable, Hashable, Sendable {
+public enum SourceEditingMode: String, Codable, CaseIterable, Hashable, Sendable {
     case markdown
     case split
 }
+
+public typealias MarkdownEditingMode = SourceEditingMode
 
 public enum MarkdownBlockKind: String, Codable, Hashable, Sendable {
     case paragraph

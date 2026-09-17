@@ -15,7 +15,9 @@ RootView
         ├── MarkdownPreviewView
         ├── JSONPreviewView
         ├── CSVPreviewView
+        ├── LatexPreviewView
         ├── PDFPreviewView
+        ├── ImagePreviewView
         └── DocxPreviewView
 ```
 
@@ -38,7 +40,7 @@ Os modelos principais são:
 
 - `DocumentTab` — identidade do ficheiro, tipo, contexto, estado do preview,
   artefacto atual, outline, zoom, posição de leitura, dependências e erro.
-- `MarkdownEditSession` — modo Markdown/split, source base e atual, gravação,
+- `SourceEditSession` — modo source/split, source base e atual, gravação,
   histórico undo/redo e conflito externo.
 - `DocumentDiff` — resultado puro e reutilizável, independente do formato,
   com linhas/hunks, números de linha e referência selecionada.
@@ -94,6 +96,25 @@ restaura o modo anterior.
 `PDFPreviewView` apresenta PDFs locais e os artefactos LaTeX em `PDFView`,
 controla zoom, pesquisa, outline, posição de leitura, impressão e navegação de
 links. A pesquisa comum encaminha as operações para PDFKit.
+
+### Imagens
+
+`ImagePreviewView` apresenta PNG, JPG/JPEG, WebP e HEIC/HEIF num canvas
+read-only com cartão, borda e sombra, ajuste automático à janela, scroll para
+imagens ampliadas, zoom partilhado da tab, refresh e captura de snapshots.
+Alterações no ficheiro ativo provocam nova leitura através do
+`DocumentRenderCoordinator`.
+
+### LaTeX
+
+`LatexPreviewView` compõe a toolbar de edição, o editor `NSTextView`, o diff e
+o `PDFPreviewView` em split view. O duplo clique no PDF envia página e
+coordenadas para `LatexSyncTeXLookup`, que resolve o ficheiro/linha e aplica o
+cursor; quando SyncTeX não existe, a entrada no source continua disponível.
+Quando SyncTeX devolve uma linha do `.bbl` gerado, `AppModel` usa o conteúdo
+guardado desse `.bbl` para encontrar a chave da entrada e abrir o `.bib`.
+`SourceEditorView` aplica a paleta `LatexSyntaxColorPalette`. O PDF encaminha
+links locais para o router do `AppModel` e links externos para o browser.
 
 ### JSON
 

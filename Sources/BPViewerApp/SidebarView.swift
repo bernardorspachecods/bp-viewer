@@ -476,6 +476,7 @@ struct FileTreeRow: View {
         case .csv: return "tablecells"
         case .docx: return "doc.text.fill"
         case .pdf: return "doc.fill"
+        case .image: return "photo"
         case .other: return "doc"
         }
     }
@@ -495,6 +496,7 @@ struct FileTreeRow: View {
         case .csv: .green
         case .docx: .purple
         case .pdf: .red
+        case .image: .green
         case .other: BPTokens.Color.muted
         }
     }

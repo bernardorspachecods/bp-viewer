@@ -6,7 +6,7 @@ filesystem, estado puro e processos separados de SwiftUI/AppKit.
 
 Áreas principais:
 
-- `FileSystemFoundation.swift` — tipos de documento e scanner lazy/recursivo.
+- `FileSystemFoundation.swift` — tipos de documento, incluindo imagens, e scanner lazy/recursivo.
 - `SessionModels.swift` — modelos puros de tabs, preview, edição, posições de
   leitura e estado persistido.
 - `DocumentDiff.swift` — modos e baselines de comparação, providers de disco/Git

@@ -55,8 +55,8 @@ public struct MarkdownConflict: Hashable, Sendable {
     }
 }
 
-public struct MarkdownEditSession: Hashable, Sendable {
-    public var mode: MarkdownEditingMode
+public struct SourceEditSession: Hashable, Sendable {
+    public var mode: SourceEditingMode
     public var isEditing: Bool
     public var baseSource: String
     public var currentSource: String
@@ -66,7 +66,7 @@ public struct MarkdownEditSession: Hashable, Sendable {
     public var conflict: MarkdownConflict?
 
     public init(
-        mode: MarkdownEditingMode = .markdown,
+        mode: SourceEditingMode = .markdown,
         isEditing: Bool = true,
         baseSource: String,
         currentSource: String,
@@ -85,6 +85,8 @@ public struct MarkdownEditSession: Hashable, Sendable {
         self.conflict = conflict
     }
 }
+
+public typealias MarkdownEditSession = SourceEditSession
 
 public struct CSVEditSession: Hashable, Sendable {
     public var isEditing: Bool
@@ -142,6 +144,9 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
     public var previewCSV: CSVDocument?
     public var csvEditSession: CSVEditSession?
     public var previewPDFData: Data?
+    public var previewImageData: Data?
+    public var latexSyncTeXData: Data?
+    public var latexGeneratedBibliographySource: String?
     public var markdownOutline: [MarkdownOutlineEntry]
     public var isOutlineVisible: Bool
     public var outlineWidth: Double
@@ -160,6 +165,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
     public var markdownEditSession: MarkdownEditSession?
     public var jsonSource: String?
     public var jsonEditSession: MarkdownEditSession?
+    public var latexEditSession: SourceEditSession?
+    public var latexCursorUTF8Offset: Int?
     public var jsonCursorUTF8Offset: Int?
     public var diffSession: DocumentDiffSession?
 
@@ -175,6 +182,9 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         previewCSV: CSVDocument? = nil,
         csvEditSession: CSVEditSession? = nil,
         previewPDFData: Data? = nil,
+        previewImageData: Data? = nil,
+        latexSyncTeXData: Data? = nil,
+        latexGeneratedBibliographySource: String? = nil,
         markdownOutline: [MarkdownOutlineEntry] = [],
         isOutlineVisible: Bool = false,
         outlineWidth: Double = DocumentOutlineSizing.defaultWidth,
@@ -193,6 +203,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         markdownEditSession: MarkdownEditSession? = nil,
         jsonSource: String? = nil,
         jsonEditSession: MarkdownEditSession? = nil,
+        latexEditSession: SourceEditSession? = nil,
+        latexCursorUTF8Offset: Int? = nil,
         jsonCursorUTF8Offset: Int? = nil,
         diffSession: DocumentDiffSession? = nil
     ) {
@@ -207,6 +219,9 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.previewCSV = previewCSV
         self.csvEditSession = csvEditSession
         self.previewPDFData = previewPDFData
+        self.previewImageData = previewImageData
+        self.latexSyncTeXData = latexSyncTeXData
+        self.latexGeneratedBibliographySource = latexGeneratedBibliographySource
         self.markdownOutline = markdownOutline
         self.isOutlineVisible = isOutlineVisible
         self.outlineWidth = DocumentOutlineSizing.clamped(outlineWidth)
@@ -225,6 +240,8 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.markdownEditSession = markdownEditSession
         self.jsonSource = jsonSource
         self.jsonEditSession = jsonEditSession
+        self.latexEditSession = latexEditSession
+        self.latexCursorUTF8Offset = latexCursorUTF8Offset
         self.jsonCursorUTF8Offset = jsonCursorUTF8Offset
         self.diffSession = diffSession
     }
@@ -235,12 +252,24 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         contextURL?.path ?? url.deletingLastPathComponent().lastPathComponent
     }
 
+    public var editableSourceURL: URL {
+        contextURL ?? url
+    }
+
     public var presentationMode: DocumentPresentationMode {
         if let diffSession {
             return .diff(diffSession.mode)
         }
         if markdownEditSession?.isEditing == true,
            markdownEditSession?.mode == .split {
+            return .split
+        }
+        if jsonEditSession?.isEditing == true,
+           jsonEditSession?.mode == .split {
+            return .split
+        }
+        if latexEditSession?.isEditing == true,
+           latexEditSession?.mode == .split {
             return .split
         }
         return .source
@@ -252,9 +281,12 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
             diffSession = nil
             markdownEditSession?.mode = .markdown
             jsonEditSession?.mode = .markdown
+            latexEditSession?.mode = .markdown
         case .split:
             diffSession = nil
             markdownEditSession?.mode = .split
+            jsonEditSession?.mode = .split
+            latexEditSession?.mode = .split
         }
     }
 
@@ -262,6 +294,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         self.diffSession = diffSession
         markdownEditSession?.mode = .markdown
         jsonEditSession?.mode = .markdown
+        latexEditSession?.mode = .markdown
     }
 
     public mutating func relocate(from oldURL: URL, to newURL: URL) {

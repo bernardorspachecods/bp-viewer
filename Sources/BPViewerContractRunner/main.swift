@@ -261,6 +261,24 @@ struct BPViewerContractRunner {
                     },
                 "manual LaTeX fixture compiles with BibTeX"
             )
+            let generatedBibliography = manualFixtureResult.generatedBibliographySource ?? ""
+            let generatedLines = generatedBibliography.split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            )
+            if let entryLine = generatedLines.firstIndex(where: {
+                $0.contains(#"\bibitem{knuth1984texbook}"#)
+            }) {
+                expect(
+                    LatexCitationLookup.keyInGeneratedBibliography(
+                        atLine: entryLine + 1,
+                        in: generatedBibliography
+                    ) == "knuth1984texbook",
+                    "generated BibTeX bibliography maps back to its source key"
+                )
+            } else {
+                expect(false, "generated BibTeX bibliography maps back to its source key")
+            }
             let broadProjectRoot = manualFixtureProject
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()

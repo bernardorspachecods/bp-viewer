@@ -97,6 +97,7 @@ final class AppModel: ObservableObject {
     private var readingPositionPersistenceTask: Task<Void, Never>?
     private var fileOperationTask: Task<Void, Never>?
     private var gitDiscardTask: Task<Void, Never>?
+    private var latexRenderDebounceTasks: [String: Task<Void, Never>] = [:]
     private var activeSecurityScopedRootURL: URL?
 
     init(documentDiffCoordinator: DocumentDiffCoordinator = DocumentDiffCoordinator()) {
@@ -175,6 +176,17 @@ final class AppModel: ObservableObject {
                 return nil
             }
 
+            if flags == [.command],
+               event.charactersIgnoringModifiers?.lowercased() == "s",
+               let tabID = self?.activeTabID,
+               let session = self?.activeTab?.latexEditSession,
+               session.currentSource != session.baseSource {
+                Task { @MainActor [weak self] in
+                    await self?.saveLatexEdit(tabID: tabID)
+                }
+                return nil
+            }
+
             if flags.contains(.command),
                event.charactersIgnoringModifiers?.lowercased() == "z",
                let session = self?.activeTab?.markdownEditSession,
@@ -215,6 +227,21 @@ final class AppModel: ObservableObject {
                         self?.redoCSVEdit()
                     } else {
                         self?.undoCSVEdit()
+                    }
+                }
+                return nil
+            }
+
+            if flags.contains(.command),
+               event.charactersIgnoringModifiers?.lowercased() == "z",
+               let session = self?.activeTab?.latexEditSession,
+               (flags.contains(.shift) ? !session.redoSources.isEmpty : !session.undoSources.isEmpty) {
+                let redo = flags.contains(.shift)
+                Task { @MainActor [weak self] in
+                    if redo {
+                        self?.redoLatexEdit()
+                    } else {
+                        self?.undoLatexEdit()
                     }
                 }
                 return nil
@@ -622,7 +649,7 @@ final class AppModel: ObservableObject {
             return
         }
         startWatchingActiveFiles(
-            [tab.url] + tab.previewDependencies + tab.previewExternalDependencies
+            [tab.url, tab.editableSourceURL] + tab.previewDependencies + tab.previewExternalDependencies
         )
         renderActiveTabIfNeeded()
     }
@@ -650,6 +677,7 @@ final class AppModel: ObservableObject {
             || activeTab.previewJSON != nil
             || activeTab.previewCSV != nil
             || activeTab.previewPDFData != nil
+            || activeTab.previewImageData != nil
     }
 
     func startSnapshotCapture() {
@@ -807,8 +835,26 @@ final class AppModel: ObservableObject {
         var session = documentTabSession
         if let existingTab = session.tabs.first(where: { $0.id == id }) {
             _ = session.select(id: existingTab.id)
-            if let contextURL {
-                _ = session.update(id: id) { $0.contextURL = contextURL }
+            let sourceURL = contextURL ?? documentURL
+            let isBibliography = sourceURL.pathExtension.lowercased() == "bib"
+            let isNewSource = sourceURL.standardizedFileURL
+                != existingTab.editableSourceURL.standardizedFileURL
+            if existingTab.kind == .latex,
+               isNewSource || (isBibliography && existingTab.latexEditSession?.isEditing != true) {
+                if !hasUnsavedChanges(in: existingTab),
+                   let source = try? String(contentsOf: sourceURL, encoding: .utf8) {
+                    _ = session.update(id: id) { tab in
+                        let previousMode = tab.latexEditSession?.mode
+                        tab.contextURL = contextURL
+                        if previousMode != nil || isBibliography {
+                            var editSession = documentEditCoordinator.beginLatex(source: source).session
+                            editSession.mode = previousMode ?? .markdown
+                            tab.latexEditSession = editSession
+                            tab.latexCursorUTF8Offset = nil
+                            tab.diffSession = nil
+                        }
+                    }
+                }
             }
             applyDocumentTabSession(session)
             syncPreviewZoomToActiveTab()
@@ -818,7 +864,7 @@ final class AppModel: ObservableObject {
         }
 
         let documentState = workspaceSession.documentState(for: documentURL)
-        let tab = DocumentTab(
+        var tab = DocumentTab(
             id: id,
             url: documentURL,
             kind: kind,
@@ -832,6 +878,12 @@ final class AppModel: ObservableObject {
             markdownReadingPosition: documentState.markdownReadingPosition,
             pdfReadingPosition: documentState.pdfReadingPosition
         )
+        if kind == .latex,
+           let contextURL,
+           contextURL.pathExtension.lowercased() == "bib",
+           let source = try? String(contentsOf: contextURL, encoding: .utf8) {
+            tab.latexEditSession = documentEditCoordinator.beginLatex(source: source).session
+        }
 
         _ = session.open(tab)
         applyDocumentTabSession(session)
@@ -881,6 +933,7 @@ final class AppModel: ObservableObject {
            let index = tabs.firstIndex(where: { $0.id == request.tabID }) {
             tabs[index].markdownEditSession?.isEditing = true
             tabs[index].jsonEditSession?.isEditing = true
+            tabs[index].latexEditSession?.isEditing = true
         }
         pendingCloseRequest = nil
         showingPendingCloseConfirmation = false
@@ -946,6 +999,8 @@ final class AppModel: ObservableObject {
                 saved = await saveJSONEdit(tabID: tab.id, finishEditing: !closesTab)
             case .csv:
                 saved = await saveCSVEdit(tabID: tab.id)
+            case .latex:
+                saved = await saveLatexEdit(tabID: tab.id, finishEditing: !closesTab)
             default:
                 saved = true
             }
@@ -998,6 +1053,16 @@ final class AppModel: ObservableObject {
             tabs[index].jsonEditSession?.isEditing = keepEditing
             tabs[index].errorMessage = nil
             renderJSON(tabID: tab.id)
+        } else if let session = tabs[index].latexEditSession {
+            tabs[index].latexEditSession?.currentSource = session.baseSource
+            tabs[index].latexEditSession?.undoSources.removeAll()
+            tabs[index].latexEditSession?.redoSources.removeAll()
+            tabs[index].latexEditSession?.saveState = .saved
+            tabs[index].latexEditSession?.conflict = nil
+            tabs[index].latexEditSession?.isEditing = keepEditing
+            tabs[index].errorMessage = nil
+            tabs[index].diffSession = nil
+            renderLatex(tabID: tab.id)
         } else if let session = tabs[index].csvEditSession {
             if let document = try? CSVPreviewAdapter().parse(source: session.baseSource) {
                 tabs[index].previewCSV = document
@@ -1024,7 +1089,7 @@ final class AppModel: ObservableObject {
         guard !showingGitDiscardConfirmation,
               gitDiscardTask == nil,
               let tab = tabs.first(where: { $0.id == tabID }),
-              (tab.kind == .markdown || tab.kind == .json),
+              (tab.kind == .markdown || tab.kind == .json || tab.kind == .latex),
               tab.presentationMode == .diff(.gitHead),
               tab.diffSession?.baseline != nil else { return }
         pendingGitDiscardTabID = tabID
@@ -1047,7 +1112,7 @@ final class AppModel: ObservableObject {
         showingGitDiscardConfirmation = false
         gitDiscardTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let outcome = await self.documentDiffCoordinator.restoreGitChanges(for: tab.url)
+            let outcome = await self.documentDiffCoordinator.restoreGitChanges(for: tab.editableSourceURL)
             self.applyGitDiscardOutcome(outcome, tabID: tabID)
             self.gitDiscardTask = nil
         }
@@ -1089,17 +1154,28 @@ final class AppModel: ObservableObject {
                     currentSource: source
                 )
                 renderJSON(tabID: tabID)
+            } else if let session = tabs[index].latexEditSession {
+                tabs[index].latexEditSession = SourceEditSession(
+                    mode: session.mode,
+                    isEditing: true,
+                    baseSource: source,
+                    currentSource: source
+                )
+                renderLatex(tabID: tabID)
             }
             persistState()
         case let .unavailable(message), let .failed(message):
             tabs[index].errorMessage = message
             tabs[index].markdownEditSession?.saveState = .failed
             tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].latexEditSession?.saveState = .failed
         }
     }
 
     private func closeTabImmediately(_ tab: DocumentTab) {
         guard tabs.contains(tab) else { return }
+        latexRenderDebounceTasks[tab.id]?.cancel()
+        latexRenderDebounceTasks[tab.id] = nil
         documentRenderCoordinator.cancel(tabIDs: [tab.id])
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
@@ -1129,6 +1205,9 @@ final class AppModel: ObservableObject {
             return session.currentSource != session.baseSource || session.saveState != .saved
         }
         if let session = tab.csvEditSession {
+            return session.currentSource != session.baseSource || session.saveState != .saved
+        }
+        if let session = tab.latexEditSession {
             return session.currentSource != session.baseSource || session.saveState != .saved
         }
         return false
@@ -1229,6 +1308,8 @@ final class AppModel: ObservableObject {
             renderCSV(tabID: tabID)
         } else if tab.kind == .pdf {
             renderPDF(tabID: tabID)
+        } else if tab.kind == .image {
+            renderImage(tabID: tabID)
         } else if tab.kind == .docx {
             refreshDocx(tabID: tabID)
         } else if let index = tabs.firstIndex(where: { $0.id == tabID }) {
@@ -1270,6 +1351,10 @@ final class AppModel: ObservableObject {
             if tabs[initialIndex].jsonEditSession?.isEditing != true {
                 beginJSONEditing(tabID: tabID)
             }
+        case .latex:
+            if tabs[initialIndex].latexEditSession?.isEditing != true {
+                beginLatexEditing(tabID: tabID)
+            }
         default:
             return
         }
@@ -1279,9 +1364,11 @@ final class AppModel: ObservableObject {
 
     private func openDocumentDiff(tabID: String, mode: DocumentDiffMode) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[index].kind == .markdown || tabs[index].kind == .json else { return }
+              tabs[index].kind == .markdown
+                || tabs[index].kind == .json
+                || tabs[index].kind == .latex else { return }
 
-        switch documentDiffCoordinator.baseline(for: mode, url: tabs[index].url) {
+        switch documentDiffCoordinator.baseline(for: mode, url: tabs[index].editableSourceURL) {
         case let .available(baseline):
             tabs[index].activateDiff(DocumentDiffSession(
                 mode: mode,
@@ -1325,6 +1412,412 @@ final class AppModel: ObservableObject {
                 _ = await self?.saveMarkdownEdit(tabID: tabID, finishEditing: true)
             }
         }
+    }
+
+    @discardableResult
+    func saveMarkdownEditing(tabID: String) async -> Bool {
+        await saveMarkdownEdit(tabID: tabID)
+    }
+
+    func beginLatexEditing(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .latex else { return }
+
+        let sourceURL = tabs[index].editableSourceURL
+        let source = (try? String(contentsOf: sourceURL, encoding: .utf8)) ?? ""
+        tabs[index].diffSession = nil
+        tabs[index].latexCursorUTF8Offset = nil
+        tabs[index].latexEditSession = documentEditCoordinator.beginLatex(source: source).session
+        tabs[index].errorMessage = nil
+    }
+
+    func openLatexCitation(tabID: String, sourceOffset: Int) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .latex,
+              let session = tabs[index].latexEditSession,
+              let projectRoot = rootURL,
+              let key = LatexCitationLookup.citationKey(
+                  atUTF8Offset: sourceOffset,
+                  in: session.currentSource
+              ),
+              let bibliography = latexBibliographyEntry(
+                  for: key,
+                  tab: tabs[index],
+                  projectRoot: projectRoot
+              ) else { return }
+
+        tabs[index].contextURL = bibliography.url == tabs[index].url ? nil : bibliography.url
+        tabs[index].latexEditSession = documentEditCoordinator.beginLatex(
+            source: bibliography.source
+        ).session
+        tabs[index].latexCursorUTF8Offset = bibliography.offset
+        tabs[index].diffSession = nil
+        tabs[index].errorMessage = nil
+        if activeTabID == tabID {
+            startWatchingActiveFiles(
+                [tabs[index].url, tabs[index].editableSourceURL]
+                    + tabs[index].previewDependencies
+                    + tabs[index].previewExternalDependencies
+            )
+        }
+    }
+
+    func beginLatexEditing(tabID: String, pageIndex: Int, pointFromTopLeft: CGPoint) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        guard let syncTeXData = tabs[index].latexSyncTeXData,
+              let pdfData = tabs[index].previewPDFData,
+              let projectRoot = rootURL else {
+            beginLatexEditing(tabID: tabID)
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            let location = await Task.detached {
+                LatexSyncTeXLookup.location(
+                    syncTeXData: syncTeXData,
+                    pdfData: pdfData,
+                    pageIndex: pageIndex,
+                    pointFromTopLeft: pointFromTopLeft,
+                    projectRoot: projectRoot
+                )
+            }.value
+            guard let self,
+                  let currentIndex = self.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+
+            // Wait for SyncTeX before exposing the editor. This keeps the
+            // source view from briefly appearing at line one and then
+            // jumping to the clicked location.
+            if self.tabs[currentIndex].latexEditSession?.isEditing != true {
+                self.beginLatexEditing(tabID: tabID)
+            }
+            if let location {
+                self.applyLatexSourceLocation(
+                    location,
+                    tabID: tabID,
+                    projectRoot: projectRoot
+                )
+            }
+        }
+    }
+
+    func applyLatexSourceLocation(
+        _ location: LatexSourceLocation,
+        tabID: String,
+        projectRoot: URL
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].latexEditSession?.isEditing == true else { return }
+
+        let target: (url: URL, source: String, offset: Int)
+        if location.url.pathExtension.lowercased() == "bbl",
+           location.url.deletingPathExtension().lastPathComponent
+               == tabs[index].url.deletingPathExtension().lastPathComponent {
+            let key = tabs[index].latexGeneratedBibliographySource.flatMap {
+                LatexCitationLookup.keyInGeneratedBibliography(
+                    atLine: location.line,
+                    in: $0
+                )
+            }
+            guard let bibliography = key.flatMap({
+                latexBibliographyEntry(
+                    for: $0,
+                    tab: tabs[index],
+                    projectRoot: projectRoot
+                )
+            }) ?? latexFirstBibliography(tab: tabs[index], projectRoot: projectRoot) else { return }
+            target = bibliography
+        } else {
+            guard let sourceURL = latexSourceURL(
+                for: location.url,
+                tab: tabs[index],
+                projectRoot: projectRoot
+            ), let source = try? String(contentsOf: sourceURL, encoding: .utf8) else { return }
+
+            let offset = latexUTF8Offset(
+                in: source,
+                line: location.line,
+                column: location.column
+            )
+            if sourceURL.pathExtension.lowercased() == "tex",
+               let key = LatexCitationLookup.citationKey(
+                   atUTF8Offset: offset,
+                   in: source
+               ),
+               let bibliography = latexBibliographyEntry(
+                   for: key,
+                   tab: tabs[index],
+                   projectRoot: projectRoot
+               ) {
+                target = bibliography
+            } else {
+                target = (sourceURL, source, offset)
+            }
+        }
+
+        let currentURL = tabs[index].editableSourceURL.standardizedFileURL
+        if target.url != currentURL {
+            tabs[index].contextURL = target.url == tabs[index].url ? nil : target.url
+            tabs[index].latexEditSession = documentEditCoordinator.beginLatex(
+                source: target.source
+            ).session
+            tabs[index].diffSession = nil
+            tabs[index].errorMessage = nil
+            if activeTabID == tabID {
+                startWatchingActiveFiles(
+                    [tabs[index].url, tabs[index].editableSourceURL]
+                        + tabs[index].previewDependencies
+                        + tabs[index].previewExternalDependencies
+                )
+            }
+        }
+        tabs[index].latexCursorUTF8Offset = target.offset
+    }
+
+    private func latexSourceURL(
+        for locationURL: URL,
+        tab: DocumentTab,
+        projectRoot: URL
+    ) -> URL? {
+        let candidate = locationURL.resolvingSymlinksInPath().standardizedFileURL
+        if isInside(candidate, project: projectRoot),
+           FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+
+        let dependencies = Set(
+            tab.previewDependencies.map { $0.resolvingSymlinksInPath().standardizedFileURL }
+        )
+        if let dependency = dependencies.first(where: { dependency in
+            dependency.lastPathComponent == candidate.lastPathComponent
+                && dependency.pathExtension.lowercased() == candidate.pathExtension.lowercased()
+        }) {
+            return dependency
+        }
+
+        guard !locationURL.path.hasPrefix("/") else { return nil }
+        let relativeCandidate = projectRoot
+            .appendingPathComponent(locationURL.path)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        return isInside(relativeCandidate, project: projectRoot)
+            && FileManager.default.fileExists(atPath: relativeCandidate.path)
+            ? relativeCandidate
+            : nil
+    }
+
+    private func latexBibliographyEntry(
+        for key: String,
+        tab: DocumentTab,
+        projectRoot: URL
+    ) -> (url: URL, source: String, offset: Int)? {
+        for url in latexBibliographyURLs(tab: tab, projectRoot: projectRoot) {
+            guard let source = try? String(contentsOf: url, encoding: .utf8),
+                  let offset = LatexCitationLookup.bibliographyEntryOffset(
+                      for: key,
+                      in: source
+                  ) else { continue }
+            return (url, source, offset)
+        }
+        return nil
+    }
+
+    private func latexFirstBibliography(
+        tab: DocumentTab,
+        projectRoot: URL
+    ) -> (url: URL, source: String, offset: Int)? {
+        for url in latexBibliographyURLs(tab: tab, projectRoot: projectRoot) {
+            if let source = try? String(contentsOf: url, encoding: .utf8) {
+                return (url, source, 0)
+            }
+        }
+        return nil
+    }
+
+    private func latexBibliographyURLs(tab: DocumentTab, projectRoot: URL) -> [URL] {
+        let rootURL = storedLatexRoot(for: projectRoot) ?? tab.url
+        let dependencies = Set(
+            tab.previewDependencies
+                + LocalLatexAdapter().sourceDependencies(
+                    rootURL: rootURL,
+                    projectRoot: projectRoot
+                )
+        )
+        return dependencies
+            .filter {
+                $0.pathExtension.lowercased() == "bib"
+                    && isInside($0, project: projectRoot)
+            }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    private func latexUTF8Offset(in source: String, line: Int, column: Int) -> Int {
+        let lines = source.split(separator: "\n", omittingEmptySubsequences: false)
+        guard !lines.isEmpty else { return 0 }
+        let lineIndex = min(max(line - 1, 0), max(lines.count - 1, 0))
+        let prefix = lines.prefix(lineIndex).joined(separator: "\n")
+        return prefix.utf8.count + (lineIndex > 0 ? 1 : 0)
+            + min(max(column, 0), lines[lineIndex].utf8.count)
+    }
+
+    func updateLatexEditing(tabID: String, text: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .latex,
+              let session = tabs[index].latexEditSession,
+              let transition = documentEditCoordinator.updateLatex(
+                  session: session,
+                  source: text
+              ) else { return }
+
+        tabs[index].latexEditSession = transition.session
+        tabs[index].errorMessage = nil
+        scheduleLatexRender(tabID: tabID)
+    }
+
+    func endLatexEditing(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession else { return }
+        if session.currentSource == session.baseSource {
+            tabs[index].latexEditSession?.isEditing = false
+            tabs[index].diffSession = nil
+            renderLatex(tabID: tabID)
+        } else {
+            tabs[index].latexEditSession?.saveState = .saving
+            Task { @MainActor [weak self] in
+                _ = await self?.saveLatexEdit(tabID: tabID, finishEditing: true)
+            }
+        }
+    }
+
+    @discardableResult
+    func undoLatexEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession,
+              let transition = documentEditCoordinator.undoLatex(session: session) else { return false }
+        tabs[index].latexEditSession = transition.session
+        scheduleLatexRender(tabID: tabID)
+        return true
+    }
+
+    @discardableResult
+    func redoLatexEdit() -> Bool {
+        guard let tabID = activeTabID,
+              let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession,
+              let transition = documentEditCoordinator.redoLatex(session: session) else { return false }
+        tabs[index].latexEditSession = transition.session
+        scheduleLatexRender(tabID: tabID)
+        return true
+    }
+
+    func keepLocalLatexEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession else { return }
+        applyLatexSaveOutcome(
+            documentEditCoordinator.commitLatex(
+                url: tabs[index].editableSourceURL,
+                source: session.currentSource
+            ),
+            tabID: tabID,
+            finishEditing: true
+        )
+    }
+
+    func useExternalLatexEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession,
+              let conflict = session.conflict else { return }
+        let external = documentEditCoordinator.useExternal(
+            session: session,
+            externalSource: conflict.externalSource
+        )
+        tabs[index].latexEditSession = external.session
+        tabs[index].diffSession = nil
+        tabs[index].errorMessage = nil
+        renderLatex(tabID: tabID)
+    }
+
+    @discardableResult
+    private func saveLatexEdit(tabID: String, finishEditing: Bool = false) async -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession else { return false }
+
+        guard session.currentSource != session.baseSource else {
+            if finishEditing {
+                tabs[index].latexEditSession?.isEditing = false
+                tabs[index].diffSession = nil
+                renderLatex(tabID: tabID)
+            }
+            return true
+        }
+
+        let localSource = session.currentSource
+        tabs[index].latexEditSession?.saveState = .saving
+        let outcome = await documentEditCoordinator.saveLatex(
+            url: tabs[index].editableSourceURL,
+            baseSource: session.baseSource,
+            localSource: localSource
+        )
+        guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[currentIndex].latexEditSession?.currentSource == localSource else {
+            return false
+        }
+        return applyLatexSaveOutcome(outcome, tabID: tabID, finishEditing: finishEditing)
+    }
+
+    @discardableResult
+    private func applyLatexSaveOutcome(
+        _ outcome: DocumentEditSaveOutcome,
+        tabID: String,
+        finishEditing: Bool
+    ) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }) else { return false }
+        switch outcome {
+        case let .saved(source):
+            tabs[index].latexEditSession?.baseSource = source
+            tabs[index].latexEditSession?.currentSource = source
+            tabs[index].latexEditSession?.saveState = .saved
+            tabs[index].latexEditSession?.conflict = nil
+            tabs[index].errorMessage = nil
+            if tabs[index].diffSession?.mode == .savedOnDisk {
+                tabs[index].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: source
+                )
+            }
+            if finishEditing {
+                tabs[index].latexEditSession?.isEditing = false
+                tabs[index].diffSession = nil
+            }
+            renderLatex(tabID: tabID)
+            return true
+        case let .conflict(conflict):
+            tabs[index].latexEditSession?.saveState = .conflict
+            tabs[index].latexEditSession?.isEditing = true
+            tabs[index].latexEditSession?.conflict = conflict
+            return false
+        case let .failed(message):
+            tabs[index].latexEditSession?.saveState = .failed
+            tabs[index].latexEditSession?.isEditing = true
+            tabs[index].errorMessage = message
+            return false
+        }
+    }
+
+    func toggleLatexSplitView(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .latex else { return }
+        guard tabs[index].latexEditSession?.isEditing == true else {
+            beginLatexEditing(tabID: tabID)
+            tabs[index].latexEditSession?.mode = .split
+            renderLatex(tabID: tabID)
+            return
+        }
+        let nextMode: DocumentPresentationMode = tabs[index].presentationMode == .split
+            ? .source
+            : .split
+        tabs[index].selectPresentationMode(nextMode)
+        renderLatex(tabID: tabID)
     }
 
     func updateCSVEditing(tabID: String, row: Int, column: Int, value: String) {
@@ -2090,7 +2583,7 @@ final class AppModel: ObservableObject {
             return defaultMarkdownZoom
         case .latex, .pdf:
             return defaultLatexZoom
-        case .json, .docx, .other:
+        case .json, .docx, .image, .other:
             return 1.0
         case .csv:
             return 1.0
@@ -2239,13 +2732,14 @@ final class AppModel: ObservableObject {
     private func renderActiveTabIfNeeded() {
         guard let activeTabID,
               let tab = tabs.first(where: { $0.id == activeTabID }),
-              tab.kind == .markdown || tab.kind == .latex || tab.kind == .json || tab.kind == .csv || tab.kind == .pdf || tab.kind == .docx else {
+              tab.kind == .markdown || tab.kind == .latex || tab.kind == .json || tab.kind == .csv || tab.kind == .pdf || tab.kind == .docx || tab.kind == .image else {
             stopWatchingActiveFiles()
             return
         }
 
         startWatchingActiveFiles(
-            [tab.url] + tab.previewDependencies + tab.previewExternalDependencies
+            [tab.url, tab.editableSourceURL]
+                + tab.previewDependencies + tab.previewExternalDependencies
         )
         let hasPreview: Bool
         switch tab.kind {
@@ -2261,6 +2755,8 @@ final class AppModel: ObservableObject {
             hasPreview = tab.previewCSV != nil
         case .docx:
             return
+        case .image:
+            hasPreview = tab.previewImageData != nil
         case .other:
             hasPreview = false
         }
@@ -2275,6 +2771,8 @@ final class AppModel: ObservableObject {
                 renderCSV(tabID: activeTabID)
             } else if tab.kind == .pdf {
                 renderPDF(tabID: activeTabID)
+            } else if tab.kind == .image {
+                renderImage(tabID: activeTabID)
             }
         }
     }
@@ -2319,6 +2817,17 @@ final class AppModel: ObservableObject {
             }
             return
         }
+        if let session = tab.latexEditSession,
+           session.isEditing,
+           session.currentSource == session.baseSource,
+           change.url == tab.editableSourceURL {
+            if tab.diffSession?.mode == .savedOnDisk {
+                Task { @MainActor [weak self] in
+                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
+                }
+            }
+            return
+        }
 
         Task { @MainActor [weak self] in
             guard let self,
@@ -2327,7 +2836,13 @@ final class AppModel: ObservableObject {
 
             switch currentTab.kind {
             case .latex:
-                self.renderLatex(tabID: change.tabID)
+                if currentTab.editableSourceURL.standardizedFileURL == change.url.standardizedFileURL,
+                   let session = currentTab.latexEditSession,
+                   session.currentSource != session.baseSource {
+                    await self.handleExternalLatexChange(tabID: change.tabID)
+                } else {
+                    self.renderLatex(tabID: change.tabID)
+                }
             case .json:
                 if let session = currentTab.jsonEditSession,
                    session.currentSource != session.baseSource {
@@ -2346,6 +2861,8 @@ final class AppModel: ObservableObject {
                 self.renderPDF(tabID: change.tabID)
             case .docx:
                 self.refreshDocx(tabID: change.tabID)
+            case .image:
+                self.renderImage(tabID: change.tabID)
             case .markdown:
                 if let session = currentTab.markdownEditSession,
                    session.currentSource != session.baseSource {
@@ -2430,6 +2947,42 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func handleExternalLatexChange(tabID: String) async {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].latexEditSession,
+              session.currentSource != session.baseSource else {
+            renderLatex(tabID: tabID)
+            return
+        }
+
+        do {
+            let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].editableSourceURL)
+            guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
+                  tabs[currentIndex].latexEditSession?.currentSource == session.currentSource else { return }
+            if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                    label: "Saved on Disk",
+                    source: externalSource
+                )
+            }
+            guard externalSource != session.baseSource else {
+                tabs[currentIndex].latexEditSession?.saveState = .unsaved
+                return
+            }
+            tabs[currentIndex].latexEditSession?.saveState = .conflict
+            tabs[currentIndex].latexEditSession?.isEditing = true
+            tabs[currentIndex].latexEditSession?.conflict = MarkdownConflict(
+                localSource: session.currentSource,
+                externalSource: externalSource,
+                blockIDs: []
+            )
+        } catch {
+            tabs[index].latexEditSession?.saveState = .failed
+            tabs[index].latexEditSession?.isEditing = true
+            tabs[index].errorMessage = error.localizedDescription
+        }
+    }
+
     private func handleExternalCSVChange(tabID: String) async {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].csvEditSession,
@@ -2461,7 +3014,7 @@ final class AppModel: ObservableObject {
     private func refreshDiskDiffBaseline(tabID: String) async {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].diffSession?.mode == .savedOnDisk else { return }
-        guard let source = try? await documentEditCoordinator.readSource(at: tabs[index].url),
+        guard let source = try? await documentEditCoordinator.readSource(at: tabs[index].editableSourceURL),
               let currentIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
             label: "Saved on Disk",
@@ -2476,17 +3029,37 @@ final class AppModel: ObservableObject {
     ) {
         guard let tab = tabs.first(where: { $0.id == tabID }),
               let projectRoot = rootURL else { return }
+        let sourceOverride: String?
+        if let session = tab.latexEditSession,
+           session.isEditing,
+           session.currentSource != session.baseSource {
+            sourceOverride = session.currentSource
+        } else {
+            sourceOverride = nil
+        }
         documentRenderCoordinator.render(DocumentRenderRequest(
             tabID: tabID,
             url: tab.url,
             kind: .latex,
             projectRoot: projectRoot,
             markdownSourceOverride: nil,
+            latexSourceURL: sourceOverride == nil ? nil : tab.editableSourceURL,
+            latexSourceOverride: sourceOverride,
             latexRootURL: explicitRootURL ?? storedLatexRoot(for: projectRoot),
             latexShellEscapeMode: latexShellEscapeMode,
             approvedLatexExternalPaths: approvedLatexExternalPaths,
             force: force
         ))
+    }
+
+    private func scheduleLatexRender(tabID: String) {
+        latexRenderDebounceTasks[tabID]?.cancel()
+        latexRenderDebounceTasks[tabID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, let self else { return }
+            self.renderLatex(tabID: tabID)
+            self.latexRenderDebounceTasks[tabID] = nil
+        }
     }
 
     private func storedLatexRoot(for projectRoot: URL) -> URL? {
@@ -2579,6 +3152,21 @@ final class AppModel: ObservableObject {
         ))
     }
 
+    private func renderImage(tabID: String) {
+        guard let tab = tabs.first(where: { $0.id == tabID }), tab.kind == .image else { return }
+        documentRenderCoordinator.render(DocumentRenderRequest(
+            tabID: tabID,
+            url: tab.url,
+            kind: .image,
+            projectRoot: rootURL,
+            markdownSourceOverride: nil,
+            latexRootURL: nil,
+            latexShellEscapeMode: latexShellEscapeMode,
+            approvedLatexExternalPaths: [:],
+            force: false
+        ))
+    }
+
     private func handleDocumentRenderEvent(_ event: DocumentRenderEvent) {
         switch event {
         case let .started(tabID):
@@ -2602,8 +3190,18 @@ final class AppModel: ObservableObject {
                 tabs[index].previewCSV = output.csv
             case .latex, .pdf:
                 tabs[index].previewPDFData = output.pdfData
+                tabs[index].latexSyncTeXData = output.syncTeXData
+                tabs[index].latexGeneratedBibliographySource = output.generatedBibliographySource
                 tabs[index].previewHTML = nil
                 tabs[index].previewJSON = nil
+                tabs[index].previewBaseURL = nil
+                tabs[index].previewImageData = nil
+            case .image:
+                tabs[index].previewImageData = output.imageData
+                tabs[index].previewHTML = nil
+                tabs[index].previewJSON = nil
+                tabs[index].previewCSV = nil
+                tabs[index].previewPDFData = nil
                 tabs[index].previewBaseURL = nil
             case .docx, .other:
                 return
@@ -2616,7 +3214,8 @@ final class AppModel: ObservableObject {
             tabs[index].errorMessage = nil
             if activeTabID == tabID {
                 restartWatchingActiveFiles(
-                    [tabs[index].url] + output.dependencies + output.externalDependencies
+                    [tabs[index].url, tabs[index].editableSourceURL]
+                        + output.dependencies + output.externalDependencies
                 )
             }
 
@@ -2627,6 +3226,7 @@ final class AppModel: ObservableObject {
                 || tabs[index].previewJSON != nil
                 || tabs[index].previewCSV != nil
                 || tabs[index].previewPDFData != nil
+                || tabs[index].previewImageData != nil
             tabs[index].errorMessage = failure.message
             if let candidates = failure.latexRootSelectionCandidates,
                let projectRoot = failure.projectRoot {

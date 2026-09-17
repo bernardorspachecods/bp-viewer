@@ -35,8 +35,50 @@ struct PDFPreviewView: View {
     let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
+    let onNavigate: ((URL) -> Void)?
+    let onDoubleClick: ((Int, CGPoint) -> Void)?
     @State private var requestedPageIndex: Int?
     @State private var selectedOutlineID: String?
+
+    init(
+        data: Data,
+        zoom: Double,
+        findQuery: String,
+        findRequestID: Int,
+        findBackwards: Bool,
+        isFindTarget: Bool,
+        onFindFocus: @escaping @MainActor @Sendable () -> Void,
+        onFindMatchCount: @escaping @MainActor @Sendable (Int) -> Void,
+        pageIndex: Int,
+        readingPosition: PDFReadingPosition?,
+        onReadingPositionChanged: @escaping (PDFReadingPosition) -> Void,
+        isOutlineVisible: Binding<Bool>,
+        isSnapshotCaptureActive: Bool,
+        onSnapshot: (() -> Void)?,
+        onSnapshotCancel: @escaping () -> Void,
+        onSnapshotCapture: @escaping (NSImage) -> Void,
+        onNavigate: ((URL) -> Void)? = nil,
+        onDoubleClick: ((Int, CGPoint) -> Void)? = nil
+    ) {
+        self.data = data
+        self.zoom = zoom
+        self.findQuery = findQuery
+        self.findRequestID = findRequestID
+        self.findBackwards = findBackwards
+        self.isFindTarget = isFindTarget
+        self.onFindFocus = onFindFocus
+        self.onFindMatchCount = onFindMatchCount
+        self.pageIndex = pageIndex
+        self.readingPosition = readingPosition
+        self.onReadingPositionChanged = onReadingPositionChanged
+        self._isOutlineVisible = isOutlineVisible
+        self.isSnapshotCaptureActive = isSnapshotCaptureActive
+        self.onSnapshot = onSnapshot
+        self.onSnapshotCancel = onSnapshotCancel
+        self.onSnapshotCapture = onSnapshotCapture
+        self.onNavigate = onNavigate
+        self.onDoubleClick = onDoubleClick
+    }
 
     private var outlineEntries: [PDFOutlineEntry] {
         PDFOutlineEntry.entries(from: data)
@@ -96,7 +138,9 @@ struct PDFPreviewView: View {
                                 requestedPageIndex = nil
                             }
                             onReadingPositionChanged(position)
-                        }
+                        },
+                        onNavigate: onNavigate,
+                        onDoubleClick: onDoubleClick
                     )
                     if isSnapshotCaptureActive {
                         SnapshotSelectionOverlay(
@@ -168,9 +212,11 @@ private struct PDFKitPreviewView: NSViewRepresentable {
     let requestedPageIndex: Int?
     let readingPosition: PDFReadingPosition?
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
+    let onNavigate: ((URL) -> Void)?
+    let onDoubleClick: ((Int, CGPoint) -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onReadingPositionChanged: onReadingPositionChanged)
+        Coordinator(onReadingPositionChanged: onReadingPositionChanged, onNavigate: onNavigate)
     }
 
     func makeNSView(context: Context) -> FittingPDFView {
@@ -184,6 +230,19 @@ private struct PDFKitPreviewView: NSViewRepresentable {
         view.backgroundColor = PreviewCanvasStyle.backgroundColor
         view.pageShadowsEnabled = true
         view.delegate = context.coordinator
+        view.onDoubleClick = { [weak view] in
+            guard let view, let document = view.document,
+                  let page = view.page(for: $0, nearest: true) else { return }
+            guard let pageIndex = (0..<document.pageCount).first(where: {
+                document.page(at: $0) === page
+            }) else { return }
+            let pagePoint = view.convert($0, to: page)
+            let pageBounds = page.bounds(for: view.displayBox)
+            onDoubleClick?(
+                pageIndex,
+                CGPoint(x: pagePoint.x, y: pageBounds.maxY - pagePoint.y + pageBounds.minY)
+            )
+        }
         context.coordinator.observe(view)
         return view
     }
@@ -197,6 +256,7 @@ private struct PDFKitPreviewView: NSViewRepresentable {
 
     func updateNSView(_ view: FittingPDFView, context: Context) {
         context.coordinator.onReadingPositionChanged = onReadingPositionChanged
+        context.coordinator.onNavigate = onNavigate
         view.onFindFocus = onFindFocus
         view.onFindMatchCount = onFindMatchCount
         let documentChanged = view.loadedPDFData != data
@@ -248,10 +308,15 @@ private struct PDFKitPreviewView: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject {
         var onReadingPositionChanged: (PDFReadingPosition) -> Void
+        var onNavigate: ((URL) -> Void)?
         private var pageChangedObservers: [ObserverToken] = []
 
-        init(onReadingPositionChanged: @escaping (PDFReadingPosition) -> Void) {
+        init(
+            onReadingPositionChanged: @escaping (PDFReadingPosition) -> Void,
+            onNavigate: ((URL) -> Void)?
+        ) {
             self.onReadingPositionChanged = onReadingPositionChanged
+            self.onNavigate = onNavigate
         }
 
         func observe(_ view: FittingPDFView) {
@@ -299,8 +364,12 @@ extension PDFKitPreviewView.Coordinator: PDFViewDelegate {
               ["http", "https", "mailto", "file"].contains(scheme) else {
             return
         }
-        Task { @MainActor in
-            NSWorkspace.shared.open(url)
+        Task { @MainActor [weak self] in
+            if let onNavigate = self?.onNavigate {
+                onNavigate(url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 
@@ -349,11 +418,20 @@ final class FittingPDFView: FindTrackingPDFView {
     var loadedPDFData: Data?
     var isRestoringPosition = false
     var onFindMatchCount: ((Int) -> Void)?
+    var onDoubleClick: ((CGPoint) -> Void)?
     private var activeFindQuery = ""
     private var lastFindRequestID = 0
     private var findMatches: [PDFSelection] = []
     private var currentFindIndex = 0
     private var restoreGeneration = 0
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            let point = convert(event.locationInWindow, from: nil)
+            onDoubleClick?(point)
+        }
+        super.mouseDown(with: event)
+    }
 
     override func layout() {
         super.layout()

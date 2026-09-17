@@ -66,6 +66,50 @@ final class DocumentEditCoordinator {
         return transition(session: updated, source: next)
     }
 
+    func beginLatex(source: String) -> DocumentEditTransition {
+        transition(
+            session: SourceEditSession(baseSource: source, currentSource: source),
+            source: source,
+            markdownBlocks: []
+        )
+    }
+
+    func updateLatex(
+        session: SourceEditSession,
+        source: String
+    ) -> DocumentEditTransition? {
+        guard source != session.currentSource else { return nil }
+        var updated = session
+        updated.undoSources.append(updated.currentSource)
+        updated.redoSources.removeAll()
+        updated.currentSource = source
+        updated.saveState = .unsaved
+        updated.conflict = nil
+        return transition(session: updated, source: source, markdownBlocks: [])
+    }
+
+    func undoLatex(session: SourceEditSession) -> DocumentEditTransition? {
+        guard let previous = session.undoSources.last else { return nil }
+        var updated = session
+        updated.undoSources.removeLast()
+        updated.redoSources.append(updated.currentSource)
+        updated.currentSource = previous
+        updated.saveState = .unsaved
+        updated.conflict = nil
+        return transition(session: updated, source: previous, markdownBlocks: [])
+    }
+
+    func redoLatex(session: SourceEditSession) -> DocumentEditTransition? {
+        guard let next = session.redoSources.last else { return nil }
+        var updated = session
+        updated.redoSources.removeLast()
+        updated.undoSources.append(updated.currentSource)
+        updated.currentSource = next
+        updated.saveState = .unsaved
+        updated.conflict = nil
+        return transition(session: updated, source: next, markdownBlocks: [])
+    }
+
     func beginJSON(
         source: String,
         previewUTF8Offset: Int
@@ -193,6 +237,33 @@ final class DocumentEditCoordinator {
         }
     }
 
+    func saveLatex(
+        url: URL,
+        baseSource: String,
+        localSource: String
+    ) async -> DocumentEditSaveOutcome {
+        do {
+            let externalSource = try await readSource(at: url)
+            switch SourceThreeWayMerge.resolve(
+                base: baseSource,
+                local: localSource,
+                external: externalSource
+            ) {
+            case let .merged(mergedSource):
+                try mergedSource.write(to: url, atomically: true, encoding: .utf8)
+                return .saved(source: mergedSource)
+            case let .conflict(_, local, external):
+                return .conflict(MarkdownConflict(
+                    localSource: local,
+                    externalSource: external,
+                    blockIDs: []
+                ))
+            }
+        } catch {
+            return .failed(message: error.localizedDescription)
+        }
+    }
+
     func saveCSV(
         url: URL,
         baseSource: String,
@@ -242,16 +313,26 @@ final class DocumentEditCoordinator {
         }
     }
 
+    func commitLatex(url: URL, source: String) -> DocumentEditSaveOutcome {
+        do {
+            try source.write(to: url, atomically: true, encoding: .utf8)
+            return .saved(source: source)
+        } catch {
+            return .failed(message: error.localizedDescription)
+        }
+    }
+
     private func transition(
         session: MarkdownEditSession,
         source: String,
+        markdownBlocks: [MarkdownEditableBlock]? = nil,
         jsonErrorMessage: String? = nil,
         jsonCursorUTF8Offset: Int? = nil
     ) -> DocumentEditTransition {
         DocumentEditTransition(
             session: session,
             source: source,
-            markdownBlocks: MarkdownBlockDocument(source: source).blocks,
+            markdownBlocks: markdownBlocks ?? MarkdownBlockDocument(source: source).blocks,
             jsonErrorMessage: jsonErrorMessage,
             jsonCursorUTF8Offset: jsonCursorUTF8Offset
         )

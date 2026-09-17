@@ -153,11 +153,13 @@ enum SourceEditorFindSelectionPolicy {
 enum SourceSyntaxHighlighting: Equatable {
     case json(JSONSyntaxColorPalette)
     case markdown(MarkdownSyntaxColorPalette)
+    case latex(LatexSyntaxColorPalette)
 
     var background: String {
         switch self {
         case let .json(palette): palette.background
         case let .markdown(palette): palette.background
+        case let .latex(palette): palette.background
         }
     }
 
@@ -165,6 +167,7 @@ enum SourceSyntaxHighlighting: Equatable {
         switch self {
         case let .json(palette): palette.foreground
         case let .markdown(palette): palette.foreground
+        case let .latex(palette): palette.foreground
         }
     }
 }
@@ -232,6 +235,15 @@ struct SourceTextView: NSViewRepresentable {
         applyBaseColors(to: textView)
         textView.insertionPointColor = .controlAccentColor
         textView.string = source
+        let initialSelection = cursorUTF8Offset.map { offset in
+            NSRange(
+                location: utf16Offset(in: source, utf8Offset: offset),
+                length: 0
+            )
+        }
+        if let initialSelection {
+            textView.setSelectedRange(initialSelection)
+        }
         applyTypography(to: textView)
         applySyntaxHighlighting(to: textView, source: source)
         textView.delegate = context.coordinator
@@ -263,11 +275,9 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.drawsBackground = syntaxHighlighting == nil
         scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
-        DispatchQueue.main.async { [weak textView] in
-            guard let textView, let window = textView.window else { return }
-            if isEditable {
-                window.makeFirstResponder(textView)
-            }
+        context.coordinator.appliedCursorUTF8Offset = cursorUTF8Offset
+        if isEditable {
+            focus(textView, selection: initialSelection)
         }
         return scrollView
     }
@@ -426,6 +436,15 @@ struct SourceTextView: NSViewRepresentable {
             }
         case let .markdown(palette):
             for token in MarkdownSyntaxHighlighter().tokenize(source) {
+                apply(
+                    color: palette.color(for: token.kind),
+                    to: token.utf8Offset..<token.utf8End,
+                    in: source,
+                    textView: textView
+                )
+            }
+        case let .latex(palette):
+            for token in LatexSyntaxHighlighter().tokenize(source) {
                 apply(
                     color: palette.color(for: token.kind),
                     to: token.utf8Offset..<token.utf8End,

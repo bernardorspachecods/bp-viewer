@@ -23,14 +23,17 @@ renderizado ou formatado.
   a árvore nem percorrer descendentes.
 - O cabeçalho permite fechar todas as pastas e limpar os registos de expansão;
   cada pasta de primeiro nível tem a mesma ação disponível ao passar o rato.
-- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word e PDF por defeito; pode ser
-  desligado para mostrar todos os ficheiros.
+- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word, PDF e
+  imagens por defeito; pode ser desligado para mostrar todos os ficheiros.
 - A árvore mantém expansão, scroll e filtro por workspace.
 - A abertura de uma nova raiz pede confirmação quando já existe um workspace
   aberto.
-- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.json`, `.csv`, `.docx` e `.pdf` podem ser
-  abertos em tabs. Documentos Word são convertidos localmente para HTML rico e
-  visualizados numa página com fundo e zoom responsivo.
+- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.bib`, `.json`, `.csv`, `.docx`,
+  `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.heic` e `.heif` podem ser abertos
+  em tabs. Documentos Word são convertidos localmente para HTML rico e
+  visualizados numa página com fundo e zoom responsivo. Imagens são apresentadas
+  num preview read-only com moldura/canvas, ajuste à janela, zoom, refresh manual,
+  atualização automática quando o ficheiro muda e captura de snapshots.
 - O preview Word participa na pesquisa comum da tab ativa.
   Outros ficheiros são abertos pela aplicação predefinida do macOS.
 
@@ -96,6 +99,24 @@ renderizado ou formatado.
   e conserva o PDF anterior quando a compilação atual falha.
 - O PDF suporta outline, pesquisa, cópia, impressão, links tratados pela app,
   zoom e restauração da posição de leitura.
+- Um duplo clique no PDF LaTeX abre o source contextual (ou o root) com
+  números de linha e tenta posicionar o cursor através de SyncTeX; sem mapa,
+  abre o editor sem deslocamento.
+- Ficheiros `.bib` abertos na árvore usam o root LaTeX do projeto e entram no
+  mesmo editor como source contextual; citações podem abrir diretamente a
+  entrada correspondente no ficheiro de referências. Um duplo clique numa
+  referência impressa no PDF usa o mapa SyncTeX do `.bbl` gerado para abrir
+  essa entrada no `.bib`; no título da bibliografia, abre o início do `.bib`.
+- O editor LaTeX usa highlighting de comandos, comentários, ambientes,
+  argumentos e matemática, com fallback monoespaçado. A toolbar oferece
+  source/split view, Undo/Redo, Save, Discard Changes, Disk Diff e Git Diff.
+- Em split view, o source editado permanece à esquerda e o PDF à direita.
+  Alterações são compiladas após um debounce de dois segundos, em workspace
+  temporário, mantendo o último PDF válido durante erros.
+- O source contextual pode ser guardado independentemente do resultado da
+  compilação. Alterações externas no source abrem conflito; alterações noutras
+  dependências apenas recompilam mantendo o rascunho. Diffs e descarte Git
+  aplicam-se ao ficheiro contextual.
 
 ## JSON
 

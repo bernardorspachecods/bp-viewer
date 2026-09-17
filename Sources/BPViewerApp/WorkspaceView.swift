@@ -212,6 +212,7 @@ struct TabItemView: View {
         case .csv: "tablecells"
         case .docx: "doc.text.fill"
         case .pdf: "doc.fill"
+        case .image: "photo"
         case .other: "doc"
         }
     }
@@ -253,7 +254,9 @@ struct PreviewPane: View {
     }
 
     private var previewHeader: some View {
-        let path = FilePathCopy.string(for: tab.url)
+        let path = FilePathCopy.string(
+            for: tab.kind == .latex ? tab.editableSourceURL : tab.url
+        )
 
         return HStack {
             HStack(alignment: .firstTextBaseline, spacing: BPTokens.Spacing.xs) {
@@ -368,6 +371,11 @@ struct PreviewPane: View {
                                 },
                                 onEndMarkdownEditing: {
                                     model.endMarkdownEditing(tabID: tab.id)
+                                },
+                                onSaveMarkdownEditing: {
+                                    Task { @MainActor in
+                                        _ = await model.saveMarkdownEditing(tabID: tab.id)
+                                    }
                                 },
                                 onDiscardMarkdownEditing: {
                                     model.discardEditing(tabID: tab.id)
@@ -517,7 +525,86 @@ struct PreviewPane: View {
                                 model.finishSnapshotCapture(image, forTabID: tab.id)
                             }
                         )
-                    } else if (tab.kind == .latex || tab.kind == .pdf), let pdfData = tab.previewPDFData {
+                    } else if tab.kind == .latex, let pdfData = tab.previewPDFData {
+                        LatexPreviewView(
+                            data: pdfData,
+                            documentID: tab.id,
+                            sourceURL: tab.editableSourceURL,
+                            editingSession: tab.latexEditSession?.isEditing == true
+                                || tab.latexEditSession?.conflict != nil
+                                ? tab.latexEditSession
+                                : nil,
+                            cursorUTF8Offset: tab.latexCursorUTF8Offset,
+                            diffSession: tab.diffSession,
+                            presentationMode: tab.presentationMode,
+                            zoom: tab.previewZoom,
+                            onNavigate: model.openPreviewURL,
+                            onBeginEditing: { pageIndex, point in
+                                model.beginLatexEditing(
+                                    tabID: tab.id,
+                                    pageIndex: pageIndex,
+                                    pointFromTopLeft: point
+                                )
+                            },
+                            onOpenCitation: { sourceOffset in
+                                model.openLatexCitation(
+                                    tabID: tab.id,
+                                    sourceOffset: sourceOffset
+                                )
+                            },
+                            onSourceChanged: { text in
+                                model.updateLatexEditing(tabID: tab.id, text: text)
+                            },
+                            onUndo: {
+                                _ = model.undoLatexEdit()
+                            },
+                            onRedo: {
+                                _ = model.redoLatexEdit()
+                            },
+                            onToggleSplitView: {
+                                model.toggleLatexSplitView(tabID: tab.id)
+                            },
+                            onToggleDiff: { mode in
+                                model.toggleDocumentDiff(mode: mode, tabID: tab.id)
+                            },
+                            onEndEditing: {
+                                model.endLatexEditing(tabID: tab.id)
+                            },
+                            onDiscardEditing: {
+                                model.discardEditing(tabID: tab.id)
+                            },
+                            onDiscardGitChanges: {
+                                model.requestDiscardGitChanges(tabID: tab.id)
+                            },
+                            onKeepLocalEdit: {
+                                model.keepLocalLatexEdit(tabID: tab.id)
+                            },
+                            onUseExternalEdit: {
+                                model.useExternalLatexEdit(tabID: tab.id)
+                            },
+                            findQuery: model.findQuery,
+                            findRequestID: model.findRequestID,
+                            findBackwards: model.findBackwards,
+                            findTarget: model.findTarget,
+                            onFindTargetChanged: model.setFindTarget,
+                            onFindMatchCount: model.setFindMatchCount,
+                            isOutlineVisible: Binding(
+                                get: { model.tabs.first(where: { $0.id == tab.id })?.isOutlineVisible ?? false },
+                                set: { model.setOutlineVisible($0, forTabID: tab.id) }
+                            ),
+                            pageIndex: tab.previewPageIndex,
+                            readingPosition: tab.pdfReadingPosition,
+                            onReadingPositionChanged: { position in
+                                model.updatePDFReadingPosition(position, forTabID: tab.id)
+                            },
+                            isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
+                            onSnapshot: snapshotAction,
+                            onSnapshotCancel: model.cancelSnapshotCapture,
+                            onSnapshotCapture: { image in
+                                model.finishSnapshotCapture(image, forTabID: tab.id)
+                            }
+                        )
+                    } else if tab.kind == .pdf, let pdfData = tab.previewPDFData {
                         VStack(spacing: 0) {
                             PDFPreviewView(
                                 data: pdfData,
@@ -545,6 +632,19 @@ struct PreviewPane: View {
                                 }
                             )
                         }
+                    } else if tab.kind == .image, let imageData = tab.previewImageData {
+                        ImagePreviewView(
+                            data: imageData,
+                            zoom: tab.previewZoom,
+                            previewRevision: tab.previewUpdatedAt,
+                            isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
+                            onSnapshot: snapshotAction,
+                            onSnapshotCancel: model.cancelSnapshotCapture,
+                            onSnapshotCapture: { image in
+                                model.finishSnapshotCapture(image, forTabID: tab.id)
+                            },
+                            onZoomChanged: model.setPreviewZoomFromGesture
+                        )
                     } else if tab.kind == .docx {
                         DocxPreviewView(
                             url: tab.url,
@@ -607,6 +707,7 @@ struct PreviewPane: View {
         case .csv: "tablecells"
         case .pdf: "doc.fill"
         case .docx: "doc.text.fill"
+        case .image: "photo"
         case .markdown: "doc.richtext"
         case .other: "doc"
         }
@@ -620,6 +721,7 @@ struct PreviewPane: View {
         case .csv: "Preparing CSV Preview…"
         case .pdf: "Preparing PDF Preview…"
         case .docx: "Preparing Word Preview…"
+        case .image: "Preparing Image Preview…"
         case .markdown, .other: "Preparing Preview…"
         }
     }
@@ -634,6 +736,7 @@ struct PreviewPane: View {
         case .csv: "Reading and formatting the CSV file as a table."
         case .pdf: "Reading the PDF file."
         case .docx: "Preparing the Word document view."
+        case .image: "Reading the image file."
         case .markdown: "Reading the Markdown file and generating HTML."
         case .other: "Preparing the file."
         }

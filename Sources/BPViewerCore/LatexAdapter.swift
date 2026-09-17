@@ -375,6 +375,8 @@ public struct LatexRenderResult: Sendable {
     public let externalDependencies: [URL]
     public let processResult: ProcessResult
     public let wasCached: Bool
+    public let syncTeXData: Data?
+    public let generatedBibliographySource: String?
 
     public init(
         pdfData: Data,
@@ -382,7 +384,9 @@ public struct LatexRenderResult: Sendable {
         dependencies: [URL],
         externalDependencies: [URL] = [],
         processResult: ProcessResult,
-        wasCached: Bool = false
+        wasCached: Bool = false,
+        syncTeXData: Data? = nil,
+        generatedBibliographySource: String? = nil
     ) {
         self.pdfData = pdfData
         self.rootURL = rootURL.standardizedFileURL
@@ -390,6 +394,8 @@ public struct LatexRenderResult: Sendable {
         self.externalDependencies = externalDependencies.map(\.standardizedFileURL)
         self.processResult = processResult
         self.wasCached = wasCached
+        self.syncTeXData = syncTeXData
+        self.generatedBibliographySource = generatedBibliographySource
     }
 }
 
@@ -427,7 +433,11 @@ public struct LocalLatexAdapter: Sendable {
         self.timeout = timeout
     }
 
-    public func externalDependencies(rootURL: URL, projectRoot: URL) -> [LatexExternalDependency] {
+    public func externalDependencies(
+        rootURL: URL,
+        projectRoot: URL,
+        sourceOverrides: [URL: String] = [:]
+    ) -> [LatexExternalDependency] {
         let root = rootURL.standardizedFileURL
         let project = projectRoot.standardizedFileURL
         guard isDirectory(project), isRegularFile(root), isInside(root, project: project) else {
@@ -439,7 +449,7 @@ public struct LocalLatexAdapter: Sendable {
         var discovered = Set<LatexExternalDependency>()
 
         while let current = pending.popLast() {
-            guard let source = try? String(contentsOf: current, encoding: .utf8) else { continue }
+            guard let source = source(for: current, overrides: sourceOverrides) else { continue }
             for reference in referencedPaths(in: source) {
                 let candidates = candidateURLs(reference: reference, relativeTo: current)
                 if let externalURL = candidates.first(where: {
@@ -515,7 +525,11 @@ public struct LocalLatexAdapter: Sendable {
         ].joined(separator: "\u{1f}")
     }
 
-    public func render(rootURL: URL, projectRoot: URL) throws -> LatexRenderResult {
+    public func render(
+        rootURL: URL,
+        projectRoot: URL,
+        sourceOverrides: [URL: String] = [:]
+    ) throws -> LatexRenderResult {
         let root = rootURL.standardizedFileURL
         let project = projectRoot.standardizedFileURL
         guard isDirectory(project) else {
@@ -528,9 +542,17 @@ public struct LocalLatexAdapter: Sendable {
             throw LatexRenderError.rootOutsideProject(root)
         }
 
-        let sourceDependencies = dependencies(for: root, project: project)
+        let sourceDependencies = dependencies(
+            for: root,
+            project: project,
+            sourceOverrides: sourceOverrides
+        )
         let engineHint = engineHint(for: sourceDependencies)
-        let externalDependencyURLs = externalDependencies(rootURL: root, projectRoot: project)
+        let externalDependencyURLs = externalDependencies(
+            rootURL: root,
+            projectRoot: project,
+            sourceOverrides: sourceOverrides
+        )
             .map(\.url)
         let compiler: LatexCompiler
         if let executableURL {
@@ -555,6 +577,31 @@ public struct LocalLatexAdapter: Sendable {
             try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         } catch {
             throw LatexRenderError.workspaceFailed(error.localizedDescription)
+        }
+
+        let compilationProject: URL
+        let compilationRoot: URL
+        if sourceOverrides.isEmpty {
+            compilationProject = project
+            compilationRoot = root
+        } else {
+            let overlay = workspace.appendingPathComponent("project", isDirectory: true)
+            do {
+                try copyProjectInputs(
+                    sourceDependencies,
+                    projectRoot: project,
+                    overlayRoot: overlay
+                )
+                try writeSourceOverrides(
+                    sourceOverrides,
+                    projectRoot: project,
+                    overlayRoot: overlay
+                )
+            } catch {
+                throw LatexRenderError.workspaceFailed(error.localizedDescription)
+            }
+            compilationProject = overlay
+            compilationRoot = overlay.appendingPathComponent(relativePath(of: root, within: project))
         }
 
         let bibliographyTool = compiler.kind != .latexmk
@@ -589,9 +636,10 @@ public struct LocalLatexAdapter: Sendable {
             "-interaction=nonstopmode",
             "-halt-on-error",
             "-file-line-error",
+            "-synctex=1",
             "-recorder",
             outputArgument,
-            root.path
+            compilationRoot.path
         ]
         arguments.insert(shellEscapeArgument, at: 0)
         let request = ProcessRequest(
@@ -599,8 +647,8 @@ public struct LocalLatexAdapter: Sendable {
             arguments: arguments,
             workingDirectory: workspace,
             environment: searchEnvironment(
-                root: root,
-                project: project,
+                root: compilationRoot,
+                project: compilationProject,
                 dependencies: sourceDependencies + externalDependencyURLs
             ),
             timeout: timeout
@@ -629,8 +677,8 @@ public struct LocalLatexAdapter: Sendable {
                     arguments: bibliographyArguments,
                     workingDirectory: outputDirectory,
                     environment: searchEnvironment(
-                        root: root,
-                        project: project,
+                        root: compilationRoot,
+                        project: compilationProject,
                         dependencies: sourceDependencies + externalDependencyURLs
                     ),
                     timeout: timeout
@@ -674,9 +722,22 @@ public struct LocalLatexAdapter: Sendable {
             throw LatexRenderError.outputPDFInvalid(outputURL)
         }
 
+        let syncTeXData = readSyncTeXData(
+            in: outputDirectory,
+            stem: root.deletingPathExtension().lastPathComponent,
+            compilationProject: compilationProject,
+            project: project
+        )
+        let generatedBibliographySource = try? String(
+            contentsOf: outputDirectory
+                .appendingPathComponent(root.deletingPathExtension().lastPathComponent + ".bbl"),
+            encoding: .utf8
+        )
+
         let recorderDependencies = dependenciesFromRecorder(
             at: outputDirectory.appendingPathComponent(root.deletingPathExtension().lastPathComponent + ".fls"),
-            project: project
+            project: project,
+            overlayProject: sourceOverrides.isEmpty ? nil : compilationProject
         )
         let allDependencies = Set(sourceDependencies).union(recorderDependencies).sorted {
             $0.path.localizedStandardCompare($1.path) == .orderedAscending
@@ -687,8 +748,86 @@ public struct LocalLatexAdapter: Sendable {
             rootURL: root,
             dependencies: allDependencies,
             externalDependencies: externalDependencyURLs,
-            processResult: result
+            processResult: result,
+            syncTeXData: syncTeXData,
+            generatedBibliographySource: generatedBibliographySource
         )
+    }
+
+    private func readSyncTeXData(
+        in outputDirectory: URL,
+        stem: String,
+        compilationProject: URL,
+        project: URL
+    ) -> Data? {
+        let fileManager = FileManager.default
+        let plainURL = outputDirectory.appendingPathComponent(stem).appendingPathExtension("synctex")
+        let compressedURL = plainURL.appendingPathExtension("gz")
+        let data: Data
+        if let plainData = try? Data(contentsOf: plainURL) {
+            data = plainData
+        } else if fileManager.fileExists(atPath: compressedURL.path) {
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/gzip")
+            process.arguments = ["-dc", compressedURL.path]
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+            do {
+                try process.run()
+                let output = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { return nil }
+                data = output
+            } catch {
+                return nil
+            }
+        } else {
+            return nil
+        }
+
+        guard var source = String(data: data, encoding: .utf8) else { return nil }
+        if compilationProject != project {
+            source = source.replacingOccurrences(of: compilationProject.path, with: project.path)
+        }
+        return Data(source.utf8)
+    }
+
+    private func copyProjectInputs(
+        _ inputs: [URL],
+        projectRoot: URL,
+        overlayRoot: URL
+    ) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: overlayRoot, withIntermediateDirectories: true)
+        var inputURLs = Set(inputs.map(\.standardizedFileURL))
+        for configurationName in [".latexmkrc", "latexmkrc"] {
+            let configurationURL = projectRoot.appendingPathComponent(configurationName)
+            if isRegularFile(configurationURL) {
+                inputURLs.insert(configurationURL.standardizedFileURL)
+            }
+        }
+
+        for item in inputURLs {
+            var fileStatus = stat()
+            guard lstat(item.path, &fileStatus) == 0 else { continue }
+            guard isInside(item, project: projectRoot) else { continue }
+            let target = overlayRoot.appendingPathComponent(
+                relativePath(of: item, within: projectRoot)
+            )
+            try fileManager.createDirectory(
+                at: target.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            switch fileStatus.st_mode & S_IFMT {
+            case S_IFREG, S_IFLNK:
+                try fileManager.copyItem(at: item, to: target)
+            default:
+                // Unix sockets, FIFOs and device files are runtime state, not
+                // LaTeX project inputs, and cannot be copied into an overlay.
+                continue
+            }
+        }
     }
 
     private func searchEnvironment(
@@ -718,12 +857,16 @@ public struct LocalLatexAdapter: Sendable {
         ]
     }
 
-    private func dependencies(for root: URL, project: URL) -> [URL] {
+    private func dependencies(
+        for root: URL,
+        project: URL,
+        sourceOverrides: [URL: String] = [:]
+    ) -> [URL] {
         var discovered = Set([root.standardizedFileURL])
         var pending = [root.standardizedFileURL]
 
         while let current = pending.popLast() {
-            guard let source = try? String(contentsOf: current, encoding: .utf8) else { continue }
+            guard let source = source(for: current, overrides: sourceOverrides) else { continue }
             for reference in referencedPaths(in: source) {
                 guard let dependency = resolve(reference: reference, relativeTo: current, project: project),
                       discovered.insert(dependency).inserted else { continue }
@@ -745,7 +888,11 @@ public struct LocalLatexAdapter: Sendable {
         }
     }
 
-    private func dependenciesFromRecorder(at recorderURL: URL, project: URL) -> [URL] {
+    private func dependenciesFromRecorder(
+        at recorderURL: URL,
+        project: URL,
+        overlayProject: URL? = nil
+    ) -> [URL] {
         guard let recorder = try? String(contentsOf: recorderURL, encoding: .utf8) else {
             return []
         }
@@ -762,8 +909,17 @@ public struct LocalLatexAdapter: Sendable {
             guard line.hasPrefix("INPUT ") else { continue }
 
             let path = String(line.dropFirst(6))
-            let inputURL = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : workingDirectory.appendingPathComponent(path))
+            let recordedURL = (path.hasPrefix("/") ? URL(fileURLWithPath: path) : workingDirectory.appendingPathComponent(path))
                 .standardizedFileURL
+            let inputURL: URL
+            if let overlayProject,
+               isInside(recordedURL, project: overlayProject) {
+                inputURL = project.appendingPathComponent(
+                    relativePath(of: recordedURL, within: overlayProject)
+                ).standardizedFileURL
+            } else {
+                inputURL = recordedURL
+            }
             guard isRegularFile(inputURL), isInside(inputURL, project: project) else { continue }
             discovered.insert(inputURL)
         }
@@ -817,6 +973,43 @@ public struct LocalLatexAdapter: Sendable {
         if usesLua { return .lualatex }
         if usesSystemFonts { return .xelatex }
         return nil
+    }
+
+    private func source(for url: URL, overrides: [URL: String]) -> String? {
+        if let override = overrides[url.standardizedFileURL] {
+            return override
+        }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func writeSourceOverrides(
+        _ overrides: [URL: String],
+        projectRoot: URL,
+        overlayRoot: URL
+    ) throws {
+        for (sourceURL, source) in overrides {
+            guard isRegularFile(sourceURL), isInside(sourceURL, project: projectRoot) else {
+                continue
+            }
+            let destination = overlayRoot.appendingPathComponent(
+                relativePath(of: sourceURL, within: projectRoot)
+            )
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try source.write(to: destination, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func relativePath(of url: URL, within root: URL) -> String {
+        let rootPath = root.standardizedFileURL.path
+        let urlPath = url.standardizedFileURL.path
+        guard urlPath.hasPrefix(rootPath + "/") else { return url.lastPathComponent }
+        return String(urlPath.dropFirst(rootPath.count + 1))
     }
 
     private func combinedResult(_ results: [ProcessResult]) -> ProcessResult {

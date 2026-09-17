@@ -25,6 +25,7 @@ struct MarkdownPreviewView: View {
     let onToggleSplitView: () -> Void
     let onToggleDiff: (DocumentDiffMode) -> Void
     let onEndMarkdownEditing: () -> Void
+    let onSaveMarkdownEditing: () -> Void
     let onDiscardMarkdownEditing: () -> Void
     let onDiscardGitChanges: @MainActor @Sendable () -> Void
     let onKeepLocalMarkdownEdit: () -> Void
@@ -137,27 +138,37 @@ struct MarkdownPreviewView: View {
                     onDiscardGitChanges: onDiscardGitChanges
                 )
             } else {
-                MarkdownSourceEditor(
-                    source: editingSession.currentSource,
-                    zoom: zoom,
-                    cursorUTF8Offset: pendingCursorUTF8Offset,
-                    findQuery: findQuery,
-                    findRequestID: findRequestID,
-                    findBackwards: findBackwards,
-                    isFindTarget: findTarget == .source,
-                    onFindFocus: { onFindTargetChanged(.source) },
-                    onFindMatchCount: onFindMatchCount,
-                    onEndEditing: onEndMarkdownEditing,
-                    onSourceChanged: onMarkdownTextChanged
-                )
                 if editingSession.mode == .split {
-                    Divider()
-                    previewSurface
+                    ResizableSplitView {
+                        markdownSourceEditor(editingSession: editingSession)
+                    } trailing: {
+                        previewSurface
+                    }
+                } else {
+                    markdownSourceEditor(editingSession: editingSession)
                 }
             }
         } else {
             previewSurface
         }
+    }
+
+    private func markdownSourceEditor(editingSession: MarkdownEditSession) -> some View {
+        MarkdownSourceEditor(
+            source: editingSession.currentSource,
+            zoom: zoom,
+            cursorUTF8Offset: pendingCursorUTF8Offset,
+            findQuery: findQuery,
+            findRequestID: findRequestID,
+            findBackwards: findBackwards,
+            isFindTarget: findTarget == .source,
+            onFindFocus: { onFindTargetChanged(.source) },
+            onFindMatchCount: onFindMatchCount,
+            onEndEditing: editingSession.mode == .split
+                ? onSaveMarkdownEditing
+                : onEndMarkdownEditing,
+            onSourceChanged: onMarkdownTextChanged
+        )
     }
 
     private var previewSurface: some View {
@@ -280,7 +291,7 @@ private struct MarkdownSourceEditor: View {
 }
 
 
-private struct MarkdownConflictView: View {
+struct MarkdownConflictView: View {
     let conflict: MarkdownConflict
     let onKeepLocal: () -> Void
     let onUseExternal: () -> Void

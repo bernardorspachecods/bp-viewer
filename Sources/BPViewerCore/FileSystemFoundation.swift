@@ -13,16 +13,18 @@ public enum DocumentKind: String, Hashable, Sendable {
     case csv
     case docx
     case pdf
+    case image
     case other
 
     public init(url: URL) {
         switch url.pathExtension.lowercased() {
         case "md", "markdown": self = .markdown
-        case "tex", "latex": self = .latex
+        case "tex", "latex", "bib": self = .latex
         case "json": self = .json
         case "csv": self = .csv
         case "docx": self = .docx
         case "pdf": self = .pdf
+        case "png", "jpg", "jpeg", "webp", "heic", "heif": self = .image
         default: self = .other
         }
     }
@@ -35,6 +37,7 @@ public enum DocumentKind: String, Hashable, Sendable {
         case .csv: "CSV"
         case .docx: "Word"
         case .pdf: "PDF"
+        case .image: "Image"
         case .other: "Unsupported"
         }
     }

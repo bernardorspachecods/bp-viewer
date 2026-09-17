@@ -30,23 +30,30 @@ public struct CachedLatexPreview: Sendable {
     public let dependencies: [URL]
     public let externalDependencies: [URL]
     public let createdAt: Date
+    public let syncTeXData: Data?
+    public let generatedBibliographySource: String?
 
     public init(
         pdfData: Data,
         rootURL: URL,
         dependencies: [URL],
         externalDependencies: [URL],
-        createdAt: Date
+        createdAt: Date,
+        syncTeXData: Data? = nil,
+        generatedBibliographySource: String? = nil
     ) {
         self.pdfData = pdfData
         self.rootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
         self.dependencies = dependencies.map { $0.resolvingSymlinksInPath().standardizedFileURL }
         self.externalDependencies = externalDependencies.map { $0.resolvingSymlinksInPath().standardizedFileURL }
         self.createdAt = createdAt
+        self.syncTeXData = syncTeXData
+        self.generatedBibliographySource = generatedBibliographySource
     }
 }
 
 public struct LatexRenderCache: Sendable {
+    private static let currentCacheVersion = 3
     public let directory: URL
 
     public init(directory: URL? = nil) {
@@ -57,6 +64,7 @@ public struct LatexRenderCache: Sendable {
         let fileURL = entryURL(for: key)
         guard let data = try? Data(contentsOf: fileURL),
               let entry = try? JSONDecoder().decode(CacheEntry.self, from: data),
+              entry.version == Self.currentCacheVersion,
               entry.key == key.stableValue,
               let pdfData = Data(base64Encoded: entry.pdfBase64),
               !pdfData.isEmpty,
@@ -70,7 +78,9 @@ public struct LatexRenderCache: Sendable {
             rootURL: URL(fileURLWithPath: entry.rootPath),
             dependencies: entry.dependencies.map { URL(fileURLWithPath: $0.path) },
             externalDependencies: entry.externalDependencies.map { URL(fileURLWithPath: $0.path) },
-            createdAt: entry.createdAt
+            createdAt: entry.createdAt,
+            syncTeXData: entry.syncTeXData.flatMap { Data(base64Encoded: $0) },
+            generatedBibliographySource: entry.generatedBibliographySource
         )
     }
 
@@ -86,11 +96,14 @@ public struct LatexRenderCache: Sendable {
 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let entry = CacheEntry(
+            version: Self.currentCacheVersion,
             key: key.stableValue,
             rootPath: result.rootURL.resolvingSymlinksInPath().standardizedFileURL.path,
             dependencies: fingerprints,
             externalDependencies: result.externalDependencies.map { CachePath(path: $0.standardizedFileURL.path) },
             pdfBase64: result.pdfData.base64EncodedString(),
+            syncTeXData: result.syncTeXData?.base64EncodedString(),
+            generatedBibliographySource: result.generatedBibliographySource,
             createdAt: Date()
         )
         let data = try JSONEncoder().encode(entry)
@@ -128,11 +141,14 @@ public struct LatexRenderCache: Sendable {
     }
 
     private struct CacheEntry: Codable {
+        let version: Int
         let key: String
         let rootPath: String
         let dependencies: [CacheDependency]
         let externalDependencies: [CachePath]
         let pdfBase64: String
+        let syncTeXData: String?
+        let generatedBibliographySource: String?
         let createdAt: Date
     }
 

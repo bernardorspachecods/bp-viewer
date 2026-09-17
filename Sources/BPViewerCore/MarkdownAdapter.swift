@@ -114,6 +114,10 @@ private struct MarkdownHTMLDocument {
               max-width: 860px;
               margin: 0 auto;
             }
+            .bp-document-content > * {
+              content-visibility: auto;
+              contain-intrinsic-size: auto 72px;
+            }
             [data-bp-block-id] { transition: background-color 120ms ease, outline-color 120ms ease; }
             [data-bp-block-id].bp-editing {
               outline: 2px solid color-mix(in srgb, -apple-system-blue 38%, transparent);
@@ -350,7 +354,7 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
         let markdownSourceAttribute = image.source.map {
             " data-bp-markdown-image-source=\"\(escapeAttribute($0))\""
         } ?? ""
-        html += "<img\(specialAttribute(for: image, kind: .image))\(markdownSourceAttribute) src=\"\(escapeAttribute(renderedSource))\" alt=\"\(alt)\""
+        html += "<img\(specialAttribute(for: image, kind: .image))\(markdownSourceAttribute) loading=\"lazy\" decoding=\"async\" src=\"\(escapeAttribute(renderedSource))\" alt=\"\(alt)\""
         if let title = image.title, !title.isEmpty {
             html += " title=\"\(escapeAttribute(title))\""
         }
