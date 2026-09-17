@@ -31,8 +31,7 @@ enum SourceEditorLayout {
     static let editorFontSize: CGFloat = 13
     static let codeFontFamily = "SFMono-Regular"
     static let codeFontSize: CGFloat = 13
-    static let codeLineHeight: CGFloat = 24
-    static let lineHeightMultiple: CGFloat = 1.55
+    static let codeLineHeight: CGFloat = 18
 
     static func editorFont(monospaced: Bool, zoom: Double) -> NSFont {
         let baseFont = monospaced
