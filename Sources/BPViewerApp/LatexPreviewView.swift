@@ -86,7 +86,10 @@ struct LatexPreviewView: View {
                             onFindFocus: { onFindTargetChanged(.source) },
                             onFindMatchCount: onFindMatchCount,
                             onSourceChanged: onSourceChanged,
-                            onEndEditing: { _ in exitEditing() },
+                            onEndEditing: { text in
+                                onSourceChanged(text)
+                                exitEditing()
+                            },
                             onDiscardGitChanges: onDiscardGitChanges
                         )
                     } else if editingSession.mode == .split {
@@ -191,7 +194,10 @@ private struct LatexSourceEditor: View {
             onFindFocus: onFindFocus,
             onFindMatchCount: onFindMatchCount,
             onSourceChanged: onSourceChanged,
-            onEndEditing: { _ in onEndEditing() },
+            onEndEditing: { text in
+                onSourceChanged(text)
+                onEndEditing()
+            },
             onDoubleClick: onOpenCitation
         )
         .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)

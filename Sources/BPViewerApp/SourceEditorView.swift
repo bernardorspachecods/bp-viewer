@@ -156,7 +156,7 @@ enum SourceEditorFindSelectionPolicy {
     }
 }
 
-enum SourceSyntaxHighlighting: Equatable {
+enum SourceSyntaxHighlighting: Equatable, Sendable {
     case json(JSONSyntaxColorPalette)
     case markdown(MarkdownSyntaxColorPalette)
     case latex(LatexSyntaxColorPalette)
@@ -175,6 +175,77 @@ enum SourceSyntaxHighlighting: Equatable {
         case let .markdown(palette): palette.foreground
         case let .latex(palette): palette.foreground
         }
+    }
+}
+
+private struct SourceSyntaxToken: Sendable {
+    let color: String
+    let utf8Offset: Int
+    let utf8End: Int
+}
+
+// This tokenizer is deliberately outside SourceTextView. The view and its
+// coordinator are MainActor-isolated, but the tokenization itself is pure and
+// must remain safe to run on the utility queue.
+private enum SourceSyntaxTokenizer {
+    static func tokens(
+        in source: String,
+        for syntaxHighlighting: SourceSyntaxHighlighting
+    ) -> [SourceSyntaxToken] {
+        switch syntaxHighlighting {
+        case let .json(palette):
+            return JSONSyntaxHighlighter().tokenize(source).map {
+                SourceSyntaxToken(
+                    color: palette.color(for: $0.kind),
+                    utf8Offset: $0.utf8Offset,
+                    utf8End: $0.utf8End
+                )
+            }
+        case let .markdown(palette):
+            return MarkdownSyntaxHighlighter().tokenize(source).map {
+                SourceSyntaxToken(
+                    color: palette.color(for: $0.kind),
+                    utf8Offset: $0.utf8Offset,
+                    utf8End: $0.utf8End
+                )
+            }
+        case let .latex(palette):
+            return LatexSyntaxHighlighter().tokenize(source).map {
+                SourceSyntaxToken(
+                    color: palette.color(for: $0.kind),
+                    utf8Offset: $0.utf8Offset,
+                    utf8End: $0.utf8End
+                )
+            }
+        }
+    }
+}
+
+struct SourceSyntaxHighlightingRequest: Equatable, Sendable {
+    let source: String
+    let syntaxHighlighting: SourceSyntaxHighlighting?
+}
+
+struct SourceSyntaxHighlightingGate: Equatable, Sendable {
+    private(set) var scheduled: SourceSyntaxHighlightingRequest?
+    private(set) var applied: SourceSyntaxHighlightingRequest?
+
+    init() {
+        scheduled = nil
+        applied = nil
+    }
+
+    mutating func shouldSchedule(_ request: SourceSyntaxHighlightingRequest) -> Bool {
+        if applied == request || scheduled == request {
+            return false
+        }
+        scheduled = request
+        return true
+    }
+
+    mutating func markApplied(_ request: SourceSyntaxHighlightingRequest) {
+        scheduled = nil
+        applied = request
     }
 }
 
@@ -211,12 +282,17 @@ struct SourceTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownNSTextView()
         textView.onFindFocus = onFindFocus
+        textView.onPendingSourceFlush = { [weak coordinator = context.coordinator] in
+            coordinator?.flushPendingSourceChange()
+        }
         textView.onEscape = { [weak textView, weak coordinator = context.coordinator] in
             guard let textView else { return }
+            coordinator?.flushPendingSourceChange()
             coordinator?.onEndEditing(textView.string)
         }
-        textView.onMarkdownShortcut = { [weak textView] formatting in
+        textView.onMarkdownShortcut = { [weak textView, weak coordinator = context.coordinator] formatting in
             guard markdownShortcutsEnabled, let textView else { return }
+            coordinator?.flushPendingSourceChange()
             applyMarkdownShortcut(formatting, to: textView, onSourceChanged: onSourceChanged)
         }
         textView.onDoubleClick = { [weak textView] event in
@@ -239,11 +315,13 @@ struct SourceTextView: NSViewRepresentable {
         textView.usesFindPanel = false
         textView.drawsBackground = syntaxHighlighting == nil
         applyBaseColors(to: textView)
+        context.coordinator.appliedBaseColors = syntaxHighlighting
+        context.coordinator.hasAppliedBaseColors = true
         textView.insertionPointColor = .controlAccentColor
         textView.string = source
         let initialSelection = cursorUTF8Offset.map { offset in
             NSRange(
-                location: utf16Offset(in: source, utf8Offset: offset),
+                location: Self.utf16Offset(in: source, utf8Offset: offset),
                 length: 0
             )
         }
@@ -251,13 +329,20 @@ struct SourceTextView: NSViewRepresentable {
             textView.setSelectedRange(initialSelection)
         }
         applyTypography(to: textView)
-        applySyntaxHighlighting(to: textView, source: source)
+        context.coordinator.appliedZoom = zoom
+        context.coordinator.appliedMonospaced = monospaced
+        context.coordinator.appliedLineSpacingBefore = lineSpacingBefore
+        context.coordinator.requiresTypographyRefresh = false
+        context.coordinator.requiresSyntaxRefresh = true
+        context.coordinator.requiresInitialSyntaxRefresh = true
+        context.coordinator.lastModelSource = source
         textView.delegate = context.coordinator
         textView.textContainerInset = NSSize(
             width: textContainerHorizontalInset(zoom: zoom),
             height: SourceEditorLayout.verticalPadding * CGFloat(zoom)
         )
         textView.textContainer?.lineFragmentPadding = 0
+        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.showsLineNumbers = lineNumbers
         textView.lineNumberGutterWidth = SourceEditorLayout.lineNumberGutterWidth * CGFloat(zoom)
         textView.lineNumberFontSize = SourceEditorLayout.lineNumberFontSize * CGFloat(zoom)
@@ -282,6 +367,11 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
         context.coordinator.appliedCursorUTF8Offset = cursorUTF8Offset
+        context.coordinator.scheduleInitialSyntaxRefresh(
+            in: textView,
+            source: source,
+            syntaxHighlighting: syntaxHighlighting
+        )
         if isEditable {
             focus(textView, selection: initialSelection)
         }
@@ -316,23 +406,80 @@ struct SourceTextView: NSViewRepresentable {
             context.coordinator.didRequestInitialFocus = true
         }
 
-        applyBaseColors(to: textView)
+        if !context.coordinator.hasAppliedBaseColors
+            || context.coordinator.appliedBaseColors != syntaxHighlighting {
+            applyBaseColors(to: textView)
+            context.coordinator.appliedBaseColors = syntaxHighlighting
+            context.coordinator.hasAppliedBaseColors = true
+        }
         scrollView.drawsBackground = syntaxHighlighting == nil
         scrollView.backgroundColor = textView.backgroundColor
-        if textView.string != source {
+        let sourceChanged = textView.string != source
+        let modelSourceChanged = context.coordinator.lastModelSource != source
+        let hasPendingLocalEdit = isEditable && (
+            context.coordinator.hasPendingSourceChange
+                || (sourceChanged && !modelSourceChanged)
+        )
+        if sourceChanged && !hasPendingLocalEdit {
             let selectedRange = textView.selectedRange()
             textView.string = source
             textView.setSelectedRange(NSRange(
                 location: min(selectedRange.location, (source as NSString).length),
                 length: 0
             ))
+            textView.invalidateLineNumberCache()
+            context.coordinator.requiresTypographyRefresh = true
+        }
+        context.coordinator.lastModelSource = source
+
+        let effectiveSource = textView.string
+
+        let typographyChanged = context.coordinator.appliedZoom != zoom
+            || context.coordinator.appliedMonospaced != monospaced
+            || context.coordinator.appliedLineSpacingBefore != lineSpacingBefore
+        if typographyChanged || context.coordinator.requiresTypographyRefresh {
+            applyTypography(to: textView)
+            context.coordinator.appliedZoom = zoom
+            context.coordinator.appliedMonospaced = monospaced
+            context.coordinator.appliedLineSpacingBefore = lineSpacingBefore
+            context.coordinator.requiresTypographyRefresh = false
         }
 
-        applyTypography(to: textView)
-        applySyntaxHighlighting(to: textView, source: source)
+        let syntaxChanged = context.coordinator.syntaxHighlightingGate.applied.map {
+            $0.syntaxHighlighting != syntaxHighlighting
+        } ?? false
+        if sourceChanged
+            || context.coordinator.requiresSyntaxRefresh
+            || context.coordinator.requiresInitialSyntaxRefresh
+            || syntaxChanged {
+            if !syntaxChanged {
+                context.coordinator.scheduleSyntaxHighlighting(
+                    in: textView,
+                    source: effectiveSource,
+                    syntaxHighlighting: syntaxHighlighting,
+                    delay: context.coordinator.requiresInitialSyntaxRefresh || !isEditable
+                        ? .zero
+                        : .milliseconds(300)
+                )
+            } else {
+                Self.applySyntaxHighlighting(
+                    to: textView,
+                    source: effectiveSource,
+                    syntaxHighlighting: syntaxHighlighting
+                )
+                context.coordinator.syntaxHighlightingGate.markApplied(
+                    SourceSyntaxHighlightingRequest(
+                        source: effectiveSource,
+                        syntaxHighlighting: syntaxHighlighting
+                    )
+                )
+                context.coordinator.requiresSyntaxRefresh = false
+                context.coordinator.requiresInitialSyntaxRefresh = false
+            }
+        }
         context.coordinator.applyFind(
             in: textView,
-            source: source,
+            source: effectiveSource,
             query: findQuery,
             requestID: findRequestID,
             backwards: findBackwards,
@@ -346,7 +493,7 @@ struct SourceTextView: NSViewRepresentable {
 
         guard let cursorUTF8Offset,
               context.coordinator.appliedCursorUTF8Offset != cursorUTF8Offset else { return }
-        let cursorOffset = utf16Offset(in: source, utf8Offset: cursorUTF8Offset)
+        let cursorOffset = Self.utf16Offset(in: effectiveSource, utf8Offset: cursorUTF8Offset)
         let selection = NSRange(location: cursorOffset, length: 0)
         textView.setSelectedRange(selection)
         focus(textView, selection: selection)
@@ -423,58 +570,70 @@ struct SourceTextView: NSViewRepresentable {
         SourceEditorLayout.horizontalPadding * CGFloat(zoom)
     }
 
-    private func applySyntaxHighlighting(to textView: NSTextView, source: String) {
+    private static func applySyntaxHighlighting(
+        to textView: NSTextView,
+        source: String,
+        syntaxHighlighting: SourceSyntaxHighlighting?
+    ) {
+        applySyntaxHighlighting(
+            to: textView,
+            source: source,
+            syntaxHighlighting: syntaxHighlighting,
+            tokens: syntaxHighlighting.map {
+                SourceSyntaxTokenizer.tokens(in: source, for: $0)
+            } ?? []
+        )
+    }
+
+    private static func applySyntaxHighlighting(
+        to textView: NSTextView,
+        source: String,
+        syntaxHighlighting: SourceSyntaxHighlighting?,
+        tokens: [SourceSyntaxToken]
+    ) {
         let textLength = (textView.string as NSString).length
         guard textLength > 0 else { return }
         let range = NSRange(location: 0, length: textLength)
-        textView.textStorage?.addAttribute(.foregroundColor, value: textView.textColor ?? NSColor.textColor, range: range)
-        guard let syntaxHighlighting else { return }
-
-        switch syntaxHighlighting {
-        case let .json(palette):
-            for token in JSONSyntaxHighlighter().tokenize(source) {
-                apply(
-                    color: palette.color(for: token.kind),
-                    to: token.utf8Offset..<token.utf8End,
-                    in: source,
-                    textView: textView
-                )
-            }
-        case let .markdown(palette):
-            for token in MarkdownSyntaxHighlighter().tokenize(source) {
-                apply(
-                    color: palette.color(for: token.kind),
-                    to: token.utf8Offset..<token.utf8End,
-                    in: source,
-                    textView: textView
-                )
-            }
-        case let .latex(palette):
-            for token in LatexSyntaxHighlighter().tokenize(source) {
-                apply(
-                    color: palette.color(for: token.kind),
-                    to: token.utf8Offset..<token.utf8End,
-                    in: source,
-                    textView: textView
-                )
-            }
+        guard let textStorage = textView.textStorage else { return }
+        let utf16Offsets = Self.utf16Offsets(in: source)
+        let foregroundColor = syntaxHighlighting.map {
+            NSColor(hex: $0.foreground)
+        } ?? textView.textColor ?? NSColor.textColor
+        textStorage.beginEditing()
+        textStorage.addAttribute(
+            .foregroundColor,
+            value: foregroundColor,
+            range: range
+        )
+        for token in tokens {
+            let start = utf16Offsets[min(max(token.utf8Offset, 0), utf16Offsets.count - 1)]
+            let end = utf16Offsets[min(max(token.utf8End, 0), utf16Offsets.count - 1)]
+            guard end > start else { continue }
+            textStorage.addAttribute(
+                .foregroundColor,
+                value: NSColor(hex: token.color),
+                range: NSRange(location: start, length: end - start)
+            )
         }
+        textStorage.endEditing()
     }
 
-    private func apply(
-        color: String,
-        to utf8Range: Range<Int>,
-        in source: String,
-        textView: NSTextView
-    ) {
-        let start = utf16Offset(in: source, utf8Offset: utf8Range.lowerBound)
-        let end = utf16Offset(in: source, utf8Offset: utf8Range.upperBound)
-        guard end > start else { return }
-        textView.textStorage?.addAttribute(
-            .foregroundColor,
-            value: NSColor(hex: color),
-            range: NSRange(location: start, length: end - start)
-        )
+    private static func utf16Offsets(in source: String) -> [Int] {
+        var offsets = Array(repeating: 0, count: source.utf8.count + 1)
+        var utf8Offset = 0
+        var utf16Offset = 0
+
+        for scalar in source.unicodeScalars {
+            let utf8Length = scalar.utf8.count
+            let utf16Length = scalar.utf16.count
+            for offset in utf8Offset..<(utf8Offset + utf8Length) {
+                offsets[offset] = utf16Offset
+            }
+            utf8Offset += utf8Length
+            utf16Offset += utf16Length
+            offsets[utf8Offset] = utf16Offset
+        }
+        return offsets
     }
 
     private func applyBaseColors(to textView: NSTextView) {
@@ -535,7 +694,7 @@ struct SourceTextView: NSViewRepresentable {
         }
     }
 
-    private func utf16Offset(in source: String, utf8Offset: Int) -> Int {
+    private static func utf16Offset(in source: String, utf8Offset: Int) -> Int {
         let bytes = Array(source.utf8)
         let clampedOffset = min(max(utf8Offset, 0), bytes.count)
         let prefix = String(decoding: bytes[..<clampedOffset], as: UTF8.self)
@@ -549,11 +708,26 @@ struct SourceTextView: NSViewRepresentable {
         var onFindMatchCount: @MainActor @Sendable (Int) -> Void
         var appliedCursorUTF8Offset: Int?
         var didRequestInitialFocus = false
+        var appliedZoom: Double?
+        var appliedMonospaced: Bool?
+        var appliedLineSpacingBefore: [Int: CGFloat] = [:]
+        var appliedBaseColors: SourceSyntaxHighlighting?
+        var hasAppliedBaseColors = false
+        var syntaxHighlightingGate = SourceSyntaxHighlightingGate()
+        var requiresTypographyRefresh = true
+        var requiresSyntaxRefresh = true
+        var requiresInitialSyntaxRefresh = true
+        var lastModelSource: String?
+        private var syntaxHighlightTask: Task<Void, Never>?
+        private var syntaxHighlightGeneration = 0
+        private var sourceChangeWorkItem: DispatchWorkItem?
+        private var pendingSourceChange: String?
         private var findSource = ""
         private var findQuery = ""
         private var findRequestID = -1
         private var findMatches: [TextSearchMatch] = []
         private var currentFindIndex: Int?
+        private var hasFindHighlights = false
 
         init(
             onSourceChanged: @escaping @MainActor @Sendable (String) -> Void,
@@ -567,7 +741,104 @@ struct SourceTextView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
-            onSourceChanged(textView.string)
+            requiresSyntaxRefresh = true
+            scheduleSourceChange(textView.string)
+        }
+
+        var hasPendingSourceChange: Bool {
+            pendingSourceChange != nil
+        }
+
+        func flushPendingSourceChange() {
+            sourceChangeWorkItem?.cancel()
+            sourceChangeWorkItem = nil
+            guard let pendingSourceChange else { return }
+            self.pendingSourceChange = nil
+            onSourceChanged(pendingSourceChange)
+        }
+
+        private func scheduleSourceChange(_ source: String) {
+            pendingSourceChange = source
+            sourceChangeWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self,
+                      let pendingSourceChange = self.pendingSourceChange else { return }
+                self.pendingSourceChange = nil
+                self.sourceChangeWorkItem = nil
+                self.onSourceChanged(pendingSourceChange)
+            }
+            sourceChangeWorkItem = workItem
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + .milliseconds(180),
+                execute: workItem
+            )
+        }
+
+        func scheduleSyntaxHighlighting(
+            in textView: NSTextView,
+            source: String,
+            syntaxHighlighting: SourceSyntaxHighlighting?,
+            delay: Duration = .milliseconds(120)
+        ) {
+            let request = SourceSyntaxHighlightingRequest(
+                source: source,
+                syntaxHighlighting: syntaxHighlighting
+            )
+            guard syntaxHighlightingGate.shouldSchedule(request) else {
+                if syntaxHighlightingGate.applied == request {
+                    requiresSyntaxRefresh = false
+                }
+                return
+            }
+            syntaxHighlightTask?.cancel()
+            syntaxHighlightGeneration += 1
+            let generation = syntaxHighlightGeneration
+            syntaxHighlightTask = Task { @MainActor [weak self, weak textView] in
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled,
+                      let self,
+                      let textView,
+                      self.syntaxHighlightGeneration == generation else { return }
+
+                let tokens = await Task.detached(priority: .utility) {
+                    syntaxHighlighting.map {
+                        SourceSyntaxTokenizer.tokens(in: request.source, for: $0)
+                    } ?? []
+                }.value
+                guard !Task.isCancelled,
+                      self.syntaxHighlightGeneration == generation,
+                      textView.string == source else { return }
+                SourceTextView.applySyntaxHighlighting(
+                    to: textView,
+                    source: request.source,
+                    syntaxHighlighting: syntaxHighlighting,
+                    tokens: tokens
+                )
+                self.syntaxHighlightTask = nil
+                self.syntaxHighlightingGate.markApplied(request)
+                self.requiresSyntaxRefresh = false
+            }
+        }
+
+        func scheduleInitialSyntaxRefresh(
+            in textView: NSTextView,
+            source: String,
+            syntaxHighlighting: SourceSyntaxHighlighting?
+        ) {
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self,
+                      let textView,
+                      self.requiresInitialSyntaxRefresh,
+                      textView.string == source else { return }
+
+                self.requiresInitialSyntaxRefresh = false
+                self.scheduleSyntaxHighlighting(
+                    in: textView,
+                    source: source,
+                    syntaxHighlighting: syntaxHighlighting,
+                    delay: .zero
+                )
+            }
         }
 
         func applyFind(
@@ -612,27 +883,32 @@ struct SourceTextView: NSViewRepresentable {
         }
 
         private func clearFind(in textView: NSTextView, notify: Bool) {
-            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
-            textView.layoutManager?.removeTemporaryAttribute(
-                .backgroundColor,
-                forCharacterRange: fullRange
-            )
+            if hasFindHighlights {
+                let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+                textView.layoutManager?.removeTemporaryAttribute(
+                    .backgroundColor,
+                    forCharacterRange: fullRange
+                )
+            }
             findSource = ""
             findQuery = ""
             findRequestID = -1
             findMatches = []
             currentFindIndex = nil
+            hasFindHighlights = false
             if notify {
                 onFindMatchCount(0)
             }
         }
 
         private func updateFindHighlights(in textView: NSTextView) {
-            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
-            textView.layoutManager?.removeTemporaryAttribute(
-                .backgroundColor,
-                forCharacterRange: fullRange
-            )
+            if hasFindHighlights {
+                let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+                textView.layoutManager?.removeTemporaryAttribute(
+                    .backgroundColor,
+                    forCharacterRange: fullRange
+                )
+            }
 
             for match in findMatches {
                 let range = NSRange(
@@ -645,6 +921,7 @@ struct SourceTextView: NSViewRepresentable {
                     forCharacterRange: range
                 )
             }
+            hasFindHighlights = !findMatches.isEmpty
 
             guard SourceEditorFindSelectionPolicy.shouldSelectMatch(
                 query: findQuery,
@@ -693,21 +970,40 @@ private final class MarkdownNSTextView: NSTextView {
     var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
     var onFindFocus: (() -> Void)?
     var onDoubleClick: ((NSEvent) -> Void)?
+    var onPendingSourceFlush: (() -> Void)?
     var showsLineNumbers = false {
-        didSet { needsDisplay = true }
+        didSet {
+            guard oldValue != showsLineNumbers else { return }
+            needsDisplay = true
+        }
     }
     var lineNumberGutterWidth: CGFloat = 0 {
-        didSet { needsDisplay = true }
+        didSet {
+            guard oldValue != lineNumberGutterWidth else { return }
+            needsDisplay = true
+        }
     }
     var lineNumberFontSize: CGFloat = 11 {
-        didSet { needsDisplay = true }
+        didSet {
+            guard oldValue != lineNumberFontSize else { return }
+            needsDisplay = true
+        }
     }
     var lineNumberOverrides: [Int: Int] = [:] {
-        didSet { needsDisplay = true }
+        didSet {
+            guard oldValue != lineNumberOverrides else { return }
+            needsDisplay = true
+        }
     }
     var lineHighlights: [Int: DocumentDiffCellKind] = [:] {
-        didSet { needsDisplay = true }
+        didSet {
+            guard oldValue != lineHighlights else { return }
+            needsDisplay = true
+        }
     }
+
+    private var cachedLineStarts: [Int]?
+    private var pendingLineStartEdit: (range: NSRange, replacement: String)?
 
     override func becomeFirstResponder() -> Bool {
         let becameFirstResponder = super.becomeFirstResponder()
@@ -717,6 +1013,11 @@ private final class MarkdownNSTextView: NSTextView {
         return becameFirstResponder
     }
 
+    override func resignFirstResponder() -> Bool {
+        onPendingSourceFlush?()
+        return super.resignFirstResponder()
+    }
+
     override func mouseDown(with event: NSEvent) {
         onFindFocus?()
         super.mouseDown(with: event)
@@ -724,17 +1025,17 @@ private final class MarkdownNSTextView: NSTextView {
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
-        drawLineHighlights(in: rect)
+        let fragments = lineFragments(in: visibleRect)
+        drawLineHighlights(in: rect, fragments: fragments)
         drawLineNumberSeparator()
         if showsLineNumbers {
-            drawLineNumbers(in: visibleRect)
+            drawLineNumbers(in: rect, fragments: fragments)
         }
     }
 
-    private func drawLineNumbers(in rect: NSRect) {
+    private func drawLineNumbers(in rect: NSRect, fragments: [LineFragment]) {
         guard lineNumberGutterWidth > 0 else { return }
 
-        let fragments = lineFragments()
         var drawnPhysicalLines = Set<Int>()
 
         for fragment in fragments {
@@ -750,17 +1051,90 @@ private final class MarkdownNSTextView: NSTextView {
         }
     }
 
-    private func lineFragments() -> [LineFragment] {
+    func invalidateLineNumberCache() {
+        cachedLineStarts = nil
+        pendingLineStartEdit = nil
+    }
+
+    override func shouldChangeText(
+        in affectedCharRange: NSRange,
+        replacementString: String?
+    ) -> Bool {
+        let shouldChange = super.shouldChangeText(
+            in: affectedCharRange,
+            replacementString: replacementString
+        )
+        if shouldChange, cachedLineStarts != nil {
+            pendingLineStartEdit = (
+                affectedCharRange,
+                replacementString ?? ""
+            )
+        }
+        return shouldChange
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        guard let edit = pendingLineStartEdit,
+              let starts = cachedLineStarts else {
+            invalidateLineNumberCache()
+            return
+        }
+        pendingLineStartEdit = nil
+        cachedLineStarts = updatedLineStarts(
+            starts,
+            replacing: edit.range,
+            with: edit.replacement
+        )
+    }
+
+    private func updatedLineStarts(
+        _ starts: [Int],
+        replacing range: NSRange,
+        with replacement: String
+    ) -> [Int] {
+        let replacementString = replacement as NSString
+        let delta = replacementString.length - range.length
+        let end = NSMaxRange(range)
+        var updated = starts.filter { start in
+            if start <= range.location { return true }
+            if start < end { return false }
+            if start == end, range.length == 0 { return true }
+            return true
+        }.map { start in
+            let followsReplacedText = range.length == 0
+                ? start > end
+                : start >= end
+            return followsReplacedText ? start + delta : start
+        }
+
+        if replacementString.length > 0 {
+            for offset in 0..<replacementString.length
+            where replacementString.character(at: offset) == 10 {
+                updated.append(range.location + offset + 1)
+            }
+        }
+        updated.sort()
+        var unique: [Int] = []
+        unique.reserveCapacity(updated.count)
+        for start in updated where unique.last != start {
+            unique.append(start)
+        }
+        return unique
+    }
+
+    private func lineFragments(in requestedRect: NSRect) -> [LineFragment] {
         guard let layoutManager,
               let textContainer else { return [] }
 
-        layoutManager.ensureLayout(for: textContainer)
         let origin = textContainerOrigin
-        let sourceFont = font ?? NSFont.systemFont(ofSize: SourceEditorLayout.editorFontSize)
-        let glyphRange = NSRange(
-            location: 0,
-            length: layoutManager.numberOfGlyphs
+        let textContainerRect = requestedRect.offsetBy(dx: -origin.x, dy: -origin.y)
+        let glyphRange = layoutManager.glyphRange(
+            forBoundingRect: textContainerRect,
+            in: textContainer
         )
+        layoutManager.ensureLayout(forGlyphRange: glyphRange)
+        let sourceFont = font ?? NSFont.systemFont(ofSize: SourceEditorLayout.editorFontSize)
         var fragments: [LineFragment] = []
 
         // Both the gutter and the diff background consume this exact list.
@@ -773,9 +1147,8 @@ private final class MarkdownNSTextView: NSTextView {
                       glyphRange.location < layoutManager.numberOfGlyphs else { return }
 
                 let rect = lineFragmentRect.offsetBy(dx: origin.x, dy: origin.y)
-                let physicalLine = SourceEditorLineNumbering.lineNumber(
-                    atUTF16Offset: layoutManager.characterIndexForGlyph(at: glyphRange.location),
-                    in: string
+                let physicalLine = lineNumber(
+                    atUTF16Offset: layoutManager.characterIndexForGlyph(at: glyphRange.location)
                 )
                 let baselineY = SourceEditorLayout.lineBaselineY(
                     lineFragmentRect: rect,
@@ -793,7 +1166,7 @@ private final class MarkdownNSTextView: NSTextView {
             dx: origin.x,
             dy: origin.y
         )
-        if extraLineRect.height > 0 {
+        if extraLineRect.height > 0 && extraLineRect.intersects(requestedRect) {
             let paragraphStyleMinimumLineHeight: CGFloat?
             if let textStorage, textStorage.length > 0 {
                 paragraphStyleMinimumLineHeight = (textStorage.attribute(
@@ -821,7 +1194,7 @@ private final class MarkdownNSTextView: NSTextView {
                 defaultLineHeight: layoutManager.defaultLineHeight(for: sourceFont)
             )
             fragments.append(LineFragment(
-                physicalLine: SourceEditorLineNumbering.lineCount(in: string),
+                physicalLine: lineNumber(atUTF16Offset: (string as NSString).length),
                 rect: normalizedExtraLineRect,
                 baselineY: normalizedExtraLineRect.minY + extraLineBaselineOffset
             ))
@@ -889,29 +1262,55 @@ private final class MarkdownNSTextView: NSTextView {
             : lineNumberOverrides[physicalLine]
     }
 
+    private func lineNumber(atUTF16Offset offset: Int) -> Int {
+        let starts: [Int]
+        if let cachedLineStarts {
+            starts = cachedLineStarts
+        } else {
+            let source = string as NSString
+            var computed = [0]
+            computed.reserveCapacity(max(1, source.length / 32))
+            for position in 0..<source.length where source.character(at: position) == 10 {
+                computed.append(position + 1)
+            }
+            cachedLineStarts = computed
+            starts = computed
+        }
+
+        let clampedOffset = min(max(offset, 0), (string as NSString).length)
+        var lower = 0
+        var upper = starts.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if starts[middle] <= clampedOffset {
+                lower = middle + 1
+            } else {
+                upper = middle
+            }
+        }
+        return max(lower, 1)
+    }
+
     private func drawLineNumberSeparator() {
         guard showsLineNumbers, lineNumberGutterWidth > 0 else { return }
-        let fragments = lineFragments()
-        guard let top = fragments.map(\.rect.minY).min(),
-              let bottom = fragments.map(\.rect.maxY).max() else { return }
         NSColor.separatorColor.withAlphaComponent(0.35).setStroke()
         let separator = NSBezierPath()
         separator.move(to: NSPoint(
             x: lineNumberGutterWidth,
-            y: max(0, top - SourceEditorLayout.lineNumberVerticalPadding)
+            y: visibleRect.minY
         ))
         separator.line(to: NSPoint(
             x: lineNumberGutterWidth,
-            y: min(bounds.height, bottom + SourceEditorLayout.lineNumberVerticalPadding)
+            y: visibleRect.maxY
         ))
         separator.lineWidth = 1
         separator.stroke()
     }
 
-    private func drawLineHighlights(in rect: NSRect) {
+    private func drawLineHighlights(in rect: NSRect, fragments: [LineFragment]) {
         guard !lineHighlights.isEmpty else { return }
 
-        for fragment in lineFragments() where fragment.rect.intersects(rect) {
+        for fragment in fragments where fragment.rect.intersects(rect) {
             drawLineHighlight(
                 for: lineHighlights[fragment.physicalLine],
                 lineRect: fragment.rect

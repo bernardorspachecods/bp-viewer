@@ -145,7 +145,10 @@ struct MarkdownPreviewView: View {
                     onFindFocus: { onFindTargetChanged(.source) },
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onMarkdownTextChanged,
-                    onEndEditing: { _ in exitEditing() },
+                    onEndEditing: { text in
+                        onMarkdownTextChanged(text)
+                        exitEditing()
+                    },
                     onDiscardGitChanges: onDiscardGitChanges
                 )
             } else {
@@ -175,9 +178,14 @@ struct MarkdownPreviewView: View {
             isFindTarget: findTarget == .source,
             onFindFocus: { onFindTargetChanged(.source) },
             onFindMatchCount: onFindMatchCount,
-            onEndEditing: editingSession.mode == .split
-                ? onSaveMarkdownEditing
-                : onEndMarkdownEditing,
+            onEndEditing: { text in
+                onMarkdownTextChanged(text)
+                if editingSession.mode == .split {
+                    onSaveMarkdownEditing()
+                } else {
+                    onEndMarkdownEditing()
+                }
+            },
             onSourceChanged: onMarkdownTextChanged
         )
     }
@@ -255,7 +263,7 @@ private struct MarkdownSourceEditor: View {
     let isFindTarget: Bool
     let onFindFocus: @MainActor @Sendable () -> Void
     let onFindMatchCount: @MainActor @Sendable (Int) -> Void
-    let onEndEditing: () -> Void
+    let onEndEditing: @MainActor @Sendable (String) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
 
     var body: some View {
@@ -283,7 +291,7 @@ private struct MarkdownSourceEditor: View {
                     onFindFocus: onFindFocus,
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onSourceChanged,
-                    onEndEditing: { _ in onEndEditing() },
+                    onEndEditing: onEndEditing,
                     onDoubleClick: nil
                 )
                 .frame(
@@ -294,7 +302,9 @@ private struct MarkdownSourceEditor: View {
                 )
                 Spacer(minLength: 0)
             }
-            .onExitCommand(perform: onEndEditing)
+            .onExitCommand {
+                onEndEditing(source)
+            }
         }
         .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
         .background(BPTokens.Color.canvas)

@@ -50,11 +50,20 @@ struct RootView: View {
         ) {
             Button("Continue Editing", role: .cancel, action: model.cancelPendingClose)
             if model.pendingCloseCanSave {
-                Button("Save", action: model.savePendingClose)
+                Button(
+                    model.pendingCloseRequest?.unsavedCount ?? 1 > 1 ? "Save All" : "Save",
+                    action: model.savePendingClose
+                )
             }
-            Button("Discard Changes", role: .destructive, action: model.discardPendingClose)
+            Button(
+                model.pendingCloseRequest?.unsavedCount ?? 1 > 1 ? "Discard All" : "Discard Changes",
+                role: .destructive,
+                action: model.discardPendingClose
+            )
         } message: {
-            if model.pendingCloseCanSave {
+            if model.pendingCloseRequest?.unsavedCount ?? 1 > 1 {
+                Text("\(model.pendingCloseRequest?.unsavedCount ?? 0) documents have unsaved changes. Would you like to save or close without saving?")
+            } else if model.pendingCloseCanSave {
                 Text("\(model.pendingCloseRequest?.title ?? "This file") has unsaved changes. Would you like to edit, save, or close without saving?")
             } else {
                 Text("\(model.pendingCloseRequest?.title ?? "This file") contains invalid JSON. Fix the content before saving, or close without saving.")

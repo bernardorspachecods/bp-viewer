@@ -6,8 +6,9 @@ renderizado ou formatado.
 
 ## Janela e navegação
 
-- A janela tem topbar, sidebar de projeto, barra de tabs e superfície de
-  documento.
+- A janela usa tabs nativas do macOS para workspaces. Cada tab nativa
+  representa uma pasta e mantém uma topbar, sidebar, árvore e barra de tabs de
+  documentos independentes.
 - A sidebar abre uma pasta como raiz, mostra a árvore por pastas e ficheiros e
   ignora ficheiros ocultos.
 - O botão direito numa pasta permite copiar o caminho, renomeá-la e enviá-la
@@ -27,8 +28,9 @@ renderizado ou formatado.
 - O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word, PDF e
   imagens por defeito; pode ser desligado para mostrar todos os ficheiros.
 - A árvore mantém expansão, scroll e filtro por workspace.
-- A abertura de uma nova raiz pede confirmação quando já existe um workspace
-  aberto.
+- O botão de pasta, o `+` nativo e `⇧⌘T` abrem uma nova tab nativa de workspace
+  através do seletor de pastas. Workspaces já abertos são focados em vez de
+  duplicados; trocar de workspace não fecha tabs nem pede confirmação.
 - Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.bib`, `.json`, `.csv`, `.docx`,
   `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.heic` e `.heif` podem ser abertos
   em tabs. Documentos Word são convertidos localmente para HTML rico e
@@ -145,8 +147,10 @@ renderizado ou formatado.
   ou descartar as alterações; a opção de guardar só aparece para JSON válido.
 - A barra do editor JSON disponibiliza `Discard Changes` para repor a versão
   guardada sem sair do modo de edição.
-- Ao fechar uma tab, janela ou workspace com alterações por guardar, a app
-  permite continuar a editar, guardar ou descartar as alterações.
+- Ao fechar uma tab de documento com alterações por guardar, a app permite
+  continuar a editar, guardar ou descartar as alterações. Ao fechar uma tab
+  nativa de workspace, uma única confirmação permite guardar tudo, descartar
+  tudo ou cancelar.
 - JSON inválido mantém o último preview válido, quando existe, e mostra o
   diagnóstico da validação.
 
@@ -178,8 +182,9 @@ renderizado ou formatado.
 - Tabs, tab ativa, contexto LaTeX, tema, largura e visibilidade da sidebar,
   largura e visibilidade do outline por ficheiro, zooms predefinidos, filtro,
   expansão e posições de leitura são persistidos.
-- A app restaura a última pasta existente e remove referências a tabs que já não
-  existem.
+- A app restaura todas as tabs nativas de workspaces existentes, na ordem em
+  que estavam abertas, foca a última ativa e remove referências a pastas ou
+  tabs que já não existem.
 - O utilizador pode selecionar uma área do preview, incluindo conteúdo obtido
   com auto-scroll, e abrir o recorte numa janela flutuante.
 - Snapshots são guardados como PNG em Application Support e permanecem

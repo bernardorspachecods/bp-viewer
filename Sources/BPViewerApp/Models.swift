@@ -83,6 +83,7 @@ struct PendingCloseRequest: Identifiable {
     let tabID: String
     let title: String
     let closesTab: Bool
+    let unsavedCount: Int
 }
 
 struct PendingFileMoveRequest: Identifiable {

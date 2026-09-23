@@ -364,16 +364,19 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
 }
 
 public struct AppState: Codable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion = Self.currentSchemaVersion
     public var global = GlobalState()
     public var documentStates: [String: DocumentState] = [:]
     public var workspaceStates: [String: WorkspaceState] = [:]
     public var lastWorkspacePath: String?
+    public var openWorkspacePaths: [String] = []
+    public var activeWorkspacePath: String?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, global, documentStates, workspaceStates, lastWorkspacePath
+        case openWorkspacePaths, activeWorkspacePath
     }
 
     public init() {}
@@ -385,6 +388,8 @@ public struct AppState: Codable, Sendable {
         documentStates = try container.decodeIfPresent([String: DocumentState].self, forKey: .documentStates) ?? [:]
         workspaceStates = try container.decodeIfPresent([String: WorkspaceState].self, forKey: .workspaceStates) ?? [:]
         lastWorkspacePath = try container.decodeIfPresent(String.self, forKey: .lastWorkspacePath)
+        openWorkspacePaths = try container.decodeIfPresent([String].self, forKey: .openWorkspacePaths) ?? []
+        activeWorkspacePath = try container.decodeIfPresent(String.self, forKey: .activeWorkspacePath)
     }
 }
 

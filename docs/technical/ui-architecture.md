@@ -27,7 +27,9 @@ snapshots usam uma janela AppKit separada.
 
 ## Estado da UI
 
-`AppModel` é o `ObservableObject` principal e publica a raiz, árvore, tabs,
+`WorkspaceWindowManager` gere as tabs nativas do macOS e mantém um `AppModel`
+por janela/tab de workspace. `AppModel` é o `ObservableObject` principal de
+cada workspace e publica a raiz, árvore, tabs,
 tab ativa, pesquisa, alvo da pesquisa, filtro, expansão, sidebar, zoom, tema,
 estado de pesquisa, pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
 e resolução de documentos vivem no Core; a árvore é mantida por
@@ -156,8 +158,10 @@ modo de `shell escape` através do `AppModel`.
 
 `RootView` encaminha comandos para abrir pasta, atualizar o preview, alternar
 tema/sidebar, mostrar pesquisa, controlar zoom, selecionar tabs e capturar
-snapshots. `AppModel` trata também abertura pelo Finder, drag-and-drop, atalhos
-de teclado e confirmação ao trocar de raiz.
+snapshots. `WorkspaceWindowManager` cria e agrupa as janelas como tabs nativas,
+restaura a ordem dos workspaces e encaminha os comandos globais para a janela
+ativa. `AppModel` trata também abertura pelo Finder, drag-and-drop, atalhos de
+documentos e confirmação ao fechar uma tab nativa com alterações.
 
 As views não executam diretamente scanners, compiladores ou persistência; enviam
 ações ao `AppModel` e renderizam o estado publicado por ele.

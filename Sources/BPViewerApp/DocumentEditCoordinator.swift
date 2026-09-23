@@ -32,16 +32,24 @@ final class DocumentEditCoordinator {
 
     func updateMarkdown(
         session: MarkdownEditSession,
-        source: String
+        source: String,
+        recordUndo: Bool = true,
+        markdownBlocks: [MarkdownEditableBlock]? = nil
     ) -> DocumentEditTransition? {
         guard source != session.currentSource else { return nil }
         var updated = session
-        updated.undoSources.append(updated.currentSource)
+        if recordUndo {
+            updated.undoSources.append(updated.currentSource)
+        }
         updated.redoSources.removeAll()
         updated.currentSource = source
         updated.saveState = .unsaved
         updated.conflict = nil
-        return transition(session: updated, source: source)
+        return transition(
+            session: updated,
+            source: source,
+            markdownBlocks: markdownBlocks
+        )
     }
 
     func undoMarkdown(session: MarkdownEditSession) -> DocumentEditTransition? {
@@ -124,7 +132,8 @@ final class DocumentEditCoordinator {
 
     func updateJSON(
         session: MarkdownEditSession,
-        source: String
+        source: String,
+        validate: Bool = true
     ) -> DocumentEditTransition? {
         guard source != session.currentSource else { return nil }
         var updated = session
@@ -133,6 +142,17 @@ final class DocumentEditCoordinator {
         updated.currentSource = source
         updated.saveState = .unsaved
         updated.conflict = nil
+
+        guard validate else {
+            // JSON editing does not consume Markdown blocks. Avoid rebuilding
+            // them on the main actor for every source update.
+            return transition(
+                session: updated,
+                source: source,
+                markdownBlocks: [],
+                jsonErrorMessage: nil
+            )
+        }
 
         do {
             _ = try JSONPreviewAdapter().format(source: source)
@@ -144,6 +164,15 @@ final class DocumentEditCoordinator {
                 source: source,
                 jsonErrorMessage: error.localizedDescription
             )
+        }
+    }
+
+    func jsonValidationError(for source: String) -> String? {
+        do {
+            _ = try JSONPreviewAdapter().format(source: source)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 

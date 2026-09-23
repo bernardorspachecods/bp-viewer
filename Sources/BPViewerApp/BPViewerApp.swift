@@ -5,62 +5,97 @@ import SwiftUI
 @MainActor
 struct BPViewerApp: App {
     @NSApplicationDelegateAdaptor(BPViewerAppDelegate.self) private var appDelegate
+    @StateObject private var windowManager: WorkspaceWindowManager
     @StateObject private var model: AppModel
 
     init() {
-        let model = AppModel()
+        let windowManager = WorkspaceWindowManager.shared
+        _windowManager = StateObject(wrappedValue: windowManager)
+        let model = AppModel(workspaceSession: windowManager.session)
         _model = StateObject(wrappedValue: model)
     }
 
     var body: some Scene {
-        WindowGroup("bp-viewer") {
+        Window("bp-viewer", id: "main") {
             RootView()
                 .environmentObject(model)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Markdown File", action: model.createNewMarkdownDocument)
+                Button("New Markdown File") {
+                    windowManager.modelForActiveWindow(fallback: model)?.createNewMarkdownDocument()
+                }
                     .keyboardShortcut("t", modifiers: [.command])
 
-                Button("Open Folder…", action: model.openFolder)
+                Button("New Workspace…") {
+                    windowManager.chooseAndOpenWorkspace(
+                        from: windowManager.modelForActiveWindow(fallback: model)
+                    )
+                }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button("Open Folder…") {
+                    windowManager.chooseAndOpenWorkspace(
+                        from: windowManager.modelForActiveWindow(fallback: model)
+                    )
+                }
                     .keyboardShortcut("o", modifiers: [.command])
             }
 
             CommandMenu("View") {
-                Button("Refresh Preview", action: model.refreshActiveTab)
+                Button("Refresh Preview") {
+                    windowManager.modelForActiveWindow(fallback: model)?.refreshActiveTab()
+                }
                     .keyboardShortcut("r", modifiers: [.command])
 
-                    Button("Find in Document", action: model.showFindBar)
+                    Button("Find in Document") {
+                        windowManager.modelForActiveWindow(fallback: model)?.showFindBar()
+                    }
                     .keyboardShortcut("f", modifiers: [.command])
 
-                Button("Zoom In", action: model.zoomIn)
+                Button("Zoom In") {
+                    windowManager.modelForActiveWindow(fallback: model)?.zoomIn()
+                }
                     .keyboardShortcut("+", modifiers: [.command])
 
-                Button("Zoom Out", action: model.zoomOut)
+                Button("Zoom Out") {
+                    windowManager.modelForActiveWindow(fallback: model)?.zoomOut()
+                }
                     .keyboardShortcut("-", modifiers: [.command])
 
-                Button("Reset Zoom", action: model.resetPreviewZoom)
+                Button("Reset Zoom") {
+                    windowManager.modelForActiveWindow(fallback: model)?.resetPreviewZoom()
+                }
                     .keyboardShortcut("0", modifiers: [.command])
 
-                Button("Toggle Sidebar", action: { model.setSidebarVisible(!model.sidebarVisible) })
+                Button("Toggle Sidebar") {
+                    guard let activeModel = windowManager.modelForActiveWindow(fallback: model) else { return }
+                    activeModel.setSidebarVisible(!activeModel.sidebarVisible)
+                }
                     .keyboardShortcut("b", modifiers: [.command, .option])
 
-                Button("Toggle Theme", action: model.cycleTheme)
+                Button("Toggle Theme") {
+                    windowManager.modelForActiveWindow(fallback: model)?.cycleTheme()
+                }
                     .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             CommandGroup(replacing: .windowArrangement) {
-                Button("Close Tab", action: model.closeActiveTab)
+                Button("Close Tab") {
+                    windowManager.modelForActiveWindow(fallback: model)?.closeActiveTab()
+                }
                 .keyboardShortcut("w", modifiers: [.command])
             }
 
             CommandMenu("Tabs") {
-                    Button("Next Tab", action: model.selectNextTab)
+                    Button("Next Tab") {
+                        windowManager.modelForActiveWindow(fallback: model)?.selectNextTab()
+                    }
                     .keyboardShortcut(.tab, modifiers: [.control])
 
-                ForEach(Array(model.tabs.prefix(9).enumerated()), id: \.element.id) { index, tab in
+                ForEach(Array((windowManager.activeModel ?? model).tabs.prefix(9).enumerated()), id: \.element.id) { index, tab in
                     Button("\(index + 1): \(tab.title)") {
-                        model.selectTab(number: index)
+                        windowManager.modelForActiveWindow(fallback: model)?.selectTab(number: index)
                     }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command])
                 }
@@ -69,7 +104,7 @@ struct BPViewerApp: App {
 
         Settings {
             SettingsView()
-                .environmentObject(model)
+                .environmentObject(windowManager.activeModel ?? model)
         }
     }
 }

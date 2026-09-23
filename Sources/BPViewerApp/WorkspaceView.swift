@@ -352,14 +352,22 @@ struct PreviewPane: View {
                                 presentationMode: tab.presentationMode,
                                 onNavigate: model.openPreviewURL,
                                 onMarkdownTextChanged: { text in
-                                    model.updateMarkdownEditing(tabID: tab.id, text: text)
+                                    model.updateMarkdownEditing(
+                                        tabID: tab.id,
+                                        text: text,
+                                        rebuildBlocks: false
+                                    )
                                 },
                                 onMarkdownEditEvent: { event in
                                     switch event.kind {
                                     case .begin:
                                         model.beginMarkdownEditing(tabID: tab.id)
                                     case .change:
-                                        model.updateMarkdownEditing(tabID: tab.id, text: event.text)
+                                        model.updateMarkdownEditing(
+                                            tabID: tab.id,
+                                            text: event.text,
+                                            rebuildBlocks: true
+                                        )
                                     case .end:
                                         model.endMarkdownEditing(tabID: tab.id)
                                     case .undo:
@@ -449,7 +457,11 @@ struct PreviewPane: View {
                                     )
                                 },
                                 onSourceChanged: { text in
-                                    model.updateJSONEditing(tabID: tab.id, text: text)
+                                    model.updateJSONEditing(
+                                        tabID: tab.id,
+                                        text: text,
+                                        validate: false
+                                    )
                                 },
                                 onUndo: {
                                     _ = model.undoJSONEdit()

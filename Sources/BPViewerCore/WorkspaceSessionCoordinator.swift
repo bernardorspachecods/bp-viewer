@@ -65,6 +65,14 @@ public final class WorkspaceSessionCoordinator {
         state.lastWorkspacePath
     }
 
+    public var openWorkspacePaths: [String] {
+        state.openWorkspacePaths
+    }
+
+    public var activeWorkspacePath: String? {
+        state.activeWorkspacePath ?? state.lastWorkspacePath
+    }
+
     public func workspaceState(for rootURL: URL) -> WorkspaceState {
         state.workspaceStates[workspaceKey(for: rootURL)] ?? WorkspaceState()
     }
@@ -168,6 +176,11 @@ public final class WorkspaceSessionCoordinator {
         }
         state.workspaceStates[rootKey] = workspace
 
+        if !state.openWorkspacePaths.contains(rootKey) {
+            state.openWorkspacePaths.append(rootKey)
+        }
+        state.activeWorkspacePath = rootKey
+
         for tab in persistedTabs {
             state.documentStates[documentKey(for: tab.url)] = DocumentState(
                 zoom: tab.isPreviewZoomCustomized ? tab.previewZoom : nil,
@@ -179,6 +192,20 @@ public final class WorkspaceSessionCoordinator {
         }
 
         state.lastWorkspacePath = rootKey
+        save()
+    }
+
+    public func setOpenWorkspaces(_ roots: [URL], activeRoot: URL?) {
+        var paths: [String] = []
+        for root in roots {
+            let path = workspaceKey(for: root)
+            guard !paths.contains(path) else { continue }
+            paths.append(path)
+        }
+
+        state.openWorkspacePaths = paths
+        state.activeWorkspacePath = activeRoot.map(workspaceKey(for:))
+        state.lastWorkspacePath = state.activeWorkspacePath ?? paths.last
         save()
     }
 

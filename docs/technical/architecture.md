@@ -11,6 +11,7 @@ BPViewerApp
 ├── DocumentEditCoordinator  sessões, conflitos e gravação de documentos
 ├── DocumentDiffCoordinator  baselines de disco/Git e composição do diff
 ├── RootView / WorkspaceView  composição da janela
+├── WorkspaceWindowManager    tabs nativas e modelos por workspace
 ├── SidebarView               árvore e navegação do workspace
 ├── MarkdownPreviewView       composição do preview e edição Markdown
 ├── MarkdownWebPreview        ponte WebKit, JavaScript e navegação Markdown
@@ -52,8 +53,10 @@ partilhada.
 
 ## Coordenação
 
-`AppModel`, isolado no `MainActor`, é o coordenador efetivo da apresentação.
-Mantém o estado observável das tabs e encaminha intents para os módulos de
+`AppModel`, isolado no `MainActor`, é o coordenador efetivo da apresentação de
+um workspace. `WorkspaceWindowManager` mantém uma instância do modelo por tab
+nativa e partilha o coordenador de persistência entre elas. O modelo mantém o
+estado observável das tabs e encaminha intents para os módulos de
 sessão e para os coordenadores especializados. `DocumentTabSession`
 mantém as invariantes das tabs; `WorkspaceSessionCoordinator` concentra
 persistência e estado por workspace; `DocumentOpenCoordinator` resolve URLs e
@@ -111,6 +114,8 @@ serem entregues à superfície nativa. O preview não altera o ficheiro original
 - `AppStateStore` guarda o estado JSON em `UserDefaults`; o acesso é encapsulado
   por `WorkspaceSessionCoordinator`.
 - O estado global guarda tema, sidebar, zooms predefinidos e `shell escape`.
+- A lista ordenada de workspaces abertos e o workspace ativo são guardados no
+  estado da app para restaurar as tabs nativas ao iniciar.
 - O estado por documento guarda zoom, outline e posição de leitura.
 - O estado por workspace guarda tabs, expansão, scroll, filtro, seleção de root,
   autorizações externas e registos de snapshots.

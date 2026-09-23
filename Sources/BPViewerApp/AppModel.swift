@@ -68,7 +68,7 @@ final class AppModel: ObservableObject {
     @Published var isSnapshotCaptureActive = false
     @Published private(set) var isPerformingFileOperation = false
 
-    private let workspaceSession = WorkspaceSessionCoordinator()
+    private let workspaceSession: WorkspaceSessionCoordinator
     private let documentOpenCoordinator = DocumentOpenCoordinator()
     private let snapshotArtifactStore = SnapshotArtifactStore()
     private lazy var snapshotWindowManager = SnapshotWindowManager { [weak self] id in
@@ -100,10 +100,19 @@ final class AppModel: ObservableObject {
     private var fileOperationTask: Task<Void, Never>?
     private var gitDiscardTask: Task<Void, Never>?
     private var latexRenderDebounceTasks: [String: Task<Void, Never>] = [:]
+    private var markdownRenderDebounceTasks: [String: Task<Void, Never>] = [:]
+    private var markdownUndoGroupTimes: [String: TimeInterval] = [:]
     private var activeSecurityScopedRootURL: URL?
+    private weak var attachedWindow: NSWindow?
 
-    init(documentDiffCoordinator: DocumentDiffCoordinator = DocumentDiffCoordinator()) {
+    init(
+        documentDiffCoordinator: DocumentDiffCoordinator = DocumentDiffCoordinator(),
+        workspaceSession: WorkspaceSessionCoordinator = WorkspaceSessionCoordinator(),
+        initialRootURL: URL? = nil,
+        restoresLastWorkspace: Bool = true
+    ) {
         self.documentDiffCoordinator = documentDiffCoordinator
+        self.workspaceSession = workspaceSession
         let configuration = workspaceSession.configuration
         theme = AppThemePreference(rawValue: configuration.theme) ?? .dark
         sidebarVisible = configuration.sidebarVisible
@@ -119,12 +128,14 @@ final class AppModel: ObservableObject {
         ) { [weak self] notification in
             guard let urls = notification.object as? [URL] else { return }
             Task { @MainActor [weak self] in
-                self?.openExternalURLs(urls)
+                guard let self, self.shouldHandleWindowEvents else { return }
+                self.openExternalURLs(urls)
             }
         }
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard self?.shouldHandleWindowEvents == true else { return event }
 
             if flags == [.command],
                event.charactersIgnoringModifiers?.lowercased() == "w" {
@@ -150,8 +161,18 @@ final class AppModel: ObservableObject {
                let tabID = self?.activeTabID,
                let tab = self?.activeTab,
                let session = tab.markdownEditSession,
-               tab.isUntitled || session.currentSource != session.baseSource {
+               tab.isUntitled
+                    || session.currentSource != session.baseSource
+                    || session.isEditing {
                 Task { @MainActor [weak self] in
+                    if let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
+                       textView.isEditable {
+                        self?.updateMarkdownEditing(
+                            tabID: tabID,
+                            text: textView.string,
+                            rebuildBlocks: false
+                        )
+                    }
                     await self?.saveMarkdownEdit(tabID: tabID)
                 }
                 return nil
@@ -192,10 +213,19 @@ final class AppModel: ObservableObject {
 
             if flags.contains(.command),
                event.charactersIgnoringModifiers?.lowercased() == "z",
+               let tabID = self?.activeTabID,
                let session = self?.activeTab?.markdownEditSession,
                (flags.contains(.shift) ? !session.redoSources.isEmpty : !session.undoSources.isEmpty) {
                 let redo = flags.contains(.shift)
                 Task { @MainActor [weak self] in
+                    if let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
+                       textView.isEditable {
+                        self?.updateMarkdownEditing(
+                            tabID: tabID,
+                            text: textView.string,
+                            rebuildBlocks: false
+                        )
+                    }
                     if redo {
                         self?.redoMarkdownEdit()
                     } else {
@@ -266,7 +296,10 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if let path = workspaceSession.lastWorkspacePath {
+        if let initialRootURL, isDirectory(initialRootURL) {
+            openRoot(initialRootURL)
+        } else if restoresLastWorkspace,
+                  let path = workspaceSession.activeWorkspacePath {
             let pathURL = URL(fileURLWithPath: path)
             let url = (try? workspaceSession.resolveSecurityScopedBookmark(for: pathURL))?.url ?? pathURL
             if FileManager.default.fileExists(atPath: url.path), isDirectory(url) {
@@ -277,6 +310,19 @@ final class AppModel: ObservableObject {
                 restoreTabs()
             }
         }
+    }
+
+    var shouldHandleWindowEvents: Bool {
+        guard let attachedWindow else { return true }
+        return attachedWindow.isKeyWindow || attachedWindow.isMainWindow
+    }
+
+    var nativeWindow: NSWindow? {
+        attachedWindow
+    }
+
+    func attach(to window: NSWindow) {
+        attachedWindow = window
     }
 
     var activeTab: DocumentTab? {
@@ -310,8 +356,7 @@ final class AppModel: ObservableObject {
         panel.prompt = "Open Folder"
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        pendingOpenURLs = []
-        requestRoot(url)
+        WorkspaceWindowManager.shared.openWorkspace(url, from: self)
     }
 
     func requestRoot(_ url: URL) {
@@ -845,16 +890,14 @@ final class AppModel: ObservableObject {
         } else if sameRoot {
             files.forEach { openDocument(url: $0) }
         } else {
-            pendingOpenURLs = files
-            requestRoot(desiredRoot)
+            WorkspaceWindowManager.shared.openWorkspace(desiredRoot, opening: files, from: self)
         }
     }
 
     func openDroppedURLs(_ urls: [URL]) {
         let resolvedURLs = urls.map { $0.resolvingSymlinksInPath().standardizedFileURL }
         if let directory = resolvedURLs.first(where: { isDirectory($0) }) {
-            pendingOpenURLs = []
-            requestRoot(directory)
+            WorkspaceWindowManager.shared.openWorkspace(directory, from: self)
             return
         }
         openExternalURLs(resolvedURLs)
@@ -895,7 +938,7 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    private func openDocument(url: URL) -> String? {
+    func openDocument(url: URL) -> String? {
         guard let result = documentOpenCoordinator.resolve(
             url,
             workspaceRoot: rootURL,
@@ -990,25 +1033,34 @@ final class AppModel: ObservableObject {
         guard let tab = tabs.first(where: hasUnsavedChanges(in:)) else {
             return true
         }
+        let unsavedTabs = tabs.filter(hasUnsavedChanges(in:))
         pendingWindow = window
         isPendingWindowClose = true
-        presentPendingClose(for: tab, closesTab: false)
+        pendingBatchCloseIDs = Set(unsavedTabs.map(\.id))
+        presentPendingClose(for: tab, closesTab: false, unsavedCount: unsavedTabs.count)
         return false
     }
 
-    private func presentPendingClose(for tab: DocumentTab, closesTab: Bool) {
+    private func presentPendingClose(
+        for tab: DocumentTab,
+        closesTab: Bool,
+        unsavedCount: Int = 1
+    ) {
         pendingCloseRequest = PendingCloseRequest(
             id: "\(closesTab ? "tab" : "window")-\(tab.id)",
             tabID: tab.id,
             title: tab.title,
-            closesTab: closesTab
+            closesTab: closesTab,
+            unsavedCount: unsavedCount
         )
         showingPendingCloseConfirmation = true
     }
 
     func cancelPendingClose() {
-        if let request = pendingCloseRequest,
-           let index = tabs.firstIndex(where: { $0.id == request.tabID }) {
+        let IDsToKeepEditing: Set<String> = pendingBatchCloseIDs.isEmpty
+            ? Set(pendingCloseRequest.map { [$0.tabID] } ?? [])
+            : pendingBatchCloseIDs
+        for index in tabs.indices where IDsToKeepEditing.contains(tabs[index].id) {
             tabs[index].markdownEditSession?.isEditing = true
             tabs[index].jsonEditSession?.isEditing = true
             tabs[index].latexEditSession?.isEditing = true
@@ -1028,12 +1080,17 @@ final class AppModel: ObservableObject {
     }
 
     var pendingCloseCanSave: Bool {
-        guard let request = pendingCloseRequest,
-              let tab = tabs.first(where: { $0.id == request.tabID }) else {
+        guard let request = pendingCloseRequest else {
             return false
         }
-        guard tab.kind == .json else { return true }
-        return tab.jsonEditSession?.saveState != .failed && tab.errorMessage == nil
+        let IDs = request.closesTab || pendingBatchCloseIDs.isEmpty
+            ? [request.tabID]
+            : Array(pendingBatchCloseIDs)
+        return IDs.allSatisfy { tabID in
+            guard let tab = tabs.first(where: { $0.id == tabID }) else { return false }
+            guard tab.kind == .json else { return true }
+            return tab.jsonEditSession?.saveState != .failed && tab.errorMessage == nil
+        }
     }
 
     func discardPendingClose() {
@@ -1049,6 +1106,16 @@ final class AppModel: ObservableObject {
         showingPendingCloseConfirmation = false
         if closesTab {
             closeTabImmediately(tab)
+        } else if isPendingWindowClose && !isPendingRootChange {
+            let IDs = pendingBatchCloseIDs
+            for candidate in tabs where IDs.contains(candidate.id) {
+                discardChanges(in: candidate)
+            }
+            pendingBatchCloseIDs.removeAll()
+            let window = pendingWindow
+            pendingWindow = nil
+            isPendingWindowClose = false
+            window?.close()
         } else {
             discardChanges(in: tab)
             continuePendingExit()
@@ -1066,6 +1133,36 @@ final class AppModel: ObservableObject {
         let closesTab = request.closesTab
         pendingCloseRequest = nil
         showingPendingCloseConfirmation = false
+
+        if !closesTab && isPendingWindowClose && !isPendingRootChange {
+            let IDs = Array(pendingBatchCloseIDs)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                for tabID in IDs {
+                    guard let tab = self.tabs.first(where: { $0.id == tabID }) else { continue }
+                    let saved: Bool
+                    switch tab.kind {
+                    case .markdown:
+                        saved = await self.saveMarkdownEdit(tabID: tab.id)
+                    case .json:
+                        saved = await self.saveJSONEdit(tabID: tab.id)
+                    case .csv:
+                        saved = await self.saveCSVEdit(tabID: tab.id)
+                    case .latex:
+                        saved = await self.saveLatexEdit(tabID: tab.id)
+                    default:
+                        saved = true
+                    }
+                    guard saved else { return }
+                }
+                self.pendingBatchCloseIDs.removeAll()
+                let window = self.pendingWindow
+                self.pendingWindow = nil
+                self.isPendingWindowClose = false
+                window?.close()
+            }
+            return
+        }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1254,6 +1351,8 @@ final class AppModel: ObservableObject {
         guard tabs.contains(tab) else { return }
         latexRenderDebounceTasks[tab.id]?.cancel()
         latexRenderDebounceTasks[tab.id] = nil
+        markdownRenderDebounceTasks[tab.id]?.cancel()
+        markdownRenderDebounceTasks[tab.id] = nil
         documentRenderCoordinator.cancel(tabIDs: [tab.id])
         if pendingLatexRootSelection?.tabID == tab.id {
             pendingLatexRootSelection = nil
@@ -1411,6 +1510,7 @@ final class AppModel: ObservableObject {
         let source = tabs[index].markdownSource
             ?? (try? String(contentsOf: tabs[index].url, encoding: .utf8))
             ?? ""
+        markdownUndoGroupTimes[tabID] = nil
         tabs[index].diffSession = nil
         applyMarkdownTransition(
             documentEditCoordinator.beginMarkdown(source: source, mode: mode),
@@ -1476,18 +1576,27 @@ final class AppModel: ObservableObject {
 
     func updateMarkdownEditing(
         tabID: String,
-        text: String
+        text: String,
+        rebuildBlocks: Bool = true
     ) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              let session = tabs[index].markdownEditSession,
+              let session = tabs[index].markdownEditSession else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let shouldRecordUndo = markdownUndoGroupTimes[tabID].map {
+            now - $0 >= 0.5
+        } ?? true
+        markdownUndoGroupTimes[tabID] = now
+        guard
               let transition = documentEditCoordinator.updateMarkdown(
                   session: session,
-                  source: text
+                  source: text,
+                  recordUndo: shouldRecordUndo,
+                  markdownBlocks: rebuildBlocks ? nil : tabs[index].markdownBlocks
               ) else { return }
 
         applyMarkdownTransition(transition, at: index)
         if transition.session.mode == .split {
-            renderMarkdown(tabID: tabID, sourceOverride: text)
+            scheduleMarkdownRender(tabID: tabID)
         }
     }
 
@@ -2122,13 +2231,18 @@ final class AppModel: ObservableObject {
         tabs[index].jsonEditSession = transition.session
     }
 
-    func updateJSONEditing(tabID: String, text: String) {
+    func updateJSONEditing(
+        tabID: String,
+        text: String,
+        validate: Bool = true
+    ) {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .json,
               let session = tabs[index].jsonEditSession,
               let transition = documentEditCoordinator.updateJSON(
                   session: session,
-                  source: text
+                  source: text,
+                  validate: validate
               ) else { return }
 
         applyJSONTransition(transition, at: index)
@@ -2137,12 +2251,22 @@ final class AppModel: ObservableObject {
     func endJSONEditing(tabID: String, source: String? = nil) {
         if let source,
            tabs.first(where: { $0.id == tabID })?.jsonEditSession?.currentSource != source {
-            updateJSONEditing(tabID: tabID, text: source)
+            updateJSONEditing(tabID: tabID, text: source, validate: false)
         }
 
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               tabs[index].kind == .json,
               let session = tabs[index].jsonEditSession else { return }
+
+        if let validationError = documentEditCoordinator.jsonValidationError(
+            for: session.currentSource
+        ) {
+            tabs[index].jsonEditSession?.saveState = .failed
+            tabs[index].errorMessage = validationError
+            pendingInvalidJSONTabID = tabID
+            showingInvalidJSONConfirmation = true
+            return
+        }
 
         if session.saveState == .failed {
             pendingInvalidJSONTabID = tabID
@@ -2300,9 +2424,10 @@ final class AppModel: ObservableObject {
               let session = tabs[index].markdownEditSession,
               let transition = documentEditCoordinator.undoMarkdown(session: session) else { return false }
 
+        markdownUndoGroupTimes[tabID] = nil
         applyMarkdownTransition(transition, at: index)
         if transition.session.mode == .split {
-            renderMarkdown(tabID: tabID, sourceOverride: transition.source)
+            scheduleMarkdownRender(tabID: tabID)
         }
         return true
     }
@@ -2314,9 +2439,10 @@ final class AppModel: ObservableObject {
               let session = tabs[index].markdownEditSession,
               let transition = documentEditCoordinator.redoMarkdown(session: session) else { return false }
 
+        markdownUndoGroupTimes[tabID] = nil
         applyMarkdownTransition(transition, at: index)
         if transition.session.mode == .split {
-            renderMarkdown(tabID: tabID, sourceOverride: transition.source)
+            scheduleMarkdownRender(tabID: tabID)
         }
         return true
     }
@@ -2752,6 +2878,7 @@ final class AppModel: ObservableObject {
         defaultMarkdownZoom = normalizedValue
         applyDefaultZoom(normalizedValue, to: .markdown)
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
     }
 
     func setDefaultLatexZoom(_ value: Double) {
@@ -2760,12 +2887,14 @@ final class AppModel: ObservableObject {
         defaultLatexZoom = normalizedValue
         applyDefaultZoom(normalizedValue, to: .latex)
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
     }
 
     func setLatexShellEscapeMode(_ mode: LatexShellEscapeMode) {
         guard latexShellEscapeMode != mode else { return }
         latexShellEscapeMode = mode
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
         if let activeTabID, activeTab?.kind == .latex {
             renderLatex(tabID: activeTabID, force: true)
         }
@@ -2825,16 +2954,30 @@ final class AppModel: ObservableObject {
         guard theme != preference else { return }
         theme = preference
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
     }
 
     func setSidebarVisible(_ visible: Bool) {
         sidebarVisible = visible
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
     }
 
     func setSidebarWidth(_ width: Double) {
         sidebarWidth = min(max(width, BPTokens.Size.sidebarMin), BPTokens.Size.sidebarMax)
         persistState()
+        WorkspaceWindowManager.shared.synchronizeGlobalPreferences(from: self)
+    }
+
+    func applySharedPreferences(from source: AppModel) {
+        theme = source.theme
+        sidebarVisible = source.sidebarVisible
+        sidebarWidth = source.sidebarWidth
+        defaultMarkdownZoom = source.defaultMarkdownZoom
+        defaultLatexZoom = source.defaultLatexZoom
+        latexShellEscapeMode = source.latexShellEscapeMode
+        applyDefaultZoom(defaultMarkdownZoom, to: .markdown)
+        applyDefaultZoom(defaultLatexZoom, to: .latex)
     }
 
     func resizeSidebar(to width: Double) {
@@ -3314,6 +3457,20 @@ final class AppModel: ObservableObject {
             approvedLatexExternalPaths: [:],
             force: false
         ))
+    }
+
+    private func scheduleMarkdownRender(tabID: String) {
+        markdownRenderDebounceTasks[tabID]?.cancel()
+        markdownRenderDebounceTasks[tabID] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled, let self,
+                  let tab = self.tabs.first(where: { $0.id == tabID }),
+                  let session = tab.markdownEditSession,
+                  session.isEditing,
+                  session.mode == .split else { return }
+            self.renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
+            self.markdownRenderDebounceTasks[tabID] = nil
+        }
     }
 
     private func refreshDocx(tabID: String) {

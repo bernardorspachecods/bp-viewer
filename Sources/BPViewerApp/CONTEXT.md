@@ -15,6 +15,8 @@ tabs, preview Markdown/JSON/PDF/DOCX/imagens, definições e snapshots.
   coordenador da sessão.
 - `RootView.swift`, `WorkspaceView.swift`, `SidebarView.swift` e
   `DocumentOutlineView.swift` — composição da janela e navegação.
+- `WorkspaceWindowManager.swift` — tabs nativas do macOS, modelos por
+  workspace, agrupamento, ordem persistida e restauração.
 - `MarkdownPreviewView.swift`, `MarkdownWebPreview.swift`,
   `SourceEditorView.swift`, `JSONPreviewView.swift`, `CSVPreviewView.swift`, `PDFPreviewView.swift`,
   `ImagePreviewView.swift` e `DocxPreviewView.swift` — superfícies de preview, editor partilhado e

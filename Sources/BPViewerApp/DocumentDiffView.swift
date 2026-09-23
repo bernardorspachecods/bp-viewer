@@ -29,11 +29,13 @@ struct DocumentDiffView: View {
     }
 
     var body: some View {
+        let currentDiff = diff
+
         VStack(spacing: 0) {
-            header
+            header(diff: currentDiff)
             Divider()
             GeometryReader { proxy in
-                let layout = diff.map {
+                let layout = currentDiff.map {
                     DocumentDiffLayout(
                         diff: $0,
                         panelWidth: proxy.size.width / 2,
@@ -44,14 +46,14 @@ struct DocumentDiffView: View {
                 HStack(spacing: 0) {
                     referenceSurface(layout: layout)
                     Divider()
-                    editedSurface(layout: layout)
+                    editedSurface(layout: layout, diff: currentDiff)
                 }
             }
         }
         .background(BPTokens.Color.canvas)
     }
 
-    private var header: some View {
+    private func header(diff: DocumentDiff?) -> some View {
         HStack(spacing: 0) {
             headerLabel(
                 title: baseline?.label ?? "Reference",
@@ -59,14 +61,14 @@ struct DocumentDiffView: View {
             )
             Divider()
                 .frame(height: 24)
-            currentDraftHeader
+            currentDraftHeader(diff: diff)
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)
         .background(BPTokens.Color.surface)
     }
 
-    private var currentDraftHeader: some View {
+    private func currentDraftHeader(diff: DocumentDiff?) -> some View {
         HStack(spacing: BPTokens.Spacing.sm) {
             headerLabel(
                 title: "Current Draft",
@@ -146,7 +148,10 @@ struct DocumentDiffView: View {
         }
     }
 
-    private func editedSurface(layout: DocumentDiffLayout?) -> some View {
+    private func editedSurface(
+        layout: DocumentDiffLayout?,
+        diff: DocumentDiff?
+    ) -> some View {
         SourceTextView(
             source: editedSource,
             zoom: zoom,

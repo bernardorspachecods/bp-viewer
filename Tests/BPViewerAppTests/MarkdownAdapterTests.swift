@@ -4,6 +4,32 @@ import Darwin
 @testable import BPViewerApp
 @testable import BPViewerCore
 
+@Test("coalesces repeated syntax highlighting requests without losing a pending edit")
+func coalescesRepeatedSyntaxHighlightingRequests() {
+    let palette = MarkdownSyntaxColorPalette.light
+    let request = SourceSyntaxHighlightingRequest(
+        source: "# Title\n\n**important**",
+        syntaxHighlighting: .markdown(palette)
+    )
+    var gate = SourceSyntaxHighlightingGate()
+
+    let firstSchedule = gate.shouldSchedule(request)
+    let duplicateSchedule = gate.shouldSchedule(request)
+    #expect(firstSchedule)
+    #expect(!duplicateSchedule)
+
+    gate.markApplied(request)
+    let appliedSchedule = gate.shouldSchedule(request)
+    #expect(!appliedSchedule)
+
+    let changedRequest = SourceSyntaxHighlightingRequest(
+        source: "# Title\n\n*important*",
+        syntaxHighlighting: .markdown(palette)
+    )
+    let changedSchedule = gate.shouldSchedule(changedRequest)
+    #expect(changedSchedule)
+}
+
 @Test("renders core Markdown and keeps resource URLs relative")
 func rendersCoreMarkdownAndKeepsResourceURLsRelative() throws {
         let source = """
@@ -286,6 +312,25 @@ func persistsLatexApprovalsAcrossCoordinatorInstances() {
     let grantKey = "/tmp/project\n/tmp/project/main.tex"
 
     #expect(restored.approvedLatexExternalPaths(for: projectRoot)[grantKey] == ["/tmp/assets/figure.pdf"])
+}
+
+@Test("persists open workspace order and active workspace")
+@MainActor
+func persistsOpenWorkspaceOrderAndActiveWorkspace() {
+    let suiteName = "bp-viewer-tests-" + UUID().uuidString
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let first = URL(fileURLWithPath: "/tmp/first-project")
+    let second = URL(fileURLWithPath: "/tmp/second-project")
+    let coordinator = WorkspaceSessionCoordinator(store: AppStateStore(defaults: defaults))
+
+    coordinator.setOpenWorkspaces([first, second], activeRoot: second)
+
+    let restored = WorkspaceSessionCoordinator(store: AppStateStore(defaults: defaults))
+    #expect(restored.openWorkspacePaths == [first.path, second.path])
+    #expect(restored.activeWorkspacePath == second.path)
+    #expect(restored.lastWorkspacePath == second.path)
 }
 
 @Test("persists a security-scoped bookmark for an opened folder")
