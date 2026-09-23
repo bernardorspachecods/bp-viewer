@@ -118,6 +118,11 @@ struct MarkdownPreviewView: View {
             onSelect: { item in
                 selectedHeadingID = item.id
                 outlineRequestID += 1
+                if editingSession != nil {
+                    pendingCursorUTF8Offset = outline.first {
+                        $0.id == item.id
+                    }?.sourceUTF8Offset
+                }
             },
             onChanged: onOutlineWidthChanged,
             onEnded: { _ in onOutlineWidthChangeEnded() }
@@ -132,6 +137,8 @@ struct MarkdownPreviewView: View {
                     baseline: diffSession.baseline,
                     unavailableMessage: diffSession.unavailableMessage,
                     editedSource: editingSession.currentSource,
+                    cursorUTF8Offset: pendingCursorUTF8Offset,
+                    cursorRequestID: outlineRequestID,
                     zoom: zoom,
                     syntaxHighlighting: .markdown(
                         MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
@@ -172,6 +179,7 @@ struct MarkdownPreviewView: View {
             source: editingSession.currentSource,
             zoom: zoom,
             cursorUTF8Offset: pendingCursorUTF8Offset,
+            cursorRequestID: outlineRequestID,
             findQuery: findQuery,
             findRequestID: findRequestID,
             findBackwards: findBackwards,
@@ -257,6 +265,7 @@ private struct MarkdownSourceEditor: View {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
+    let cursorRequestID: Int
     let findQuery: String
     let findRequestID: Int
     let findBackwards: Bool
@@ -274,6 +283,7 @@ private struct MarkdownSourceEditor: View {
                     source: source,
                     zoom: zoom,
                     cursorUTF8Offset: cursorUTF8Offset,
+                    cursorRequestID: cursorRequestID,
                     isEditable: true,
                     lineNumbers: true,
                     lineNumberOverrides: [:],

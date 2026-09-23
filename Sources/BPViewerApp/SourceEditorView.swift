@@ -253,6 +253,7 @@ struct SourceTextView: NSViewRepresentable {
     let source: String
     let zoom: Double
     let cursorUTF8Offset: Int?
+    var cursorRequestID: Int = 0
     let isEditable: Bool
     let lineNumbers: Bool
     let lineNumberOverrides: [Int: Int]
@@ -367,6 +368,7 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.backgroundColor = textView.backgroundColor
         scrollView.documentView = textView
         context.coordinator.appliedCursorUTF8Offset = cursorUTF8Offset
+        context.coordinator.appliedCursorRequestID = cursorRequestID
         context.coordinator.scheduleInitialSyntaxRefresh(
             in: textView,
             source: source,
@@ -492,12 +494,14 @@ struct SourceTextView: NSViewRepresentable {
         textView.textContainer?.lineFragmentPadding = 0
 
         guard let cursorUTF8Offset,
-              context.coordinator.appliedCursorUTF8Offset != cursorUTF8Offset else { return }
+              context.coordinator.appliedCursorUTF8Offset != cursorUTF8Offset
+                || context.coordinator.appliedCursorRequestID != cursorRequestID else { return }
         let cursorOffset = Self.utf16Offset(in: effectiveSource, utf8Offset: cursorUTF8Offset)
         let selection = NSRange(location: cursorOffset, length: 0)
         textView.setSelectedRange(selection)
         focus(textView, selection: selection)
         context.coordinator.appliedCursorUTF8Offset = cursorUTF8Offset
+        context.coordinator.appliedCursorRequestID = cursorRequestID
     }
 
     private func applyTypography(to textView: NSTextView) {
@@ -707,6 +711,7 @@ struct SourceTextView: NSViewRepresentable {
         var onEndEditing: @MainActor @Sendable (String) -> Void
         var onFindMatchCount: @MainActor @Sendable (Int) -> Void
         var appliedCursorUTF8Offset: Int?
+        var appliedCursorRequestID = 0
         var didRequestInitialFocus = false
         var appliedZoom: Double?
         var appliedMonospaced: Bool?

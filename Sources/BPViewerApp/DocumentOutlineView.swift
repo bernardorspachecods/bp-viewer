@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import BPViewerCore
 
@@ -236,6 +237,12 @@ struct DocumentOutlineSidebar: View {
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contextMenu {
+                        Button("Copy Title", systemImage: "doc.on.doc") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(entry.title, forType: .string)
+                        }
+                    }
                     .disabled(!entry.isSelectable)
                 }
             }

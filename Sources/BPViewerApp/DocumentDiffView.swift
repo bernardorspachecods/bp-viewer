@@ -6,6 +6,8 @@ struct DocumentDiffView: View {
     let baseline: DocumentDiffBaseline?
     let unavailableMessage: String?
     let editedSource: String
+    var cursorUTF8Offset: Int? = nil
+    var cursorRequestID: Int = 0
     let zoom: Double
     let syntaxHighlighting: SourceSyntaxHighlighting?
     let monospaced: Bool
@@ -155,7 +157,8 @@ struct DocumentDiffView: View {
         SourceTextView(
             source: editedSource,
             zoom: zoom,
-            cursorUTF8Offset: nil,
+            cursorUTF8Offset: cursorUTF8Offset,
+            cursorRequestID: cursorRequestID,
             isEditable: true,
             lineNumbers: true,
             lineNumberOverrides: [:],

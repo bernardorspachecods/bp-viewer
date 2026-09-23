@@ -5,11 +5,13 @@ public struct MarkdownOutlineEntry: Identifiable, Hashable, Sendable {
     public let id: String
     public let title: String
     public let level: Int
+    public let sourceUTF8Offset: Int?
 
-    public init(id: String, title: String, level: Int) {
+    public init(id: String, title: String, level: Int, sourceUTF8Offset: Int? = nil) {
         self.id = id
         self.title = title
         self.level = level
+        self.sourceUTF8Offset = sourceUTF8Offset
     }
 }
 
@@ -228,11 +230,13 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
 
     mutating func visitHeading(_ heading: Heading) {
         let id = uniqueHeadingID(for: heading.plainText)
+        let sourceUTF8Offset = heading.range.map { sourceOffset(for: $0.lowerBound) }
         outline.append(
             MarkdownOutlineEntry(
                 id: id,
                 title: heading.plainText,
-                level: heading.level
+                level: heading.level,
+                sourceUTF8Offset: sourceUTF8Offset
             )
         )
         let blockAttribute = editableAttribute(for: heading)
