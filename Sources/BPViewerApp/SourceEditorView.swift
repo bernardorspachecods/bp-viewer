@@ -283,17 +283,12 @@ struct SourceTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownNSTextView()
         textView.onFindFocus = onFindFocus
-        textView.onPendingSourceFlush = { [weak coordinator = context.coordinator] in
-            coordinator?.flushPendingSourceChange()
-        }
         textView.onEscape = { [weak textView, weak coordinator = context.coordinator] in
             guard let textView else { return }
-            coordinator?.flushPendingSourceChange()
             coordinator?.onEndEditing(textView.string)
         }
-        textView.onMarkdownShortcut = { [weak textView, weak coordinator = context.coordinator] formatting in
+        textView.onMarkdownShortcut = { [weak textView] formatting in
             guard markdownShortcutsEnabled, let textView else { return }
-            coordinator?.flushPendingSourceChange()
             applyMarkdownShortcut(formatting, to: textView, onSourceChanged: onSourceChanged)
         }
         textView.onDoubleClick = { [weak textView] event in
@@ -418,11 +413,8 @@ struct SourceTextView: NSViewRepresentable {
         scrollView.backgroundColor = textView.backgroundColor
         let sourceChanged = textView.string != source
         let modelSourceChanged = context.coordinator.lastModelSource != source
-        let hasPendingLocalEdit = isEditable && (
-            context.coordinator.hasPendingSourceChange
-                || (sourceChanged && !modelSourceChanged)
-        )
-        if sourceChanged && !hasPendingLocalEdit {
+        let hasLocalEditorChange = isEditable && sourceChanged && !modelSourceChanged
+        if sourceChanged && !hasLocalEditorChange {
             let selectedRange = textView.selectedRange()
             textView.string = source
             textView.setSelectedRange(NSRange(
@@ -725,8 +717,6 @@ struct SourceTextView: NSViewRepresentable {
         var lastModelSource: String?
         private var syntaxHighlightTask: Task<Void, Never>?
         private var syntaxHighlightGeneration = 0
-        private var sourceChangeWorkItem: DispatchWorkItem?
-        private var pendingSourceChange: String?
         private var findSource = ""
         private var findQuery = ""
         private var findRequestID = -1
@@ -747,36 +737,11 @@ struct SourceTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             requiresSyntaxRefresh = true
-            scheduleSourceChange(textView.string)
-        }
-
-        var hasPendingSourceChange: Bool {
-            pendingSourceChange != nil
-        }
-
-        func flushPendingSourceChange() {
-            sourceChangeWorkItem?.cancel()
-            sourceChangeWorkItem = nil
-            guard let pendingSourceChange else { return }
-            self.pendingSourceChange = nil
-            onSourceChanged(pendingSourceChange)
-        }
-
-        private func scheduleSourceChange(_ source: String) {
-            pendingSourceChange = source
-            sourceChangeWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self] in
-                guard let self,
-                      let pendingSourceChange = self.pendingSourceChange else { return }
-                self.pendingSourceChange = nil
-                self.sourceChangeWorkItem = nil
-                self.onSourceChanged(pendingSourceChange)
-            }
-            sourceChangeWorkItem = workItem
-            DispatchQueue.main.asyncAfter(
-                deadline: .now() + .milliseconds(180),
-                execute: workItem
-            )
+            // Keep the model in lockstep with AppKit. Split previews and
+            // diffs are derived from this value and must react while editing,
+            // not only after the editor exits. Expensive work is debounced at
+            // the render coordinator layer instead.
+            onSourceChanged(textView.string)
         }
 
         func scheduleSyntaxHighlighting(
@@ -975,7 +940,6 @@ private final class MarkdownNSTextView: NSTextView {
     var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
     var onFindFocus: (() -> Void)?
     var onDoubleClick: ((NSEvent) -> Void)?
-    var onPendingSourceFlush: (() -> Void)?
     var showsLineNumbers = false {
         didSet {
             guard oldValue != showsLineNumbers else { return }
@@ -1016,11 +980,6 @@ private final class MarkdownNSTextView: NSTextView {
             onFindFocus?()
         }
         return becameFirstResponder
-    }
-
-    override func resignFirstResponder() -> Bool {
-        onPendingSourceFlush?()
-        return super.resignFirstResponder()
     }
 
     override func mouseDown(with event: NSEvent) {

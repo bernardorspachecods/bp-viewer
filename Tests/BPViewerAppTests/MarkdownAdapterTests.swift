@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import Darwin
+import AppKit
 @testable import BPViewerApp
 @testable import BPViewerCore
 
@@ -697,6 +698,94 @@ func refreshesImagePreviewsThroughCommonRefreshAction() async throws {
 
     #expect(model.tabs[0].status == .ready)
     #expect(model.tabs[0].previewImageData == imageData)
+}
+
+@Test("refreshes the current Markdown draft while a diff is open")
+@MainActor
+func refreshesCurrentMarkdownDraftWhileDiffIsOpen() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-markdown-diff-refresh-\(UUID().uuidString)", isDirectory: true)
+    let url = root.appendingPathComponent("notes.md")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let originalSource = "# Original"
+    let refreshedSource = "# Refreshed"
+    try refreshedSource.write(to: url, atomically: true, encoding: .utf8)
+
+    let model = AppModel(restoresLastWorkspace: false)
+    model.tabs = [
+        DocumentTab(
+            id: url.path,
+            url: url,
+            kind: .markdown,
+            previewHTML: "<h1>Original</h1>",
+            markdownSource: originalSource,
+            markdownEditSession: MarkdownEditSession(
+                isEditing: true,
+                baseSource: originalSource,
+                currentSource: originalSource
+            ),
+            diffSession: DocumentDiffSession(
+                mode: .gitHead,
+                baseline: DocumentDiffBaseline(label: "HEAD", source: "# HEAD"),
+                returnMode: .source
+            )
+        )
+    ]
+    model.activeTabID = url.path
+
+    model.refreshActiveTab()
+
+    for _ in 0..<40 where model.tabs[0].markdownEditSession?.currentSource != refreshedSource {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(model.tabs[0].markdownEditSession?.baseSource == refreshedSource)
+    #expect(model.tabs[0].markdownEditSession?.currentSource == refreshedSource)
+    #expect(model.tabs[0].diffSession?.baseline?.source == "# HEAD")
+}
+
+@Test("preserves a local Markdown draft and marks an external refresh as a conflict")
+@MainActor
+func preservesLocalMarkdownDraftAndMarksExternalRefreshAsConflict() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("bp-viewer-markdown-conflict-refresh-\(UUID().uuidString)", isDirectory: true)
+    let url = root.appendingPathComponent("notes.md")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try "# External".write(to: url, atomically: true, encoding: .utf8)
+
+    let model = AppModel(restoresLastWorkspace: false)
+    model.tabs = [
+        DocumentTab(
+            id: url.path,
+            url: url,
+            kind: .markdown,
+            markdownEditSession: MarkdownEditSession(
+                isEditing: true,
+                baseSource: "# Original",
+                currentSource: "# Local"
+            ),
+            diffSession: DocumentDiffSession(
+                mode: .savedOnDisk,
+                baseline: DocumentDiffBaseline(label: "Saved on Disk", source: "# Original"),
+                returnMode: .source
+            )
+        )
+    ]
+    model.activeTabID = url.path
+
+    model.refreshActiveTab()
+
+    for _ in 0..<40 where model.tabs[0].markdownEditSession?.conflict == nil {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+
+    #expect(model.tabs[0].markdownEditSession?.currentSource == "# Local")
+    #expect(model.tabs[0].markdownEditSession?.conflict?.externalSource == "# External")
+    #expect(model.tabs[0].diffSession?.baseline?.source == "# External")
 }
 
 @Test("recognizes bibliography files as contextual LaTeX sources")
@@ -1739,6 +1828,27 @@ func togglesDocumentEditingModesDirectly() {
     #expect(model.tabs[0].diffSession?.mode == .gitHead)
     model.toggleDocumentDiff(mode: .gitHead, tabID: tabID)
     #expect(model.tabs[0].diffSession == nil)
+}
+
+@Test("forwards source edits immediately while split and diff editing stays active")
+@MainActor
+func forwardsSourceEditsImmediatelyWhileSplitAndDiffEditingStaysActive() {
+    var receivedSources: [String] = []
+    let coordinator = SourceTextView.Coordinator(
+        onSourceChanged: { source in
+            receivedSources.append(source)
+        },
+        onEndEditing: { _ in },
+        onFindMatchCount: { _ in }
+    )
+    let textView = NSTextView()
+    textView.string = "# After"
+
+    coordinator.textDidChange(
+        Notification(name: NSText.didChangeNotification, object: textView)
+    )
+
+    #expect(receivedSources == ["# After"])
 }
 
 @Test("returns to preview after closing a diff opened from preview")

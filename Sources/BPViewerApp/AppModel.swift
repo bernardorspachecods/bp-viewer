@@ -1474,8 +1474,26 @@ final class AppModel: ObservableObject {
 
     func refreshActiveTab() {
         guard let activeTabID else { return }
-        refreshTab(tabID: activeTabID)
-        persistState()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshEditingSource(tabID: activeTabID)
+            self.refreshTab(tabID: activeTabID)
+            self.persistState()
+        }
+    }
+
+    private func refreshEditingSource(tabID: String) async {
+        guard let tab = tabs.first(where: { $0.id == tabID }) else { return }
+        switch tab.kind {
+        case .markdown where tab.markdownEditSession?.isEditing == true:
+            await handleExternalMarkdownChange(tabID: tabID)
+        case .json where tab.jsonEditSession?.isEditing == true:
+            await handleExternalJSONChange(tabID: tabID)
+        case .latex where tab.latexEditSession?.isEditing == true:
+            await handleExternalLatexChange(tabID: tabID)
+        default:
+            break
+        }
     }
 
     private func refreshTab(tabID: String) {
@@ -3152,42 +3170,7 @@ final class AppModel: ObservableObject {
 
     private func handleActiveDocumentChange(_ change: ActiveDocumentChange) {
         guard activeTabID == change.tabID,
-              let tab = tabs.first(where: { $0.id == change.tabID }) else { return }
-
-        if let session = tab.markdownEditSession,
-           session.isEditing,
-           session.currentSource == session.baseSource {
-            // The active source editor owns the cursor while its latest
-            // version is already on disk. Reconcile the next external event
-            // after the user leaves the editor.
-            if tab.diffSession?.mode == .savedOnDisk {
-                Task { @MainActor [weak self] in
-                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
-                }
-            }
-            return
-        }
-        if let session = tab.jsonEditSession,
-           session.isEditing,
-           session.currentSource == session.baseSource {
-            if tab.diffSession?.mode == .savedOnDisk {
-                Task { @MainActor [weak self] in
-                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
-                }
-            }
-            return
-        }
-        if let session = tab.latexEditSession,
-           session.isEditing,
-           session.currentSource == session.baseSource,
-           change.url == tab.editableSourceURL {
-            if tab.diffSession?.mode == .savedOnDisk {
-                Task { @MainActor [weak self] in
-                    await self?.refreshDiskDiffBaseline(tabID: change.tabID)
-                }
-            }
-            return
-        }
+              tabs.contains(where: { $0.id == change.tabID }) else { return }
 
         Task { @MainActor [weak self] in
             guard let self,
@@ -3197,15 +3180,14 @@ final class AppModel: ObservableObject {
             switch currentTab.kind {
             case .latex:
                 if currentTab.editableSourceURL.standardizedFileURL == change.url.standardizedFileURL,
-                   let session = currentTab.latexEditSession,
-                   session.currentSource != session.baseSource {
+                   currentTab.latexEditSession?.isEditing == true {
                     await self.handleExternalLatexChange(tabID: change.tabID)
                 } else {
                     self.renderLatex(tabID: change.tabID)
                 }
             case .json:
-                if let session = currentTab.jsonEditSession,
-                   session.currentSource != session.baseSource {
+                if currentTab.editableSourceURL.standardizedFileURL == change.url.standardizedFileURL,
+                   currentTab.jsonEditSession?.isEditing == true {
                     await self.handleExternalJSONChange(tabID: change.tabID)
                 } else {
                     self.renderJSON(tabID: change.tabID)
@@ -3224,8 +3206,8 @@ final class AppModel: ObservableObject {
             case .image:
                 self.renderImage(tabID: change.tabID)
             case .markdown:
-                if let session = currentTab.markdownEditSession,
-                   session.currentSource != session.baseSource {
+                if currentTab.editableSourceURL.standardizedFileURL == change.url.standardizedFileURL,
+                   currentTab.markdownEditSession?.isEditing == true {
                     await self.handleExternalMarkdownChange(tabID: change.tabID)
                 } else {
                     self.renderMarkdown(tabID: change.tabID)
@@ -3239,7 +3221,7 @@ final class AppModel: ObservableObject {
     private func handleExternalMarkdownChange(tabID: String) async {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].markdownEditSession,
-              session.currentSource != session.baseSource else {
+              session.isEditing else {
             renderMarkdown(tabID: tabID)
             return
         }
@@ -3248,13 +3230,34 @@ final class AppModel: ObservableObject {
             let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].url)
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[currentIndex].markdownEditSession?.currentSource == session.currentSource else { return }
+
+            guard externalSource != session.baseSource else { return }
+
+            if session.currentSource == session.baseSource {
+                tabs[currentIndex].markdownSource = externalSource
+                tabs[currentIndex].markdownBlocks = MarkdownBlockDocument(source: externalSource).blocks
+                var refreshedSession = session
+                refreshedSession.baseSource = externalSource
+                refreshedSession.currentSource = externalSource
+                refreshedSession.saveState = .saved
+                refreshedSession.conflict = nil
+                tabs[currentIndex].markdownEditSession = refreshedSession
+                if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                    tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                        label: "Saved on Disk",
+                        source: externalSource
+                    )
+                }
+                renderMarkdown(tabID: tabID)
+                return
+            }
+
             if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
                 tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
                     label: "Saved on Disk",
                     source: externalSource
                 )
             }
-            guard externalSource != session.baseSource else { return }
 
             tabs[currentIndex].markdownEditSession?.saveState = .conflict
             tabs[currentIndex].markdownEditSession?.isEditing = true
@@ -3273,7 +3276,7 @@ final class AppModel: ObservableObject {
     private func handleExternalJSONChange(tabID: String) async {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].jsonEditSession,
-              session.currentSource != session.baseSource else {
+              session.isEditing else {
             renderJSON(tabID: tabID)
             return
         }
@@ -3282,6 +3285,27 @@ final class AppModel: ObservableObject {
             let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].url)
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[currentIndex].jsonEditSession?.currentSource == session.currentSource else { return }
+
+            guard externalSource != session.baseSource else { return }
+
+            if session.currentSource == session.baseSource {
+                tabs[currentIndex].jsonSource = externalSource
+                var refreshedSession = session
+                refreshedSession.baseSource = externalSource
+                refreshedSession.currentSource = externalSource
+                refreshedSession.saveState = .saved
+                refreshedSession.conflict = nil
+                tabs[currentIndex].jsonEditSession = refreshedSession
+                if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                    tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                        label: "Saved on Disk",
+                        source: externalSource
+                    )
+                }
+                renderJSON(tabID: tabID)
+                return
+            }
+
             if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
                 tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
                     label: "Saved on Disk",
@@ -3289,17 +3313,13 @@ final class AppModel: ObservableObject {
                 )
             }
 
-            if externalSource == session.baseSource {
-                tabs[currentIndex].jsonEditSession?.saveState = .unsaved
-            } else {
-                tabs[currentIndex].jsonEditSession?.saveState = .conflict
-                tabs[currentIndex].jsonEditSession?.isEditing = true
-                tabs[currentIndex].jsonEditSession?.conflict = MarkdownConflict(
-                    localSource: session.currentSource,
-                    externalSource: externalSource,
-                    blockIDs: []
-                )
-            }
+            tabs[currentIndex].jsonEditSession?.saveState = .conflict
+            tabs[currentIndex].jsonEditSession?.isEditing = true
+            tabs[currentIndex].jsonEditSession?.conflict = MarkdownConflict(
+                localSource: session.currentSource,
+                externalSource: externalSource,
+                blockIDs: []
+            )
         } catch {
             tabs[index].jsonEditSession?.saveState = .failed
             tabs[index].jsonEditSession?.isEditing = true
@@ -3310,7 +3330,7 @@ final class AppModel: ObservableObject {
     private func handleExternalLatexChange(tabID: String) async {
         guard let index = tabs.firstIndex(where: { $0.id == tabID }),
               let session = tabs[index].latexEditSession,
-              session.currentSource != session.baseSource else {
+              session.isEditing else {
             renderLatex(tabID: tabID)
             return
         }
@@ -3319,15 +3339,31 @@ final class AppModel: ObservableObject {
             let externalSource = try await documentEditCoordinator.readSource(at: tabs[index].editableSourceURL)
             guard let currentIndex = tabs.firstIndex(where: { $0.id == tabID }),
                   tabs[currentIndex].latexEditSession?.currentSource == session.currentSource else { return }
+
+            guard externalSource != session.baseSource else { return }
+
+            if session.currentSource == session.baseSource {
+                var refreshedSession = session
+                refreshedSession.baseSource = externalSource
+                refreshedSession.currentSource = externalSource
+                refreshedSession.saveState = .saved
+                refreshedSession.conflict = nil
+                tabs[currentIndex].latexEditSession = refreshedSession
+                if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
+                    tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
+                        label: "Saved on Disk",
+                        source: externalSource
+                    )
+                }
+                renderLatex(tabID: tabID)
+                return
+            }
+
             if tabs[currentIndex].diffSession?.mode == .savedOnDisk {
                 tabs[currentIndex].diffSession?.baseline = DocumentDiffBaseline(
                     label: "Saved on Disk",
                     source: externalSource
                 )
-            }
-            guard externalSource != session.baseSource else {
-                tabs[currentIndex].latexEditSession?.saveState = .unsaved
-                return
             }
             tabs[currentIndex].latexEditSession?.saveState = .conflict
             tabs[currentIndex].latexEditSession?.isEditing = true
