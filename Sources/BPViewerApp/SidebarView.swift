@@ -390,44 +390,7 @@ struct FileTreeRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { isHovering = $0 }
-        .contextMenu {
-            Button {
-                model.copyPath(node.url)
-            } label: {
-                Label("Copy Path", systemImage: "doc.on.doc")
-            }
-
-            if !node.isDirectory {
-                Button {
-                    model.reload(node)
-                } label: {
-                    Label("Reload", systemImage: "arrow.clockwise")
-                }
-            }
-
-            Button {
-                model.rename(node)
-            } label: {
-                Label("Rename…", systemImage: "pencil")
-            }
-
-            if !node.isDirectory {
-                Divider()
-                Button {
-                    model.duplicate(node)
-                } label: {
-                    Label("Duplicate", systemImage: "plus.square.on.square")
-                }
-                .disabled(model.isPerformingFileOperation)
-            }
-
-            Divider()
-            Button(role: .destructive) {
-                model.delete(node)
-            } label: {
-                Label("Move to Trash", systemImage: "trash")
-            }
-        }
+        .modifier(WorkspaceContextMenuModifier(target: .file(node)))
     }
 
     private var rowLabel: some View {

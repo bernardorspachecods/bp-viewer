@@ -539,6 +539,11 @@ final class AppModel: ObservableObject {
         refreshTab(tabID: tabID)
     }
 
+    func reload(_ tab: DocumentTab) {
+        guard let node = workspaceFileNode(for: tab) else { return }
+        reload(node)
+    }
+
     func copyText(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -582,6 +587,11 @@ final class AppModel: ObservableObject {
         } catch {
             showFileOperationError(error)
         }
+    }
+
+    func rename(_ tab: DocumentTab) {
+        guard let node = workspaceFileNode(for: tab) else { return }
+        rename(node)
     }
 
     @discardableResult
@@ -703,6 +713,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func duplicate(_ tab: DocumentTab) {
+        guard let node = workspaceFileNode(for: tab) else { return }
+        duplicate(node)
+    }
+
     private func refreshTreeAfterFileOperation(in directories: [URL]) {
         Task { @MainActor [weak self] in
             await Task.yield()
@@ -741,6 +756,26 @@ final class AppModel: ObservableObject {
         } catch {
             showFileOperationError(error)
         }
+    }
+
+    func delete(_ tab: DocumentTab) {
+        guard let node = workspaceFileNode(for: tab) else { return }
+        delete(node)
+    }
+
+    private func workspaceFileNode(for tab: DocumentTab) -> FileNode? {
+        guard !tab.isUntitled,
+              let rootURL,
+              isURL(tab.url, inside: rootURL) else { return nil }
+        return FileNode(
+            id: tab.url.path,
+            url: tab.url,
+            relativePath: relativePath(of: tab.url, from: rootURL),
+            isDirectory: false,
+            kind: tab.kind,
+            children: [],
+            childrenLoaded: true
+        )
     }
 
     private func relocateOpenTabs(from oldURL: URL, to newURL: URL) {

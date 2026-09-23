@@ -1788,6 +1788,17 @@ func usesDirectLabelsForDocumentDiffModes() {
     #expect(DocumentDiffMode.gitHead.label == "Git Diff")
 }
 
+@Test("keeps tab and worktree file context actions aligned")
+func keepsTabAndWorktreeFileContextActionsAligned() {
+    let tabActions = Set(WorkspaceContextMenuOptions.forTab(isUntitled: false))
+    let fileActions = Set(WorkspaceContextMenuOptions.forFile(isDirectory: false))
+
+    #expect(
+        tabActions.subtracting([.closeTab, .closeOtherTabs]) == fileActions
+    )
+    #expect(fileActions.contains(.revealInFinder))
+}
+
 @Test("toggles document editing modes directly")
 @MainActor
 func togglesDocumentEditingModesDirectly() {
