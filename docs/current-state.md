@@ -71,6 +71,7 @@ renderizado ou formatado.
   existente no ficheiro, e `Git diff`, que compara o rascunho atual com a
   versão `HEAD`. A coluna esquerda é read-only e a coluna direita é o editor
   real; alterações na direita continuam a atualizar o preview Markdown live.
+  As duas colunas partilham o scroll vertical para manter as linhas alinhadas.
   O diff mantém `undo/redo` no rascunho e não mantém uma lista separada de
   versões históricas.
 - No modo `Git diff`, `Discard Git Changes` aparece junto de `Current Draft`

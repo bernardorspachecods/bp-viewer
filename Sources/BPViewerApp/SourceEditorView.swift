@@ -271,6 +271,7 @@ struct SourceTextView: NSViewRepresentable {
     let onSourceChanged: @MainActor @Sendable (String) -> Void
     let onEndEditing: @MainActor @Sendable (String) -> Void
     let onDoubleClick: ((Int) -> Void)?
+    var onScrollViewReady: (@MainActor (NSScrollView) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -372,6 +373,7 @@ struct SourceTextView: NSViewRepresentable {
         if isEditable {
             focus(textView, selection: initialSelection)
         }
+        onScrollViewReady?(scrollView)
         return scrollView
     }
 

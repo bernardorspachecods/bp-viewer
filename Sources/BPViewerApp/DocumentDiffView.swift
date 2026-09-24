@@ -3,6 +3,8 @@ import BPViewerCore
 import SwiftUI
 
 struct DocumentDiffView: View {
+    @State private var scrollCoordinator = DocumentDiffScrollCoordinator()
+
     let baseline: DocumentDiffBaseline?
     let unavailableMessage: String?
     let editedSource: String
@@ -53,6 +55,9 @@ struct DocumentDiffView: View {
             }
         }
         .background(BPTokens.Color.canvas)
+        .onDisappear {
+            scrollCoordinator.reset()
+        }
     }
 
     private func header(diff: DocumentDiff?) -> some View {
@@ -130,7 +135,10 @@ struct DocumentDiffView: View {
                 onFindMatchCount: { _ in },
                 onSourceChanged: { _ in },
                 onEndEditing: { _ in },
-                onDoubleClick: nil
+                onDoubleClick: nil,
+                onScrollViewReady: { scrollView in
+                    scrollCoordinator.register(scrollView, as: .reference)
+                }
             )
             .frame(minWidth: 260, maxWidth: .infinity, maxHeight: .infinity)
             .background(BPTokens.Color.canvas)
@@ -175,7 +183,10 @@ struct DocumentDiffView: View {
             onFindMatchCount: onFindMatchCount,
             onSourceChanged: onSourceChanged,
             onEndEditing: onEndEditing,
-            onDoubleClick: nil
+            onDoubleClick: nil,
+            onScrollViewReady: { scrollView in
+                scrollCoordinator.register(scrollView, as: .edited)
+            }
         )
         .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
     }

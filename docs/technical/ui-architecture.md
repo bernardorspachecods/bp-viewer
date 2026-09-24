@@ -93,7 +93,9 @@ mantém o source à esquerda e o preview live à direita. O outline é redimensi
 por ficheiro e restaura a largura guardada desse documento.
 `DocumentDiffView` é acionada pela toolbar e mantém a referência read-only à
 esquerda e o editor real à direita. Pode comparar o disco ou `HEAD`; ao sair,
-restaura o modo anterior.
+restaura o modo anterior. Os dois editores partilham o scroll vertical, usando
+o mesmo mapa de alturas por linha, para manter as linhas correspondentes
+alinhadas enquanto qualquer uma das colunas é deslocada.
 
 ### PDF
 
