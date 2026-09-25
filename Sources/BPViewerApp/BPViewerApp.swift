@@ -16,7 +16,7 @@ struct BPViewerApp: App {
     }
 
     var body: some Scene {
-        Window("bp-viewer", id: "main") {
+        Window("Viewer", id: "main") {
             RootView()
                 .environmentObject(model)
         }

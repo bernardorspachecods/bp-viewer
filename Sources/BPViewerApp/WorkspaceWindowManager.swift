@@ -265,7 +265,7 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
     }
 
     private func updateWindowTitle(_ window: NSWindow, for model: AppModel) {
-        let title = model.rootURL?.lastPathComponent ?? "bp-viewer"
+        let title = model.rootURL?.lastPathComponent ?? "Viewer"
         window.title = title
         window.tab.title = title
     }

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-app_bundle="$repo_root/.build/debug/bp-viewer.app"
+app_bundle="$repo_root/.build/debug/Viewer.app"
 bundle_identifier="com.bernardopacheco.bp-viewer"
 
 stop_running_app() {

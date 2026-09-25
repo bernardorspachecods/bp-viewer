@@ -229,7 +229,7 @@ private struct JSONConflictView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
-            Text("This JSON file was also changed outside bp-viewer.")
+            Text("This JSON file was also changed outside Viewer.")
                 .font(BPTokens.Typography.caption.weight(.medium))
 
             HStack {

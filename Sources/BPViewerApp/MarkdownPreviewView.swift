@@ -329,7 +329,7 @@ struct MarkdownConflictView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BPTokens.Spacing.xs) {
-            Text("This document was also changed outside bp-viewer.")
+            Text("This document was also changed outside Viewer.")
                 .font(BPTokens.Typography.caption.weight(.medium))
             HStack(spacing: BPTokens.Spacing.sm) {
                 conflictColumn(title: "My Changes", source: conflict.localSource)

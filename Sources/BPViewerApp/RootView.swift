@@ -350,7 +350,7 @@ struct TopBarView: View {
             }
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.rootURL?.lastPathComponent ?? "bp-viewer")
+                Text(model.rootURL?.lastPathComponent ?? "Viewer")
                     .font(BPTokens.Typography.title)
                 Text(model.rootURL?.path ?? "No Folder Open")
                     .font(BPTokens.Typography.caption)

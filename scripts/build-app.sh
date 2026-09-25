@@ -12,9 +12,13 @@ fi
 
 swift build --configuration "$configuration" --product BPViewer
 binary_directory="$(swift build --configuration "$configuration" --show-bin-path)"
-app_bundle="$repo_root/.build/$configuration/bp-viewer.app"
+app_bundle="$repo_root/.build/$configuration/Viewer.app"
+legacy_app_bundle="$repo_root/.build/$configuration/bp-viewer.app"
 
 rm -rf "$app_bundle"
+if [[ "$legacy_app_bundle" != "$app_bundle" ]]; then
+    rm -rf "$legacy_app_bundle"
+fi
 mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources"
 cp "$binary_directory/BPViewer" "$app_bundle/Contents/MacOS/BPViewer"
 cp "$repo_root/Resources/BPViewer-Info.plist" "$app_bundle/Contents/Info.plist"
