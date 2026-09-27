@@ -5,6 +5,13 @@ import SwiftUI
 struct DocumentDiffView: View {
     @State private var scrollCoordinator = DocumentDiffScrollCoordinator()
 
+    private var defersSourceChangeUpdates: Bool {
+        if case .some(.markdown(_)) = syntaxHighlighting {
+            return true
+        }
+        return false
+    }
+
     let baseline: DocumentDiffBaseline?
     let unavailableMessage: String?
     let editedSource: String
@@ -179,6 +186,7 @@ struct DocumentDiffView: View {
             findRequestID: findRequestID,
             findBackwards: findBackwards,
             isFindTarget: isFindTarget,
+            defersSourceChangeUpdates: defersSourceChangeUpdates,
             onFindFocus: onFindFocus,
             onFindMatchCount: onFindMatchCount,
             onSourceChanged: onSourceChanged,

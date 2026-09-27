@@ -298,6 +298,7 @@ private struct MarkdownSourceEditor: View {
                     findRequestID: findRequestID,
                     findBackwards: findBackwards,
                     isFindTarget: isFindTarget,
+                    defersSourceChangeUpdates: true,
                     onFindFocus: onFindFocus,
                     onFindMatchCount: onFindMatchCount,
                     onSourceChanged: onSourceChanged,

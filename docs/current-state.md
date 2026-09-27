@@ -56,7 +56,11 @@ renderizado ou formatado.
   A edição tem syntax highlighting adaptado aos temas claro/escuro, gravação
   explícita,
   undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações externas e
-  resolução de conflitos.
+  resolução de conflitos. O editor ativa autocorreção ortográfica, previsão
+  inline do sistema e completamento nativo do macOS. Em linhas de lista com
+  marcadores `-`, `*` ou `+`, Return continua a lista; em listas ordenadas com
+  `.` ou `)`, incrementa o número. Return numa linha vazia remove o marcador e
+  termina a lista.
 - O editor pode ocupar a superfície inteira ou funcionar em split view, com o
   source Markdown à esquerda e o preview live à direita.
 - As alterações Markdown permanecem no rascunho enquanto o editor está aberto;
@@ -114,6 +118,9 @@ renderizado ou formatado.
 - O editor LaTeX usa highlighting de comandos, comentários, ambientes,
   argumentos e matemática, com fallback monoespaçado. A toolbar oferece
   source/split view, Undo/Redo, Save, Discard Changes, Disk Diff e Git Diff.
+  O source ativa autocorreção ortográfica, previsão inline do sistema e
+  completamento nativo do macOS, mantendo desativadas as substituições de
+  aspas, traços e texto.
 - Em split view, o source editado permanece à esquerda e o PDF à direita.
   Alterações são compiladas após um debounce de dois segundos, em workspace
   temporário, mantendo o último PDF válido durante erros.
@@ -129,7 +136,9 @@ renderizado ou formatado.
   A superfície mostra números de linha.
 - Um duplo clique entra num editor raw monoespaçado, com undo/redo, gravação
   explícita apenas para JSON válido e resolução de conflitos externos, sem
-  split view.
+  split view. O editor ativa autocorreção ortográfica, previsão inline do
+  sistema e completamento nativo do macOS, mantendo desativadas as
+  substituições de aspas, traços e texto.
 - O editor JSON disponibiliza os modos de diff `Versão guardada no disco` e
   `Git diff`, com a versão de referência read-only à esquerda e o editor raw
   editável à direita, ambos com numeração de linhas. Linhas adicionadas no

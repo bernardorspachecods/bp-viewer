@@ -25,7 +25,7 @@ enum SourceEditorLayout {
     static let verticalPadding: CGFloat = 40
     static let lineNumberGutterWidth: CGFloat = 44
     static let lineNumberFontSize: CGFloat = 11
-    static let lineNumberTrailingPadding: CGFloat = 8
+    static let lineNumberTrailingPadding: CGFloat = 12
     static let lineMarkerLeadingPadding: CGFloat = 5
     static let lineNumberVerticalPadding: CGFloat = 4
     static let editorFontSize: CGFloat = 13
@@ -46,8 +46,12 @@ enum SourceEditorLayout {
     static func editorParagraphStyle(zoom: Double) -> NSMutableParagraphStyle {
         let paragraphStyle = NSMutableParagraphStyle()
         let lineHeight = codeLineHeight * zoom
+        paragraphStyle.lineHeightMultiple = 1
         paragraphStyle.minimumLineHeight = lineHeight
         paragraphStyle.maximumLineHeight = lineHeight
+        paragraphStyle.lineSpacing = 0
+        paragraphStyle.paragraphSpacing = 0
+        paragraphStyle.paragraphSpacingBefore = 0
         return paragraphStyle
     }
 
@@ -266,6 +270,7 @@ struct SourceTextView: NSViewRepresentable {
     let findRequestID: Int
     let findBackwards: Bool
     let isFindTarget: Bool
+    var defersSourceChangeUpdates = false
     let onFindFocus: @MainActor @Sendable () -> Void
     let onFindMatchCount: @MainActor @Sendable (Int) -> Void
     let onSourceChanged: @MainActor @Sendable (String) -> Void
@@ -277,15 +282,18 @@ struct SourceTextView: NSViewRepresentable {
         Coordinator(
             onSourceChanged: onSourceChanged,
             onEndEditing: onEndEditing,
-            onFindMatchCount: onFindMatchCount
+            onFindMatchCount: onFindMatchCount,
+            defersSourceChangeUpdates: defersSourceChangeUpdates
         )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = MarkdownNSTextView()
+        textView.fixedEditorParagraphStyle = SourceEditorLayout.editorParagraphStyle(zoom: zoom)
         textView.onFindFocus = onFindFocus
         textView.onEscape = { [weak textView, weak coordinator = context.coordinator] in
             guard let textView else { return }
+            coordinator?.flushPendingSourceChange()
             coordinator?.onEndEditing(textView.string)
         }
         textView.onMarkdownShortcut = { [weak textView] formatting in
@@ -301,13 +309,16 @@ struct SourceTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.isEditable = isEditable
         textView.isSelectable = true
+        textView.markdownAutoListContinuationEnabled = markdownShortcutsEnabled && isEditable
+        textView.isAutomaticSpellingCorrectionEnabled = isEditable
+        textView.isAutomaticTextCompletionEnabled = isEditable
+        textView.inlinePredictionType = isEditable ? .yes : .no
         if monospaced {
             // JSON syntax requires ASCII quotes; macOS smart quotes would turn
             // a typed delimiter into a Unicode character such as U+201D.
             textView.isAutomaticQuoteSubstitutionEnabled = false
             textView.isAutomaticDashSubstitutionEnabled = false
             textView.isAutomaticTextReplacementEnabled = false
-            textView.isAutomaticSpellingCorrectionEnabled = false
         }
         textView.usesFindPanel = false
         textView.drawsBackground = syntaxHighlighting == nil
@@ -379,6 +390,7 @@ struct SourceTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? MarkdownNSTextView else { return }
+        textView.fixedEditorParagraphStyle = SourceEditorLayout.editorParagraphStyle(zoom: zoom)
         context.coordinator.onSourceChanged = onSourceChanged
         context.coordinator.onEndEditing = onEndEditing
         context.coordinator.onFindMatchCount = onFindMatchCount
@@ -396,6 +408,10 @@ struct SourceTextView: NSViewRepresentable {
         textView.lineNumberFontSize = SourceEditorLayout.lineNumberFontSize * CGFloat(zoom)
         textView.lineNumberOverrides = lineNumberOverrides
         textView.isEditable = isEditable
+        textView.markdownAutoListContinuationEnabled = markdownShortcutsEnabled && isEditable
+        textView.isAutomaticSpellingCorrectionEnabled = isEditable
+        textView.isAutomaticTextCompletionEnabled = isEditable
+        textView.inlinePredictionType = isEditable ? .yes : .no
 
         if !context.coordinator.didRequestInitialFocus, isEditable {
             focus(textView, selection: nil) {
@@ -713,11 +729,14 @@ struct SourceTextView: NSViewRepresentable {
         var appliedBaseColors: SourceSyntaxHighlighting?
         var hasAppliedBaseColors = false
         var syntaxHighlightingGate = SourceSyntaxHighlightingGate()
+        let defersSourceChangeUpdates: Bool
         var requiresTypographyRefresh = true
         var requiresSyntaxRefresh = true
         var requiresInitialSyntaxRefresh = true
         var lastModelSource: String?
         private var syntaxHighlightTask: Task<Void, Never>?
+        private var sourceChangeTask: Task<Void, Never>?
+        private var pendingSource: String?
         private var syntaxHighlightGeneration = 0
         private var findSource = ""
         private var findQuery = ""
@@ -729,21 +748,46 @@ struct SourceTextView: NSViewRepresentable {
         init(
             onSourceChanged: @escaping @MainActor @Sendable (String) -> Void,
             onEndEditing: @escaping @MainActor @Sendable (String) -> Void,
-            onFindMatchCount: @escaping @MainActor @Sendable (Int) -> Void
+            onFindMatchCount: @escaping @MainActor @Sendable (Int) -> Void,
+            defersSourceChangeUpdates: Bool
         ) {
             self.onSourceChanged = onSourceChanged
             self.onEndEditing = onEndEditing
             self.onFindMatchCount = onFindMatchCount
+            self.defersSourceChangeUpdates = defersSourceChangeUpdates
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             requiresSyntaxRefresh = true
-            // Keep the model in lockstep with AppKit. Split previews and
-            // diffs are derived from this value and must react while editing,
-            // not only after the editor exits. Expensive work is debounced at
-            // the render coordinator layer instead.
-            onSourceChanged(textView.string)
+            let source = textView.string
+            guard defersSourceChangeUpdates else {
+                onSourceChanged(source)
+                return
+            }
+
+            // NSTextView already owns the live draft. Coalesce model updates so
+            // each keystroke can return to AppKit without synchronously
+            // rebuilding the observed SwiftUI workspace.
+            pendingSource = source
+            sourceChangeTask?.cancel()
+            sourceChangeTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled else { return }
+                self?.flushPendingSourceChange()
+            }
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            flushPendingSourceChange()
+        }
+
+        func flushPendingSourceChange() {
+            guard let pendingSource else { return }
+            self.pendingSource = nil
+            sourceChangeTask?.cancel()
+            sourceChangeTask = nil
+            onSourceChanged(pendingSource)
         }
 
         func scheduleSyntaxHighlighting(
@@ -940,8 +984,27 @@ private final class MarkdownNSTextView: NSTextView {
 
     var onEscape: (() -> Void)?
     var onMarkdownShortcut: ((MarkdownInlineFormatting) -> Void)?
+    var markdownAutoListContinuationEnabled = false
     var onFindFocus: (() -> Void)?
     var onDoubleClick: ((NSEvent) -> Void)?
+    var fixedEditorParagraphStyle: NSParagraphStyle? {
+        didSet {
+            guard let fixedEditorParagraphStyle else { return }
+            if let oldValue,
+               oldValue.minimumLineHeight == fixedEditorParagraphStyle.minimumLineHeight,
+               oldValue.maximumLineHeight == fixedEditorParagraphStyle.maximumLineHeight,
+               oldValue.lineHeightMultiple == fixedEditorParagraphStyle.lineHeightMultiple,
+               oldValue.lineSpacing == fixedEditorParagraphStyle.lineSpacing,
+               oldValue.paragraphSpacing == fixedEditorParagraphStyle.paragraphSpacing,
+               oldValue.paragraphSpacingBefore == fixedEditorParagraphStyle.paragraphSpacingBefore {
+                return
+            }
+            defaultParagraphStyle = fixedEditorParagraphStyle
+            var attributes = typingAttributes
+            attributes[.paragraphStyle] = fixedEditorParagraphStyle
+            typingAttributes = attributes
+        }
+    }
     var showsLineNumbers = false {
         didSet {
             guard oldValue != showsLineNumbers else { return }
@@ -975,6 +1038,7 @@ private final class MarkdownNSTextView: NSTextView {
 
     private var cachedLineStarts: [Int]?
     private var pendingLineStartEdit: (range: NSRange, replacement: String)?
+    private var pendingParagraphStyleEdit: (range: NSRange, replacement: String)?
 
     override func becomeFirstResponder() -> Bool {
         let becameFirstResponder = super.becomeFirstResponder()
@@ -1036,14 +1100,25 @@ private final class MarkdownNSTextView: NSTextView {
                 replacementString ?? ""
             )
         }
+        if shouldChange {
+            pendingParagraphStyleEdit = (
+                affectedCharRange,
+                replacementString ?? ""
+            )
+        }
         return shouldChange
     }
 
     override func didChangeText() {
         super.didChangeText()
+        if let edit = pendingParagraphStyleEdit {
+            normalizeEditedParagraphs(edit)
+        }
+        pendingParagraphStyleEdit = nil
         guard let edit = pendingLineStartEdit,
               let starts = cachedLineStarts else {
             invalidateLineNumberCache()
+            needsDisplay = true
             return
         }
         pendingLineStartEdit = nil
@@ -1052,6 +1127,61 @@ private final class MarkdownNSTextView: NSTextView {
             replacing: edit.range,
             with: edit.replacement
         )
+        // NSTextView may invalidate only the edited glyph area. The gutter is
+        // drawn in drawBackground, so explicitly refresh it with each edit.
+        needsDisplay = true
+    }
+
+    private func normalizeEditedParagraphs(_ edit: (range: NSRange, replacement: String)) {
+        guard let fixedEditorParagraphStyle,
+              let textStorage,
+              textStorage.length > 0 else {
+            if let fixedEditorParagraphStyle {
+                var attributes = typingAttributes
+                attributes[.paragraphStyle] = fixedEditorParagraphStyle
+                typingAttributes = attributes
+            }
+            return
+        }
+
+        let source = string as NSString
+        let start = min(max(edit.range.location, 0), source.length)
+        let insertedLength = (edit.replacement as NSString).length
+        let caret = min(start + insertedLength, source.length)
+        let changedLength = min(insertedLength, source.length - start)
+        let changedRange = source.paragraphRange(for: NSRange(
+            location: start,
+            length: changedLength
+        ))
+        let caretRange = source.paragraphRange(for: NSRange(location: caret, length: 0))
+        let paragraphRanges = [changedRange, caretRange].filter { $0.length > 0 }
+
+        textStorage.beginEditing()
+        for range in paragraphRanges {
+            let currentStyle = textStorage.attribute(
+                .paragraphStyle,
+                at: range.location,
+                effectiveRange: nil
+            ) as? NSParagraphStyle
+            let needsNormalization = currentStyle.map {
+                $0.minimumLineHeight != fixedEditorParagraphStyle.minimumLineHeight
+                    || $0.maximumLineHeight != fixedEditorParagraphStyle.maximumLineHeight
+                    || $0.lineHeightMultiple != fixedEditorParagraphStyle.lineHeightMultiple
+                    || $0.lineSpacing != 0
+                    || $0.paragraphSpacing != 0
+            } ?? true
+            guard needsNormalization else { continue }
+
+            let normalizedStyle = (fixedEditorParagraphStyle.mutableCopy() as? NSMutableParagraphStyle)
+                ?? NSMutableParagraphStyle()
+            normalizedStyle.paragraphSpacingBefore = currentStyle?.paragraphSpacingBefore ?? 0
+            textStorage.addAttribute(.paragraphStyle, value: normalizedStyle, range: range)
+        }
+        textStorage.endEditing()
+
+        var attributes = typingAttributes
+        attributes[.paragraphStyle] = fixedEditorParagraphStyle
+        typingAttributes = attributes
     }
 
     private func updatedLineStarts(
@@ -1116,9 +1246,14 @@ private final class MarkdownNSTextView: NSTextView {
                 let physicalLine = lineNumber(
                     atUTF16Offset: layoutManager.characterIndexForGlyph(at: glyphRange.location)
                 )
-                let baselineY = SourceEditorLayout.lineBaselineY(
-                    lineFragmentRect: rect,
-                    glyphLocationY: layoutManager.location(forGlyphAt: glyphRange.location).y
+                // A glyph's vertical location can vary with the text on the
+                // line (for example, fallback glyphs or marked text). Use the
+                // font's baseline within the fixed-height line fragment so
+                // line numbers stay aligned when a blank line gets content.
+                let baselineY = rect.minY + SourceEditorLayout.extraLineBaselineOffset(
+                    lineHeight: rect.height,
+                    defaultBaselineOffset: layoutManager.defaultBaselineOffset(for: sourceFont),
+                    defaultLineHeight: layoutManager.defaultLineHeight(for: sourceFont)
                 )
                 fragments.append(LineFragment(
                     physicalLine: physicalLine,
@@ -1259,7 +1394,7 @@ private final class MarkdownNSTextView: NSTextView {
 
     private func drawLineNumberSeparator() {
         guard showsLineNumbers, lineNumberGutterWidth > 0 else { return }
-        NSColor.separatorColor.withAlphaComponent(0.35).setStroke()
+        NSColor.separatorColor.withAlphaComponent(0.2).setStroke()
         let separator = NSBezierPath()
         separator.move(to: NSPoint(
             x: lineNumberGutterWidth,
@@ -1269,7 +1404,7 @@ private final class MarkdownNSTextView: NSTextView {
             x: lineNumberGutterWidth,
             y: visibleRect.maxY
         ))
-        separator.lineWidth = 1
+        separator.lineWidth = 0.5
         separator.stroke()
     }
 
@@ -1317,6 +1452,15 @@ private final class MarkdownNSTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if markdownAutoListContinuationEnabled,
+           isEditable,
+           (event.keyCode == 36 || event.keyCode == 76),
+           modifiers.intersection([.command, .option, .control, .shift]).isEmpty,
+           !hasMarkedText(),
+           selectedRange().length == 0,
+           continueMarkdownListIfNeeded() {
+            return
+        }
         if modifiers.contains(.command),
            !modifiers.contains(.option),
            !modifiers.contains(.control),
@@ -1346,6 +1490,95 @@ private final class MarkdownNSTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    private func continueMarkdownListIfNeeded() -> Bool {
+        let source = string as NSString
+        let selection = selectedRange()
+        let caret = min(max(selection.location, 0), source.length)
+
+        var lineStart = caret
+        while lineStart > 0, source.character(at: lineStart - 1) != 10 {
+            lineStart -= 1
+        }
+        var lineEnd = caret
+        while lineEnd < source.length, source.character(at: lineEnd) != 10 {
+            lineEnd += 1
+        }
+
+        let line = source.substring(with: NSRange(location: lineStart, length: lineEnd - lineStart)) as NSString
+        var markerStart = 0
+        while markerStart < line.length, isHorizontalWhitespace(line.character(at: markerStart)) {
+            markerStart += 1
+        }
+        guard markerStart < line.length else { return false }
+
+        let firstMarkerCharacter = line.character(at: markerStart)
+        var markerEnd: Int
+        let continuedMarker: String
+        if isMarkdownBulletMarker(firstMarkerCharacter) {
+            markerEnd = markerStart + 1
+            continuedMarker = line.substring(with: NSRange(location: markerStart, length: 1))
+        } else {
+            var digitsEnd = markerStart
+            while digitsEnd < line.length,
+                  (48...57).contains(line.character(at: digitsEnd)) {
+                digitsEnd += 1
+            }
+            let digitCount = digitsEnd - markerStart
+            guard (1...9).contains(digitCount),
+                  digitsEnd < line.length,
+                  line.character(at: digitsEnd) == 46 || line.character(at: digitsEnd) == 41,
+                  let number = Int(line.substring(with: NSRange(
+                    location: markerStart,
+                    length: digitCount
+                  ))) else { return false }
+            let (nextNumber, overflow) = number.addingReportingOverflow(1)
+            guard !overflow, nextNumber <= 999_999_999 else { return false }
+            let nextNumberText = String(nextNumber)
+            let leadingZeroes = String(repeating: "0", count: max(0, digitCount - nextNumberText.count))
+            let punctuation = line.substring(with: NSRange(location: digitsEnd, length: 1))
+            continuedMarker = leadingZeroes + nextNumberText + punctuation
+            markerEnd = digitsEnd + 1
+        }
+
+        guard markerEnd < line.length, isHorizontalWhitespace(line.character(at: markerEnd)) else {
+            return false
+        }
+        let whitespaceStart = markerEnd
+        while markerEnd < line.length, isHorizontalWhitespace(line.character(at: markerEnd)) {
+            markerEnd += 1
+        }
+        guard caret >= lineStart + markerEnd else { return false }
+
+        let indentation = line.substring(to: markerStart)
+        let markerWhitespace = line.substring(with: NSRange(
+            location: whitespaceStart,
+            length: markerEnd - whitespaceStart
+        ))
+        let markerPrefix = indentation + continuedMarker + markerWhitespace
+        let itemText = line.substring(from: markerEnd)
+        if itemText.trimmingCharacters(in: .whitespaces).isEmpty {
+            let emptyItemRange = NSRange(location: lineStart, length: line.length)
+            guard shouldChangeText(in: emptyItemRange, replacementString: "") else { return true }
+            replaceCharacters(in: emptyItemRange, with: "")
+            setSelectedRange(NSRange(location: lineStart, length: 0))
+        } else {
+            let insertion = "\n" + markerPrefix
+            guard shouldChangeText(in: selection, replacementString: insertion) else { return true }
+            replaceCharacters(in: selection, with: insertion)
+            setSelectedRange(NSRange(location: caret + (insertion as NSString).length, length: 0))
+        }
+        didChangeText()
+        return true
+    }
+
+    private func isMarkdownBulletMarker(_ character: unichar) -> Bool {
+        character == 45 || character == 42 || character == 43
+    }
+
+    private func isHorizontalWhitespace(_ character: unichar) -> Bool {
+        character == 32 || character == 9
     }
 
     override func mouseUp(with event: NSEvent) {
