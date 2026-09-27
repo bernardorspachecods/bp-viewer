@@ -54,10 +54,14 @@ renderizado ou formatado.
   diagnóstico.
 - Um duplo clique no preview abre diretamente o editor de source Markdown.
   A edição tem syntax highlighting adaptado aos temas claro/escuro, gravação
-  explícita,
-  undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações externas e
-  resolução de conflitos. O editor ativa autocorreção ortográfica, previsão
-  inline do sistema e completamento nativo do macOS. Em linhas de lista com
+  explícita, undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações
+  externas e resolução de conflitos. O editor ativa a autocorreção ortográfica
+  do macOS. Para completar palavras em linha, usa o modelo Apple Foundation no
+  dispositivo quando está disponível para o idioma atual. Caso contrário, em
+  idiomas sem previsões inline nativas do macOS, usa os completamentos do
+  dicionário local. A sugestão aparece a cinzento e `Space` aceita a palavra
+  seguida de espaço, enquanto `Tab` aceita apenas a palavra. Nos idiomas com
+  previsões nativas, estas continuam a ser fornecidas pelo macOS. Em linhas de lista com
   marcadores `-`, `*` ou `+`, Return continua a lista; em listas ordenadas com
   `.` ou `)`, incrementa o número. Return numa linha vazia remove o marcador e
   termina a lista.

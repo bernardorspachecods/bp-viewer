@@ -312,7 +312,10 @@ struct SourceTextView: NSViewRepresentable {
         textView.markdownAutoListContinuationEnabled = markdownShortcutsEnabled && isEditable
         textView.isAutomaticSpellingCorrectionEnabled = isEditable
         textView.isAutomaticTextCompletionEnabled = isEditable
-        textView.inlinePredictionType = isEditable ? .yes : .no
+        textView.usesMarkdownInlineCompletion = markdownShortcutsEnabled
+            && isEditable
+            && MarkdownInlineCompletionProvider.usesCustomCompletion()
+        textView.inlinePredictionType = isEditable && !textView.usesMarkdownInlineCompletion ? .yes : .no
         if monospaced {
             // JSON syntax requires ASCII quotes; macOS smart quotes would turn
             // a typed delimiter into a Unicode character such as U+201D.
@@ -411,7 +414,13 @@ struct SourceTextView: NSViewRepresentable {
         textView.markdownAutoListContinuationEnabled = markdownShortcutsEnabled && isEditable
         textView.isAutomaticSpellingCorrectionEnabled = isEditable
         textView.isAutomaticTextCompletionEnabled = isEditable
-        textView.inlinePredictionType = isEditable ? .yes : .no
+        textView.usesMarkdownInlineCompletion = markdownShortcutsEnabled
+            && isEditable
+            && MarkdownInlineCompletionProvider.usesCustomCompletion()
+        textView.inlinePredictionType = isEditable && !textView.usesMarkdownInlineCompletion ? .yes : .no
+        if !textView.usesMarkdownInlineCompletion {
+            context.coordinator.cancelInlineCompletion(for: textView)
+        }
 
         if !context.coordinator.didRequestInitialFocus, isEditable {
             focus(textView, selection: nil) {
@@ -736,6 +745,8 @@ struct SourceTextView: NSViewRepresentable {
         var lastModelSource: String?
         private var syntaxHighlightTask: Task<Void, Never>?
         private var sourceChangeTask: Task<Void, Never>?
+        private var inlineCompletionTask: Task<Void, Never>?
+        private var inlineCompletionGeneration = 0
         private var pendingSource: String?
         private var syntaxHighlightGeneration = 0
         private var findSource = ""
@@ -760,6 +771,9 @@ struct SourceTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             requiresSyntaxRefresh = true
+            if let markdownTextView = textView as? MarkdownNSTextView {
+                scheduleInlineCompletion(for: markdownTextView)
+            }
             let source = textView.string
             guard defersSourceChangeUpdates else {
                 onSourceChanged(source)
@@ -775,6 +789,65 @@ struct SourceTextView: NSViewRepresentable {
                 try? await Task.sleep(for: .milliseconds(80))
                 guard !Task.isCancelled else { return }
                 self?.flushPendingSourceChange()
+            }
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? MarkdownNSTextView else { return }
+            if let completion = textView.inlineCompletion,
+               completion.wordRange.location + completion.wordRange.length
+                != textView.selectedRange().location {
+                cancelInlineCompletion(for: textView)
+            }
+        }
+
+        fileprivate func cancelInlineCompletion(for textView: MarkdownNSTextView) {
+            inlineCompletionTask?.cancel()
+            inlineCompletionTask = nil
+            inlineCompletionGeneration += 1
+            textView.inlineCompletion = nil
+        }
+
+        private func scheduleInlineCompletion(for textView: MarkdownNSTextView) {
+            let suppressNextCompletion = textView.suppressInlineCompletionAfterAcceptance
+            textView.suppressInlineCompletionAfterAcceptance = false
+            cancelInlineCompletion(for: textView)
+            guard !suppressNextCompletion,
+                  textView.usesMarkdownInlineCompletion,
+                  textView.isEditable,
+                  textView.selectedRange().length == 0 else { return }
+
+            let source = textView.string
+            let caret = textView.selectedRange().location
+            guard MarkdownInlineCompletionProvider.eligibleWord(
+                in: source,
+                caretUTF16Offset: caret
+            ) != nil else { return }
+
+            let generation = inlineCompletionGeneration
+            inlineCompletionTask = Task { @MainActor [weak self, weak textView] in
+                do {
+                    try await Task.sleep(for: .milliseconds(350))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled,
+                      let self,
+                      let textView,
+                      self.inlineCompletionGeneration == generation,
+                      textView.string == source,
+                      textView.selectedRange() == NSRange(location: caret, length: 0) else { return }
+
+                let completion = await MarkdownInlineCompletionProvider.completion(
+                    in: source,
+                    caretUTF16Offset: caret
+                )
+                guard !Task.isCancelled,
+                      self.inlineCompletionGeneration == generation,
+                      textView.string == source,
+                      textView.selectedRange() == NSRange(location: caret, length: 0) else { return }
+                textView.inlineCompletion = completion
+                self.inlineCompletionTask = nil
             }
         }
 
@@ -987,6 +1060,14 @@ private final class MarkdownNSTextView: NSTextView {
     var markdownAutoListContinuationEnabled = false
     var onFindFocus: (() -> Void)?
     var onDoubleClick: ((NSEvent) -> Void)?
+    var usesMarkdownInlineCompletion = false
+    var suppressInlineCompletionAfterAcceptance = false
+    var inlineCompletion: MarkdownInlineCompletion? {
+        didSet {
+            guard oldValue != inlineCompletion else { return }
+            needsDisplay = true
+        }
+    }
     var fixedEditorParagraphStyle: NSParagraphStyle? {
         didSet {
             guard let fixedEditorParagraphStyle else { return }
@@ -1049,8 +1130,14 @@ private final class MarkdownNSTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        inlineCompletion = nil
         onFindFocus?()
         super.mouseDown(with: event)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        drawInlineCompletion()
     }
 
     override func drawBackground(in rect: NSRect) {
@@ -1452,6 +1539,20 @@ private final class MarkdownNSTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if usesMarkdownInlineCompletion,
+           isEditable,
+           modifiers.isEmpty,
+           event.keyCode == 48,
+           acceptInlineCompletion(appendSpace: false) {
+            return
+        }
+        if usesMarkdownInlineCompletion,
+           isEditable,
+           modifiers.isEmpty,
+           event.characters == " ",
+           acceptInlineCompletion(appendSpace: true) {
+            return
+        }
         if markdownAutoListContinuationEnabled,
            isEditable,
            (event.keyCode == 36 || event.keyCode == 76),
@@ -1490,6 +1591,50 @@ private final class MarkdownNSTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    private func drawInlineCompletion() {
+        guard usesMarkdownInlineCompletion,
+              let inlineCompletion,
+              inlineCompletion.wordRange.location + inlineCompletion.wordRange.length
+                == selectedRange().location,
+              !inlineCompletion.suffix.isEmpty,
+              let window else { return }
+
+        let screenRect = firstRect(
+            forCharacterRange: NSRange(location: selectedRange().location, length: 0),
+            actualRange: nil
+        )
+        guard !screenRect.isEmpty else { return }
+        let caretRect = convert(window.convertFromScreen(screenRect), from: nil)
+        let ghost = NSAttributedString(
+            string: inlineCompletion.suffix,
+            attributes: [
+                .font: font ?? NSFont.systemFont(ofSize: SourceEditorLayout.editorFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor.withAlphaComponent(0.55)
+            ]
+        )
+        ghost.draw(at: NSPoint(x: caretRect.minX, y: caretRect.minY))
+    }
+
+    @discardableResult
+    private func acceptInlineCompletion(appendSpace: Bool) -> Bool {
+        guard let inlineCompletion,
+              selectedRange().length == 0,
+              selectedRange().location == inlineCompletion.wordRange.location
+                + inlineCompletion.wordRange.length,
+              ((string as NSString).substring(with: inlineCompletion.wordRange)
+                == inlineCompletion.prefix) else { return false }
+
+        let insertion = inlineCompletion.suffix + (appendSpace ? " " : "")
+        let range = NSRange(location: selectedRange().location, length: 0)
+        guard shouldChangeText(in: range, replacementString: insertion) else { return false }
+        self.inlineCompletion = nil
+        suppressInlineCompletionAfterAcceptance = !appendSpace
+        replaceCharacters(in: range, with: insertion)
+        setSelectedRange(NSRange(location: range.location + (insertion as NSString).length, length: 0))
+        didChangeText()
+        return true
     }
 
     private func continueMarkdownListIfNeeded() -> Bool {
