@@ -164,7 +164,7 @@ struct DocumentOutlineSidebar: View {
                                         ? Color.primary
                                         : entry.level == 0
                                             ? Color.primary.opacity(0.9)
-                                            : BPTokens.Color.muted
+                                            : Color.primary.opacity(0.78)
                                 )
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
@@ -189,6 +189,7 @@ struct DocumentOutlineSidebar: View {
                         .overlay(alignment: .leading) {
                             OutlineGuides(
                                 level: max(entry.level, 0),
+                                isLastEntry: entry.id == entries.last?.id,
                                 isSelected: selectedID == entry.id
                             )
                             .padding(.leading, BPTokens.Spacing.sm)
@@ -214,6 +215,7 @@ struct DocumentOutlineSidebar: View {
 
 private struct OutlineGuides: View {
     let level: Int
+    let isLastEntry: Bool
     let isSelected: Bool
 
     var body: some View {
@@ -227,7 +229,9 @@ private struct OutlineGuides: View {
             for depth in 0..<level {
                 let x = baseX + CGFloat(depth) * step
                 guides.move(to: CGPoint(x: x, y: 0))
-                guides.addLine(to: CGPoint(x: x, y: size.height))
+                guides.addLine(
+                    to: CGPoint(x: x, y: isLastEntry ? size.height / 2 : size.height)
+                )
             }
 
             let connectorX = baseX + CGFloat(level - 1) * step
