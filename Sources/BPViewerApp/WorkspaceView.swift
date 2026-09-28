@@ -390,13 +390,6 @@ struct PreviewPane: View {
     @State private var isPathRowHovered = false
     @State private var isUpdatedInfoHovered = false
 
-    private var snapshotAction: (() -> Void)? {
-        guard model.activeTabID == tab.id, model.canCaptureActivePreview else {
-            return nil
-        }
-        return { model.startSnapshotCapture() }
-    }
-
     private var previewHeader: some View {
         let path = tab.isUntitled
             ? "Not saved"
@@ -568,7 +561,6 @@ struct PreviewPane: View {
                                     model.updateMarkdownReadingPosition(position, forTabID: tab.id)
                                 },
                                 isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
-                                onSnapshot: snapshotAction,
                                 onSnapshotCancel: model.cancelSnapshotCapture,
                                 onSnapshotCapture: { image in
                                     model.finishSnapshotCapture(image, forTabID: tab.id)
@@ -624,7 +616,6 @@ struct PreviewPane: View {
                                 onUseExternalEdit: {
                                     model.useExternalJSONEdit(tabID: tab.id)
                                 },
-                                onSnapshot: snapshotAction,
                                 isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
                                 onSnapshotCancel: model.cancelSnapshotCapture,
                                 onSnapshotCapture: { image in
@@ -678,7 +669,6 @@ struct PreviewPane: View {
                             onUseExternalEdit: {
                                 model.useExternalCSVEdit(tabID: tab.id)
                             },
-                            onSnapshot: snapshotAction,
                             isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
                             onSnapshotCancel: model.cancelSnapshotCapture,
                             onSnapshotCapture: { image in
@@ -758,7 +748,6 @@ struct PreviewPane: View {
                                 model.updatePDFReadingPosition(position, forTabID: tab.id)
                             },
                             isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
-                            onSnapshot: snapshotAction,
                             onSnapshotCancel: model.cancelSnapshotCapture,
                             onSnapshotCapture: { image in
                                 model.finishSnapshotCapture(image, forTabID: tab.id)
@@ -785,7 +774,6 @@ struct PreviewPane: View {
                                     set: { model.setOutlineVisible($0, forTabID: tab.id) }
                                 ),
                                 isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
-                                onSnapshot: snapshotAction,
                                 onSnapshotCancel: model.cancelSnapshotCapture,
                                 onSnapshotCapture: { image in
                                     model.finishSnapshotCapture(image, forTabID: tab.id)
@@ -798,7 +786,6 @@ struct PreviewPane: View {
                             zoom: tab.previewZoom,
                             previewRevision: tab.previewUpdatedAt,
                             isSnapshotCaptureActive: model.isSnapshotCaptureActive && model.activeTabID == tab.id,
-                            onSnapshot: snapshotAction,
                             onSnapshotCancel: model.cancelSnapshotCapture,
                             onSnapshotCapture: { image in
                                 model.finishSnapshotCapture(image, forTabID: tab.id)

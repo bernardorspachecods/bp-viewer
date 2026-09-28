@@ -12,40 +12,16 @@ struct DocumentOutlineItem: Identifiable, Hashable {
 struct DocumentOutlineToolbar: View {
     let isVisible: Bool
     let onToggle: () -> Void
-    let onSnapshot: (() -> Void)?
-
-    init(
-        isVisible: Bool,
-        onToggle: @escaping () -> Void,
-        onSnapshot: (() -> Void)? = nil
-    ) {
-        self.isVisible = isVisible
-        self.onToggle = onToggle
-        self.onSnapshot = onSnapshot
-    }
 
     var body: some View {
         HStack {
-            Button(action: onToggle) {
-                Label(
-                    isVisible ? "Hide Outline" : "Show Outline",
-                    systemImage: "list.bullet.rectangle"
-                )
-            }
-            .buttonStyle(.borderless)
+            DocumentEditModeButton(
+                title: "Outline",
+                systemImage: "list.bullet.rectangle",
+                isActive: isVisible,
+                action: onToggle
+            )
             Spacer()
-            if let onSnapshot {
-                Button(action: onSnapshot) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(BPTokens.Typography.body)
-                        .foregroundStyle(BPTokens.Color.muted)
-                        .iconButtonHitArea()
-                }
-                .buttonStyle(.borderless)
-                .focusable(false)
-                .contentShape(Rectangle())
-                .help("Create Preview Snapshot")
-            }
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)
@@ -58,7 +34,6 @@ struct DocumentInteractionToolbar: View {
     let isOutlineAvailable: Bool
     let isOutlineVisible: Bool
     let onToggleOutline: () -> Void
-    let onSnapshot: (() -> Void)?
     let editingSession: MarkdownEditSession?
     let presentationMode: DocumentPresentationMode
     let supportsSplitView: Bool
@@ -80,27 +55,12 @@ struct DocumentInteractionToolbar: View {
         HStack(spacing: BPTokens.Spacing.sm) {
             HStack(spacing: BPTokens.Spacing.sm) {
                 if isOutlineAvailable {
-                    Button(action: onToggleOutline) {
-                        Label(
-                            isOutlineVisible ? "Hide Outline" : "Show Outline",
-                            systemImage: "list.bullet.rectangle"
-                        )
-                    }
-                    .buttonStyle(.borderless)
-                }
-
-                if let onSnapshot {
-                    Button(action: onSnapshot) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(BPTokens.Typography.body)
-                            .foregroundStyle(BPTokens.Color.muted)
-                            .iconButtonHitArea()
-                    }
-                    .buttonStyle(.borderless)
-                    .focusable(false)
-                    .contentShape(Rectangle())
-                    .accessibilityLabel("Capture")
-                    .help("Create Preview Snapshot")
+                    DocumentEditModeButton(
+                        title: "Outline",
+                        systemImage: "list.bullet.rectangle",
+                        isActive: isOutlineVisible,
+                        action: onToggleOutline
+                    )
                 }
 
                 if supportsSplitView, let onToggleSplitView {

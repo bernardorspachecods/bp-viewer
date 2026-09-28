@@ -44,7 +44,6 @@ struct MarkdownPreviewView: View {
     let readingPosition: MarkdownReadingPosition?
     let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
     let isSnapshotCaptureActive: Bool
-    let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
     @State private var selectedHeadingID: String?
@@ -68,7 +67,6 @@ struct MarkdownPreviewView: View {
                 isOutlineAvailable: !outlineItems.isEmpty,
                 isOutlineVisible: isOutlineVisible,
                 onToggleOutline: { isOutlineVisible.toggle() },
-                onSnapshot: onSnapshot,
                 editingSession: editingSession,
                 presentationMode: presentationMode,
                 supportsSplitView: true,

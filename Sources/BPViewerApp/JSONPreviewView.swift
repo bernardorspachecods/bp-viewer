@@ -20,7 +20,6 @@ struct JSONPreviewView: View {
     let onDiscardGitChanges: @MainActor @Sendable () -> Void
     let onKeepLocalEdit: () -> Void
     let onUseExternalEdit: () -> Void
-    let onSnapshot: (() -> Void)?
     let isSnapshotCaptureActive: Bool
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
@@ -38,7 +37,6 @@ struct JSONPreviewView: View {
                 isOutlineAvailable: false,
                 isOutlineVisible: false,
                 onToggleOutline: {},
-                onSnapshot: onSnapshot,
                 editingSession: editingSession,
                 presentationMode: presentationMode,
                 supportsSplitView: false,

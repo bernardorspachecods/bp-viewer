@@ -360,39 +360,36 @@ struct TopBarView: View {
 
             Spacer()
 
-            if model.activeTab?.kind == .markdown
-                || model.activeTab?.kind == .latex
-                || model.activeTab?.kind == .json
-                || model.activeTab?.kind == .csv
-                || model.activeTab?.kind == .pdf
-                || model.activeTab?.kind == .docx {
-                if model.activeTab?.kind == .latex {
-                    ToolbarIconButton(systemName: "list.bullet.rectangle", help: "Choose Main LaTeX Document") {
-                        model.changeLatexRoot()
-                    }
-                    Menu {
-                        Picker("Shell escape", selection: Binding(
-                            get: { model.latexShellEscapeMode },
-                            set: { model.setLatexShellEscapeMode($0) }
-                        )) {
-                            ForEach(LatexShellEscapeMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
-                            .iconButtonHitArea()
-                    }
-                    .menuStyle(.borderlessButton)
-                    .help("Advanced LaTeX Settings")
+            if model.activeTab?.kind == .latex {
+                ToolbarIconButton(systemName: "list.bullet.rectangle", help: "Choose Main LaTeX Document") {
+                    model.changeLatexRoot()
                 }
+                Menu {
+                    Picker("Shell escape", selection: Binding(
+                        get: { model.latexShellEscapeMode },
+                        set: { model.setLatexShellEscapeMode($0) }
+                    )) {
+                        ForEach(LatexShellEscapeMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: BPTokens.Size.control, height: BPTokens.Size.control)
+                        .iconButtonHitArea()
+                }
+                .menuStyle(.borderlessButton)
+                .help("Advanced LaTeX Settings")
+            }
+
+            if model.canCaptureActivePreview {
+                ToolbarIconButton(systemName: "camera.viewfinder", help: "Create Preview Snapshot") {
+                    model.startSnapshotCapture()
+                }
+            }
+
             if let kind = model.activeTab?.kind,
                [.markdown, .latex, .pdf, .json, .csv, .docx].contains(kind) {
-                    ToolbarIconButton(systemName: "magnifyingglass", help: "Find in Document") {
-                        model.showFindBar()
-                    }
-                }
                 ToolbarIconButton(systemName: "minus.magnifyingglass", help: "Zoom Out") {
                     model.zoomOut()
                 }

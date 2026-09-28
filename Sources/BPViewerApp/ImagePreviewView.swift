@@ -6,7 +6,6 @@ struct ImagePreviewView: View {
     let zoom: Double
     let previewRevision: Date?
     let isSnapshotCaptureActive: Bool
-    let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
     let onZoomChanged: (Double) -> Void
@@ -58,18 +57,6 @@ struct ImagePreviewView: View {
             Label("Image", systemImage: "photo")
                 .font(BPTokens.Typography.caption.weight(.medium))
             Spacer()
-            if let onSnapshot {
-                Button(action: onSnapshot) {
-                    Image(systemName: "camera.viewfinder")
-                        .font(BPTokens.Typography.body)
-                        .foregroundStyle(BPTokens.Color.muted)
-                        .iconButtonHitArea()
-                }
-                .buttonStyle(.borderless)
-                .focusable(false)
-                .contentShape(Rectangle())
-                .help("Create Preview Snapshot")
-            }
         }
         .padding(.horizontal, BPTokens.Spacing.md)
         .padding(.vertical, BPTokens.Spacing.xs)

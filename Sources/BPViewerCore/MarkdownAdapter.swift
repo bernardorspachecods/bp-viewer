@@ -164,6 +164,12 @@ private struct MarkdownHTMLDocument {
             .bp-special-editor input { box-sizing: border-box; width: 100%; }
             .bp-special-editor span { display: flex; justify-content: flex-end; gap: 6px; }
             h1, h2, h3, h4, h5, h6 { line-height: 1.2; margin-top: 1.5em; scroll-margin-top: 24px; }
+            h1 { font-size: 1.55em; }
+            h2 { font-size: 1.3em; }
+            h3 { font-size: 1.1em; }
+            h4 { font-size: 0.95em; }
+            h5 { font-size: 0.8em; }
+            h6 { font-size: 0.65em; }
             h1:first-child { margin-top: 0; }
             a { color: -apple-system-blue; }
             img { max-width: 100%; height: auto; border-radius: 8px; }

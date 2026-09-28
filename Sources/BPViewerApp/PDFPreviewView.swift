@@ -32,7 +32,6 @@ struct PDFPreviewView: View {
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
     @Binding var isOutlineVisible: Bool
     let isSnapshotCaptureActive: Bool
-    let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
     let onNavigate: ((URL) -> Void)?
@@ -54,7 +53,6 @@ struct PDFPreviewView: View {
         onReadingPositionChanged: @escaping (PDFReadingPosition) -> Void,
         isOutlineVisible: Binding<Bool>,
         isSnapshotCaptureActive: Bool,
-        onSnapshot: (() -> Void)?,
         onSnapshotCancel: @escaping () -> Void,
         onSnapshotCapture: @escaping (NSImage) -> Void,
         onNavigate: ((URL) -> Void)? = nil,
@@ -73,7 +71,6 @@ struct PDFPreviewView: View {
         self.onReadingPositionChanged = onReadingPositionChanged
         self._isOutlineVisible = isOutlineVisible
         self.isSnapshotCaptureActive = isSnapshotCaptureActive
-        self.onSnapshot = onSnapshot
         self.onSnapshotCancel = onSnapshotCancel
         self.onSnapshotCapture = onSnapshotCapture
         self.onNavigate = onNavigate
@@ -97,11 +94,10 @@ struct PDFPreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !outlineItems.isEmpty || onSnapshot != nil {
+            if !outlineItems.isEmpty {
                 DocumentOutlineToolbar(
                     isVisible: isOutlineVisible,
-                    onToggle: { isOutlineVisible.toggle() },
-                    onSnapshot: onSnapshot
+                    onToggle: { isOutlineVisible.toggle() }
                 )
             }
 

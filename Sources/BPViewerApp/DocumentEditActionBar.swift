@@ -53,13 +53,18 @@ struct DocumentEditModeButton: View {
     var body: some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
+                .font(BPTokens.Typography.caption)
+                .foregroundStyle(isActive ? Color.primary : BPTokens.Color.muted)
+                .padding(.horizontal, BPTokens.Spacing.xs)
+                .padding(.vertical, BPTokens.Spacing.xxs)
         }
-        .buttonStyle(.bordered)
-        .tint(isActive ? .accentColor : BPTokens.Color.muted)
+        .buttonStyle(.plain)
         .background(
             RoundedRectangle(cornerRadius: BPTokens.Radius.sm)
-                .fill(isActive ? BPTokens.Color.selection : .clear)
+                .fill(isActive ? Color.primary.opacity(0.08) : .clear)
         )
+        .contentShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
+        .focusable(false)
         .accessibilityValue(isActive ? "Active" : "Inactive")
     }
 }

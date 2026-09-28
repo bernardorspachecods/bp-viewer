@@ -37,7 +37,6 @@ struct LatexPreviewView: View {
     let readingPosition: PDFReadingPosition?
     let onReadingPositionChanged: (PDFReadingPosition) -> Void
     let isSnapshotCaptureActive: Bool
-    let onSnapshot: (() -> Void)?
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
 
@@ -47,7 +46,6 @@ struct LatexPreviewView: View {
                 isOutlineAvailable: !PDFOutlineEntryProxy.entries(from: data).isEmpty,
                 isOutlineVisible: isOutlineVisible,
                 onToggleOutline: { isOutlineVisible.toggle() },
-                onSnapshot: onSnapshot,
                 editingSession: editingSession,
                 presentationMode: presentationMode,
                 supportsSplitView: true,
@@ -150,7 +148,6 @@ struct LatexPreviewView: View {
             onReadingPositionChanged: onReadingPositionChanged,
             isOutlineVisible: $isOutlineVisible,
             isSnapshotCaptureActive: isSnapshotCaptureActive,
-            onSnapshot: onSnapshot,
             onSnapshotCancel: onSnapshotCancel,
             onSnapshotCapture: onSnapshotCapture,
             onNavigate: onNavigate,

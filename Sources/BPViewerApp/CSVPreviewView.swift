@@ -22,7 +22,6 @@ struct CSVPreviewView: View {
     let onDiscardEditing: () -> Void
     let onKeepLocalEdit: @MainActor @Sendable () -> Void
     let onUseExternalEdit: @MainActor @Sendable () -> Void
-    let onSnapshot: (() -> Void)?
     let isSnapshotCaptureActive: Bool
     let onSnapshotCancel: () -> Void
     let onSnapshotCapture: (NSImage) -> Void
@@ -58,18 +57,6 @@ struct CSVPreviewView: View {
                         onDiscard: onDiscardEditing,
                         onSave: { onSaveEditing() }
                     )
-                }
-                if let onSnapshot {
-                    Button(action: onSnapshot) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(BPTokens.Typography.body)
-                            .foregroundStyle(BPTokens.Color.muted)
-                            .iconButtonHitArea()
-                    }
-                    .buttonStyle(.borderless)
-                    .focusable(false)
-                    .contentShape(Rectangle())
-                    .help("Create Preview Snapshot")
                 }
             }
             .padding(.horizontal, BPTokens.Spacing.md)
