@@ -191,6 +191,7 @@ renderizado ou formatado.
 - Cada ficheiro tem no máximo uma tab. As tabs podem ser selecionadas,
   reordenadas, fechadas individualmente, fechadas à direita ou fechadas exceto
   a tab escolhida.
+- `⌘W` fecha a tab de documento ativa na janela-chave; não fecha o workspace.
 - O botão `+` no fim da barra cria uma tab Markdown nova em memória, sem caminho
   predefinido; o primeiro `Save` abre o painel para escolher o ficheiro `.md`.
 - Tabs, tab ativa, contexto LaTeX, tema, largura e visibilidade da sidebar,

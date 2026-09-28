@@ -137,18 +137,6 @@ final class AppModel: ObservableObject {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard self?.shouldHandleWindowEvents == true else { return event }
 
-            if flags == [.command],
-               event.charactersIgnoringModifiers?.lowercased() == "w" {
-                if let snapshotWindow = NSApp.keyWindow as? SnapshotPanel {
-                    snapshotWindow.performClose(nil)
-                    return nil
-                }
-                Task { @MainActor [weak self] in
-                    self?.closeActiveTab()
-                }
-                return nil
-            }
-
             if flags == [.control], event.keyCode == 48 {
                 Task { @MainActor [weak self] in
                     self?.selectNextTab()

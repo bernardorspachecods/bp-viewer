@@ -82,7 +82,7 @@ struct BPViewerApp: App {
 
             CommandGroup(replacing: .windowArrangement) {
                 Button("Close Tab") {
-                    windowManager.modelForActiveWindow(fallback: model)?.closeActiveTab()
+                    windowManager.closeActiveTabInKeyWindow()
                 }
                 .keyboardShortcut("w", modifiers: [.command])
             }
@@ -110,12 +110,33 @@ struct BPViewerApp: App {
 }
 
 final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
+    private var localKeyMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == [.command],
+                  event.charactersIgnoringModifiers?.lowercased() == "w" else {
+                return event
+            }
+
+            Task { @MainActor in
+                WorkspaceWindowManager.shared.closeActiveTabInKeyWindow()
+            }
+            return nil
+        }
+
         NSWindow.allowsAutomaticWindowTabbing = false
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let localKeyMonitor {
+            NSEvent.removeMonitor(localKeyMonitor)
         }
     }
 

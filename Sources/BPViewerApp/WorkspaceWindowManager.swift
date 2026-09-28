@@ -167,8 +167,17 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         persistWorkspaceLayout()
     }
 
+    func closeActiveTabInKeyWindow() {
+        guard let keyWindow = NSApp.keyWindow else { return }
+        if let snapshotWindow = keyWindow as? SnapshotPanel {
+            snapshotWindow.performClose(nil)
+            return
+        }
+        models[ObjectIdentifier(keyWindow)]?.closeActiveTab()
+    }
+
     func modelForActiveWindow(fallback: AppModel? = nil) -> AppModel? {
-        activeModel ?? keyWindowModel() ?? fallback
+        keyWindowModel() ?? activeModel ?? fallback
     }
 
     func synchronizeGlobalPreferences(from source: AppModel) {
