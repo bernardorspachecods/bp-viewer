@@ -1,46 +1,46 @@
-# Brief de pesquisa: preview, segurança e distribuição
+# Research brief: preview, security, and distribution
 
-## Objetivo
+## Objective
 
-Determinar como apresentar HTML e resultados LaTeX localmente e como reduzir riscos e fricção operacional ao executar a aplicação no macOS.
+Determine how to display HTML and LaTeX output locally and reduce operational risk and friction when running the app on macOS.
 
-## Pergunta principal
+## Main question
 
-Que combinação de superfícies de preview, isolamento, permissões e empacotamento permite visualizar conteúdo local com segurança suficiente e uma experiência simples para uso pessoal?
+Which combination of preview surfaces, isolation, permissions, and packaging allows local content to be viewed with sufficient security and a simple experience for personal use?
 
-## Deve investigar
+## Research questions
 
-- WebViews e superfícies equivalentes para HTML local;
-- visualização de PDF e as suas capacidades relevantes para leitura;
-- isolamento de conteúdo, execução de JavaScript, navegação, links e acesso a ficheiros locais;
-- sanitização e defesa em profundidade para Markdown e HTML gerados ou alterados externamente;
-- riscos de abrir imagens, links, PDFs, bibliografias e outros artefactos locais;
-- execução de compiladores e processos auxiliares com limites, diretórios de trabalho e permissões adequados;
-- macOS sandboxing, entitlements, permissões de ficheiros e persistência de acesso;
-- assinatura, notarização, distribuição e atualização para uma app pessoal;
-- implicações de licenciamento e empacotamento das dependências de preview;
-- mensagens de erro e recuperação quando o conteúdo ou uma dependência não é segura ou não pode ser aberta.
+- WebViews and equivalent surfaces for local HTML;
+- PDF viewing and its relevant reading capabilities;
+- content isolation, JavaScript execution, navigation, links, and local file access;
+- sanitization and defense in depth for Markdown and HTML generated or changed externally;
+- risks of opening images, links, PDFs, bibliographies, and other local artifacts;
+- running compilers and helper processes with appropriate limits, working directories, and permissions;
+- macOS sandboxing, entitlements, file permissions, and persistent access;
+- signing, notarization, distribution, and updates for a personal app;
+- licensing and packaging implications for preview dependencies;
+- error messages and recovery when content or a dependency is unsafe or cannot be opened.
 
-## Fora do escopo
+## Out of scope
 
-- criar um modelo completo de ameaça para distribuição pública;
-- decidir o parser Markdown ou o compilador LaTeX;
-- implementar autenticação, cloud ou colaboração;
-- otimizar para sistemas operativos que não sejam macOS;
-- assumir que uso pessoal elimina todos os riscos de executar conteúdo local.
+- creating a complete threat model for public distribution;
+- choosing the Markdown parser or LaTeX compiler;
+- implementing authentication, cloud services, or collaboration;
+- optimizing for operating systems other than macOS;
+- assuming personal use eliminates all risks of running local content.
 
-Deve distinguir riscos teóricos, riscos plausíveis no fluxo do MVP e requisitos necessários para distribuição fora do computador do utilizador.
+Distinguish theoretical risks, plausible risks in the MVP workflow, and requirements for distribution beyond the user's computer.
 
-## Cenários mínimos a avaliar
+## Minimum scenarios to evaluate
 
-- um Markdown contém HTML ou JavaScript incorporado;
-- um documento referencia imagens e ficheiros fora da pasta aberta;
-- um PDF ou link aponta para conteúdo inesperado;
-- um compilador recebe um projeto com comandos ou pacotes problemáticos;
-- a app é aberta pela primeira vez num macOS com permissões restritas.
+- a Markdown file contains embedded HTML or JavaScript;
+- a document references images and files outside the open folder;
+- a PDF or link points to unexpected content;
+- a compiler receives a project with problematic commands or packages;
+- the app is opened for the first time on macOS with restricted permissions.
 
-## Resultado específico
+## Deliverable
 
-Entregar uma comparação das opções de preview e das medidas de isolamento, uma recomendação condicional para o MVP pessoal, requisitos de distribuição e uma lista de riscos que devem ser aceites, mitigados ou adiados explicitamente.
+Compare preview options and isolation measures, and provide a conditional recommendation for the personal MVP, distribution requirements, and a list of risks to explicitly accept, mitigate, or defer.
 
-Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega). Não classificar uma opção como “segura” sem delimitar o modelo de ameaça e a evidência que sustenta a afirmação.
+Use the [shared report format](CONTEXT.md#formato-de-entrega). Do not call an option “secure” without defining the threat model and evidence supporting the claim.

@@ -1,35 +1,35 @@
-# Contexto de `BPViewerCore`
+# `BPViewerCore` context
 
-`BPViewerCore` concentra lógica sem UI que pode ser exercitada pelos runners e
-consumida pela app macOS. É a fronteira para manter parsing, resolução,
-filesystem, estado puro e processos separados de SwiftUI/AppKit.
+`BPViewerCore` contains UI-independent logic that can be exercised by the
+runners and consumed by the macOS app. It keeps parsing, resolution, filesystem
+operations, pure state, and processes separate from SwiftUI/AppKit.
 
-Áreas principais:
+Main areas:
 
-- `FileSystemFoundation.swift` — tipos de documento, incluindo imagens, e scanner lazy/recursivo.
+- `FileSystemFoundation.swift` — document types, including images, and a lazy, recursive scanner.
 - `SessionModels.swift` — modelos puros de tabs, preview, edição, posições de
   leitura e estado persistido.
-- `DocumentDiff.swift` — modos e baselines de comparação, providers de disco/Git
-  e motor puro de diff reutilizável por Markdown, JSON e futuros editores.
-- `DocumentTabSession.swift` — invariantes de abertura, seleção, fecho e
-  reordenação de tabs.
-- `WorkspaceSessionCoordinator.swift` — persistência de workspace, estado
-  global, roots/autorizações LaTeX e snapshots.
-- `DocumentOpenCoordinator.swift` — resolução de URLs, tipos suportados e
-  contexto/root LaTeX sem ações de UI.
-- `JSONAdapter.swift` — validação e formatação determinística de JSON para
-  preview.
-- `CSVAdapter.swift` — parsing e geração de HTML estático para preview CSV.
-- `TextSearch.swift` — correspondência textual normalizada e navegação circular
-  reutilizável pela pesquisa da app.
+- `DocumentDiff.swift` — comparison modes and baselines, disk/Git providers, and
+  a pure diff engine reusable by Markdown, JSON, and future editors.
+- `DocumentTabSession.swift` — invariants for opening, selecting, closing, and
+  reordering tabs.
+- `WorkspaceSessionCoordinator.swift` — workspace persistence, global state,
+  LaTeX roots and permissions, and snapshots.
+- `DocumentOpenCoordinator.swift` — URL resolution, supported types, and LaTeX
+  context/root without UI actions.
+- `JSONAdapter.swift` — validation and deterministic JSON formatting for
+  previews.
+- `CSVAdapter.swift` — parsing and static HTML generation for CSV previews.
+- `TextSearch.swift` — normalized text matching and circular navigation
+  reusable by app search.
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,
-  `MarkdownPreviewLink.swift` e `MathMLRenderer.swift` — renderização,
-  edição/merge e resolução de links Markdown.
+  `MarkdownPreviewLink.swift`, and `MathMLRenderer.swift` — rendering,
+  editing/merge, and Markdown link resolution.
 - `LatexAdapter.swift`, `LatexRootDiscovery.swift`, `LatexRenderCache.swift` e
-  `LatexTabContextPersistence.swift` — descoberta de root, execução/cache,
-  persistência de contexto e preview LaTeX/PDF.
+  `LatexTabContextPersistence.swift` — root discovery, execution/cache,
+  context persistence, and LaTeX/PDF previews.
 
-Contratos públicos e comportamento devem continuar alinhados com o
-[estado atual](../../docs/current-state.md) e a
-[arquitetura técnica](../../docs/technical/architecture.md). Alterações neste
-módulo devem ser verificadas pelos runners relevantes antes de depender da UI.
+Public contracts and behavior should remain aligned with the
+[current state](../../docs/current-state.md) and
+[technical architecture](../../docs/technical/architecture.md). Changes to this
+module should be checked with the relevant runners before relying on the UI.

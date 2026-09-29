@@ -1,217 +1,209 @@
-# Estado atual da app
+# Current app state
 
-`bp-viewer` é uma aplicação macOS nativa para abrir uma pasta local, navegar
-pelos ficheiros Markdown, LaTeX, JSON, CSV e PDF e apresentar o resultado
-renderizado ou formatado.
+`bp-viewer` is a native macOS app for opening a local folder, browsing Markdown,
+LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
 
-## Janela e navegação
+## Window and navigation
 
-- A janela usa tabs nativas do macOS para workspaces. Cada tab nativa
-  representa uma pasta e mantém uma topbar, sidebar, árvore e barra de tabs de
-  documentos independentes.
-- A sidebar abre uma pasta como raiz, mostra a árvore por pastas e ficheiros e
-  ignora ficheiros ocultos.
-- O botão direito numa pasta permite copiar o caminho, renomeá-la e enviá-la
-  para o Lixo. Num ficheiro, o menu também permite renomear, duplicar e enviá-lo
-  para o Lixo. Ficheiros e pastas podem ser movidos arrastando-os para uma pasta
-  da árvore; a app pede confirmação antes de executar o movimento. Tabs abertas
-  acompanham renomeações e movimentos; itens com alterações por guardar não
-  podem ser enviados para o Lixo.
-- A árvore carrega o primeiro nível e expande pastas sob pedido. Ficheiros
-  arrastados para as extremidades laterais da lista são movidos para a root
-  aberta, mesmo quando não existe espaço vazio abaixo dos itens. A pesquisa por
-  nome ou caminho procura apenas pastas diretamente dentro da raiz, faz scroll
-  automático até à primeira correspondência e aplica um highlight, sem filtrar
-  a árvore nem percorrer descendentes.
-- O cabeçalho permite fechar todas as pastas e limpar os registos de expansão;
-  cada pasta de primeiro nível tem a mesma ação disponível ao passar o rato.
-- O filtro de compatibilidade mostra Markdown, LaTeX, JSON, CSV, Word, PDF e
-  imagens por defeito; pode ser desligado para mostrar todos os ficheiros.
-- A árvore mantém expansão, scroll e filtro por workspace.
-- O botão de pasta, o `+` nativo e `⇧⌘T` abrem uma nova tab nativa de workspace
-  através do seletor de pastas. Workspaces já abertos são focados em vez de
-  duplicados; trocar de workspace não fecha tabs nem pede confirmação.
-- Ficheiros `.md`, `.markdown`, `.tex`, `.latex`, `.bib`, `.json`, `.csv`, `.docx`,
-  `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.heic` e `.heif` podem ser abertos
-  em tabs. Documentos Word são convertidos localmente para HTML rico e
-  visualizados numa página com fundo e zoom responsivo. Imagens são apresentadas
-  num preview read-only com moldura/canvas, ajuste à janela, zoom, refresh manual,
-  atualização automática quando o ficheiro muda e captura de snapshots.
-- O preview Word participa na pesquisa comum da tab ativa.
-  Outros ficheiros são abertos pela aplicação predefinida do macOS.
+- The window uses native macOS tabs for workspaces. Each native tab represents
+  a folder and has its own top bar, sidebar, tree, and document tab bar.
+- The sidebar opens a folder as the root, displays a tree of folders and files,
+  and ignores hidden files.
+- Right-clicking a folder lets you copy its path, rename it, or move it to the
+  Trash. The file menu also lets you rename, duplicate, or move a file to the
+  Trash. Files and folders can be moved by dragging them to a folder in the tree;
+  the app asks for confirmation before moving them. Open tabs follow renames and
+  moves; items with unsaved changes cannot be moved to the Trash.
+- The tree loads the first level and expands folders on demand. Dragging files
+  to the sides of the list moves them to the open root, even when there is no
+  empty space below the items. Name or path search looks only for folders
+  directly inside the root, scrolls automatically to the first match, and
+  highlights it without filtering the tree or searching descendants.
+- The header can collapse all folders and clear expansion records; the same
+  action is available on hover for each first-level folder.
+- By default, the compatibility filter shows Markdown, LaTeX, JSON, CSV, Word,
+  PDF, and images. It can be disabled to show all files.
+- The tree preserves expansion, scroll position, and filter state per workspace.
+- The folder button, native `+`, and `⇧⌘T` open a new native workspace tab via
+  the folder picker. Already open workspaces are focused instead of duplicated;
+  switching workspaces does not close tabs or ask for confirmation.
+- Files with extensions `.md`, `.markdown`, `.tex`, `.latex`, `.bib`, `.json`,
+  `.csv`, `.docx`, `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.heic`, and `.heif`
+  can be opened in tabs. Word documents are converted locally to rich HTML and
+  displayed on a page with a background and responsive zoom. Images are shown
+  in a read-only preview with a frame/canvas, fit-to-window, zoom, manual
+  refresh, automatic updates when the file changes, and snapshot capture.
+- The Word preview participates in search for the active tab. Other files open
+  in the macOS default app.
 
 ## Markdown
 
-- `SwiftMarkdownAdapter` converte o conteúdo em HTML seguro para apresentação
-  numa `WKWebView`.
-- O preview apresenta headings com outline, listas, tabelas, blocos de código,
-  links, imagens e matemática TeX comum convertida para MathML.
-- Imagens locais existentes são embutidas no HTML e continuam a ser observadas
-  como dependências.
-- Links Markdown para Markdown e LaTeX abrem ou focam tabs; links para outros
-  ficheiros usam o macOS; links externos abrem no browser.
-- O preview mantém o último resultado quando uma atualização falha e mostra o
-  diagnóstico.
-- Um duplo clique no preview abre diretamente o editor de source Markdown.
-  A edição tem syntax highlighting adaptado aos temas claro/escuro, gravação
-  explícita, undo/redo, shortcuts `⌘B`, `⌘I` e `⌘K`, deteção de alterações
-  externas e resolução de conflitos. O editor ativa a autocorreção ortográfica
-  do macOS. Para completar palavras em linha, usa o modelo Apple Foundation no
-  dispositivo quando está disponível para o idioma atual. Caso contrário, em
-  idiomas sem previsões inline nativas do macOS, usa os completamentos do
-  dicionário local. A sugestão aparece a cinzento e `Space` aceita a palavra
-  seguida de espaço, enquanto `Tab` aceita apenas a palavra. Nos idiomas com
-  previsões nativas, estas continuam a ser fornecidas pelo macOS. Em linhas de lista com
-  marcadores `-`, `*` ou `+`, Return continua a lista; em listas ordenadas com
-  `.` ou `)`, incrementa o número. Return numa linha vazia remove o marcador e
-  termina a lista.
-- O editor pode ocupar a superfície inteira ou funcionar em split view, com o
-  source Markdown à esquerda e o preview live à direita.
-- As alterações Markdown permanecem no rascunho enquanto o editor está aberto;
-  `Save` e `Esc` guardam explicitamente e saem do modo de edição, enquanto
-  `Discard Changes` repõe a versão guardada e mantém o editor aberto. Alterações
-  externas durante a edição abrem o painel de conflito sem gravar
-  automaticamente.
-- Na barra de ações comum, um documento já guardado não mostra o estado `Saved`
-  nem `Discard Changes`; o botão `Save` permanece visível mas desativado.
-- Durante a edição, a toolbar disponibiliza um diff com dois modos:
-  `Versão guardada no disco`, que compara o rascunho atual com o conteúdo
-  existente no ficheiro, e `Git diff`, que compara o rascunho atual com a
-  versão `HEAD`. A coluna esquerda é read-only e a coluna direita é o editor
-  real; alterações na direita continuam a atualizar o preview Markdown live.
-  As duas colunas partilham o scroll vertical para manter as linhas alinhadas.
-  O diff mantém `undo/redo` no rascunho e não mantém uma lista separada de
-  versões históricas.
-- No modo `Git diff`, `Discard Git Changes` aparece junto de `Current Draft`
-  quando o ficheiro é rastreado e tem versão em `HEAD`. Uma confirmação única
-  repõe o ficheiro inteiro para `HEAD`, descartando alterações staged, unstaged
-  e o rascunho atual; depois a app mantém o editor aberto e regressa ao modo
-  source.
-- `⌘F` abre uma barra de pesquisa comum para previews e editores source. A
-  pesquisa fica limitada à tab ativa, ignora maiúsculas/minúsculas e acentos,
-  permite avançar/recuar com Enter/Shift+Enter e fecha com Esc. Em split view,
-  pesquisa o painel que tem o foco.
+- `SwiftMarkdownAdapter` converts content to safe HTML for display in a
+  `WKWebView`.
+- The preview shows headings with an outline, lists, tables, code blocks, links,
+  images, and common TeX mathematics converted to MathML.
+- Existing local images are embedded in the HTML and remain monitored as
+  dependencies.
+- Markdown links to Markdown and LaTeX open or focus tabs; links to other files
+  use macOS; external links open in the browser.
+- The preview keeps the last result if an update fails and displays the
+  diagnostic.
+- Double-clicking the preview opens the Markdown source editor. The editor has
+  syntax highlighting adapted to light and dark themes, explicit saving,
+  undo/redo, `⌘B`, `⌘I`, and `⌘K` shortcuts, external change detection, and
+  conflict resolution. The editor enables macOS spell correction. For inline
+  word completion, it uses the on-device Apple Foundation model when available
+  for the current language. Otherwise, for languages without native macOS
+  inline predictions, it uses completions from the local dictionary. The
+  suggestion appears in gray; `Space` accepts the word followed by a space,
+  while `Tab` accepts only the word. For languages with native predictions,
+  macOS continues to provide them. In list lines with `-`, `*`, or `+` markers,
+  Return continues the list; in ordered lists with `.` or `)`, it increments the
+  number. Return on an empty line removes the marker and ends the list.
+- The editor can fill the whole surface or use split view, with Markdown source
+  on the left and a live preview on the right.
+- Markdown changes remain in the draft while the editor is open. `Save` and
+  `Esc` explicitly save and exit editing, while `Discard Changes` restores the
+  saved version and keeps the editor open. External changes during editing open
+  the conflict panel without saving automatically.
+- In the shared action bar, a saved document does not show the `Saved` state or
+  `Discard Changes`; the `Save` button stays visible but disabled.
+- During editing, the toolbar provides a diff with two modes: `Version saved on
+  disk`, which compares the current draft with the file contents, and `Git diff`,
+  which compares the draft with `HEAD`. The left column is read-only and the
+  right column is the actual editor; edits on the right continue to update the
+  live Markdown preview. Both columns share vertical scrolling to keep lines
+  aligned. The diff preserves draft `undo/redo` and does not keep a separate list
+  of historical versions.
+- In `Git diff` mode, `Discard Git Changes` appears beside `Current Draft` when
+  the file is tracked and has a `HEAD` version. A single confirmation restores
+  the whole file to `HEAD`, discarding staged, unstaged, and current draft
+  changes; the app then keeps the editor open and returns to source mode.
+- `⌘F` opens a shared search bar for previews and source editors. Search is
+  limited to the active tab, ignores case and accents, supports next/previous
+  with Enter/Shift+Enter, and closes with Esc. In split view, it searches the
+  panel with focus.
 
-## LaTeX e PDF
+## LaTeX and PDF
 
-- Ficheiros PDF existentes podem ser abertos diretamente em tabs e apresentados
-  com a mesma superfície PDFKit usada pelo preview LaTeX.
-
-- Ao abrir um ficheiro LaTeX, a app procura roots dentro do workspace. Uma root
-  única é escolhida automaticamente; zero ou várias roots abrem uma seleção.
-- A escolha da root fica guardada por workspace. Um capítulo aberto permanece
-  como contexto da tab da root, sem criar uma segunda tab de preview.
-- `latexmk` é usado quando está disponível; `pdflatex`, `xelatex` e `lualatex`
-  são usados conforme a instalação e o conteúdo do documento.
-- A compilação corre num workspace temporário e produz bytes de PDF para a
-  superfície `PDFView`.
-- Dependências fora do workspace pedem autorização. O modo de `shell escape`
-  é configurável e começa desativado.
-- O preview mostra erros de compilação, permite expandir e copiar o diagnóstico
-  e conserva o PDF anterior quando a compilação atual falha.
-- O PDF suporta outline, pesquisa, cópia, impressão, links tratados pela app,
-  zoom e restauração da posição de leitura.
-- Um duplo clique no PDF LaTeX abre o source contextual (ou o root) com
-  números de linha e tenta posicionar o cursor através de SyncTeX; sem mapa,
-  abre o editor sem deslocamento.
-- Ficheiros `.bib` abertos na árvore usam o root LaTeX do projeto e entram no
-  mesmo editor como source contextual; citações podem abrir diretamente a
-  entrada correspondente no ficheiro de referências. Um duplo clique numa
-  referência impressa no PDF usa o mapa SyncTeX do `.bbl` gerado para abrir
-  essa entrada no `.bib`; no título da bibliografia, abre o início do `.bib`.
-- O editor LaTeX usa highlighting de comandos, comentários, ambientes,
-  argumentos e matemática, com fallback monoespaçado. A toolbar oferece
-  source/split view, Undo/Redo, Save, Discard Changes, Disk Diff e Git Diff.
-  O source ativa autocorreção ortográfica, previsão inline do sistema e
-  completamento nativo do macOS, mantendo desativadas as substituições de
-  aspas, traços e texto.
-- Em split view, o source editado permanece à esquerda e o PDF à direita.
-  Alterações são compiladas após um debounce de dois segundos, em workspace
-  temporário, mantendo o último PDF válido durante erros.
-- O source contextual pode ser guardado independentemente do resultado da
-  compilação. Alterações externas no source abrem conflito; alterações noutras
-  dependências apenas recompilam mantendo o rascunho. Diffs e descarte Git
-  aplicam-se ao ficheiro contextual.
+- Existing PDF files can be opened directly in tabs and displayed with the same
+  PDFKit surface used by the LaTeX preview.
+- When a LaTeX file is opened, the app looks for roots inside the workspace. A
+  single root is selected automatically; zero or multiple roots open a picker.
+- Root selection is saved per workspace. An opened chapter remains the context
+  for the root tab instead of creating a second preview tab.
+- `latexmk` is used when available; `pdflatex`, `xelatex`, and `lualatex` are
+  used according to the installation and document contents.
+- Compilation runs in a temporary workspace and produces PDF bytes for the
+  `PDFView` surface.
+- Dependencies outside the workspace require authorization. `shell escape`
+  mode is configurable and disabled by default.
+- The preview displays compilation errors, lets you expand and copy the
+  diagnostic, and preserves the previous PDF when the current compilation fails.
+- The PDF supports an outline, search, copy, printing, app-handled links, zoom,
+  and restoration of reading position.
+- Double-clicking a LaTeX PDF opens the contextual source (or the root) with
+  line numbers and attempts to position the cursor through SyncTeX; without a
+  map, it opens the editor without moving the cursor.
+- `.bib` files opened from the tree use the project's LaTeX root and open as
+  contextual source in the same editor; citations can open the corresponding
+  entry directly in the references file. Double-clicking a printed reference
+  in the PDF uses the generated `.bbl` SyncTeX map to open that entry in the
+  `.bib`; double-clicking the bibliography title opens the start of the `.bib`.
+- The LaTeX editor highlights commands, comments, environments, arguments, and
+  mathematics, with a monospaced fallback. The toolbar offers source/split
+  view, Undo/Redo, Save, Discard Changes, Disk Diff, and Git Diff. The source
+  editor enables spell correction, system inline predictions, and native macOS
+  completions, while keeping quote, dash, and text substitutions disabled.
+- In split view, the edited source stays on the left and the PDF on the right.
+  Changes are compiled after a two-second debounce in a temporary workspace,
+  preserving the last valid PDF during errors.
+- Contextual source can be saved independently of the compilation result.
+  External changes to the source open a conflict; changes to other dependencies
+  only trigger recompilation and preserve the draft. Diffs and Git discard apply
+  to the contextual file.
 
 ## JSON
 
-- Ficheiros `.json` são validados e apresentados numa superfície raw read-only
-  monoespaçada, preservando exatamente as linhas do ficheiro, incluindo vazias.
-  A superfície mostra números de linha.
-- Um duplo clique entra num editor raw monoespaçado, com undo/redo, gravação
-  explícita apenas para JSON válido e resolução de conflitos externos, sem
-  split view. O editor ativa autocorreção ortográfica, previsão inline do
-  sistema e completamento nativo do macOS, mantendo desativadas as
-  substituições de aspas, traços e texto.
-- O editor JSON disponibiliza os modos de diff `Versão guardada no disco` e
-  `Git diff`, com a versão de referência read-only à esquerda e o editor raw
-  editável à direita, ambos com numeração de linhas. Linhas adicionadas no
-  lado direito têm marcador `+` e destaque verde, tal como num diff Git.
-  Ficheiros fora de Git ou sem versão `HEAD` mostram um
-  estado explicativo, sem retirar o modo de comparação com o disco.
-- No modo `Git diff`, a ação `Discard Git Changes` tem o mesmo comportamento
-  destrutivo do editor Markdown: repõe staged, unstaged e rascunho para `HEAD`
-  numa única confirmação, mantendo o editor aberto e saindo do diff.
-- O preview JSON suporta seleção/cópia de texto, zoom, snapshots e atualização
-  automática quando o ficheiro muda.
-- O preview e o editor raw JSON usam a mesma barra de pesquisa da app.
-- Rascunhos JSON inválidos podem permanecer abertos no editor, mas não são
-  gravados até voltarem a ser válidos; o editor mostra o estado “Não guardado”.
-- Ao sair do editor JSON com conteúdo inválido, a app permite continuar a editar
-  ou descartar as alterações; a opção de guardar só aparece para JSON válido.
-- A barra do editor JSON disponibiliza `Discard Changes` para repor a versão
-  guardada sem sair do modo de edição.
-- Ao fechar uma tab de documento com alterações por guardar, a app permite
-  continuar a editar, guardar ou descartar as alterações. Ao fechar uma tab
-  nativa de workspace, uma única confirmação permite guardar tudo, descartar
-  tudo ou cancelar.
-- JSON inválido mantém o último preview válido, quando existe, e mostra o
-  diagnóstico da validação.
+- `.json` files are validated and displayed in a monospaced, read-only raw
+  surface that preserves the file's exact lines, including empty lines. The
+  surface shows line numbers.
+- Double-clicking opens a monospaced raw editor with undo/redo, explicit saving
+  for valid JSON only, and external conflict resolution. It has no split view.
+  The editor enables spell correction, system inline predictions, and native
+  macOS completions, while keeping quote, dash, and text substitutions disabled.
+- The JSON editor provides `Version saved on disk` and `Git diff` modes, with a
+  read-only reference version on the left and the editable raw editor on the
+  right, both with line numbers. Added lines on the right have a `+` marker and
+  green highlight, as in a Git diff. Files outside Git or without a `HEAD`
+  version show an explanatory state while keeping disk comparison available.
+- In `Git diff` mode, `Discard Git Changes` behaves like the destructive action
+  in the Markdown editor: one confirmation restores staged, unstaged, and draft
+  changes to `HEAD`, keeps the editor open, and exits diff mode.
+- The JSON preview supports text selection/copy, zoom, snapshots, and automatic
+  updates when the file changes.
+- The JSON preview and raw editor use the app's shared search bar.
+- Invalid JSON drafts can remain open in the editor, but are not saved until
+  they become valid again; the editor shows the “Unsaved” state.
+- When exiting the JSON editor with invalid content, the app lets you continue
+  editing or discard changes; the save option appears only for valid JSON.
+- The JSON editor bar provides `Discard Changes` to restore the saved version
+  without exiting edit mode.
+- When closing a document tab with unsaved changes, the app lets you continue
+  editing, save, or discard changes. When closing a native workspace tab, a
+  single confirmation lets you save all, discard all, or cancel.
+- Invalid JSON keeps the last valid preview, if one exists, and shows the
+  validation diagnostic.
 
 ## CSV
 
-- Ficheiros `.csv` são lidos e apresentados numa tabela de leitura, com suporte
-  para campos entre aspas, aspas escapadas, linhas multilinha e separadores
-  vírgula, ponto e vírgula ou tab detetados automaticamente.
-- O preview CSV apresenta uma grelha tipo folha de cálculo, com letras de
-  colunas, números de linhas, célula ativa e navegação por teclado. Um
-  duplo-clique permite editar uma célula; `Enter` ou `Esc` confirmam a célula
-  no rascunho sem gravar o ficheiro, mantendo disponíveis `Save` e
-  `Discard Changes`.
-- A barra de edição CSV disponibiliza `Undo` e `Redo`; `⌘Z` desfaz e `⇧⌘Z`
-  refaz alterações no rascunho sem gravar automaticamente o ficheiro.
-- O preview CSV participa na pesquisa, zoom, snapshots e atualização automática
-  quando o ficheiro muda.
-- `⌘S` grava as alterações mantendo o separador detetado e aplicando aspas apenas
-  quando necessárias. Alterações externas enquanto existe um rascunho mostram
-  um conflito com opções para manter o rascunho ou usar a versão externa.
+- `.csv` files are read and displayed in a read-only table that supports quoted
+  fields, escaped quotes, multiline rows, and automatic detection of comma,
+  semicolon, or tab delimiters.
+- The CSV preview displays a spreadsheet-like grid with column letters, row
+  numbers, an active cell, and keyboard navigation. Double-clicking edits a
+  cell; `Enter` or `Esc` confirms the cell in the draft without saving the file,
+  leaving `Save` and `Discard Changes` available.
+- The CSV editing bar provides `Undo` and `Redo`; `⌘Z` undoes and `⇧⌘Z` redoes
+  draft changes without saving the file automatically.
+- The CSV preview participates in search, zoom, snapshots, and automatic updates
+  when the file changes.
+- `⌘S` saves changes while preserving the detected delimiter and quoting only
+  when needed. External changes while a draft exists show a conflict with
+  options to keep the draft or use the external version.
 
-## Tabs, preferências e snapshots
+## Tabs, preferences, and snapshots
 
-- Cada ficheiro tem no máximo uma tab. As tabs podem ser selecionadas,
-  reordenadas, fechadas individualmente, fechadas à direita ou fechadas exceto
-  a tab escolhida.
-- `⌘W` fecha a tab de documento ativa na janela-chave; não fecha o workspace.
-- O botão `+` no fim da barra cria uma tab Markdown nova em memória, sem caminho
-  predefinido; o primeiro `Save` abre o painel para escolher o ficheiro `.md`.
-- Tabs, tab ativa, contexto LaTeX, tema, largura e visibilidade da sidebar,
-  largura e visibilidade do outline por ficheiro, zooms predefinidos, filtro,
-  expansão e posições de leitura são persistidos.
-- A app restaura todas as tabs nativas de workspaces existentes, na ordem em
-  que estavam abertas, foca a última ativa e remove referências a pastas ou
-  tabs que já não existem.
-- O utilizador pode selecionar uma área do preview, incluindo conteúdo obtido
-  com auto-scroll, e abrir o recorte numa janela flutuante.
-- Snapshots são guardados como PNG em Application Support e permanecem
-  disponíveis entre reinícios até serem fechados pelo utilizador.
+- Each file has at most one tab. Tabs can be selected, reordered, closed
+  individually, closed to the right, or closed except for the selected tab.
+- `⌘W` closes the active document tab in the key window; it does not close the
+  workspace.
+- The `+` button at the end of the bar creates a new in-memory Markdown tab
+  without a default path; the first `Save` opens a panel to choose the `.md` file.
+- The global `⇧⌘E` shortcut, when a Terminal, iTerm2, Ghostty, WezTerm,
+  Alacritty, Kitty, or Warp window is active, sends `Ctrl+O` to the Codex CLI.
+  After confirming a new response in the clipboard, Viewer opens a new in-memory
+  Markdown tab with that response. The response is not saved automatically.
+  Sending keystrokes requires macOS Accessibility permission; after granting it,
+  you may need to quit and reopen Viewer for the change to take effect.
+- Tabs, active tab, LaTeX context, theme, sidebar width and visibility, per-file
+  outline width and visibility, default zoom levels, filter, expansion, and
+  reading positions are persisted.
+- The app restores all existing native workspace tabs in their previous order,
+  focuses the last active one, and removes references to folders or tabs that
+  no longer exist.
+- You can select an area of the preview, including content loaded through
+  autoscroll, and open the selection in a floating window.
+- Snapshots are saved as PNG files in Application Support and remain available
+  across restarts until closed by the user.
 
-## Entradas principais do código
+## Main code entry points
 
-- [`Sources/BPViewerApp/CONTEXT.md`](../Sources/BPViewerApp/CONTEXT.md) —
-  composição da janela e coordenação da sessão.
+- [`Sources/BPViewerApp/CONTEXT.md`](../Sources/BPViewerApp/CONTEXT.md) — window
+  composition and session coordination.
 - [`Sources/BPViewerCore/CONTEXT.md`](../Sources/BPViewerCore/CONTEXT.md) —
-  lógica partilhada de filesystem, Markdown, LaTeX, tabs e edição.
-- [`docs/technical/architecture.md`](technical/architecture.md) — fronteiras
-  técnicas implementadas.
-- [`docs/technical/ui-architecture.md`](technical/ui-architecture.md) —
-  composição e estado atuais da UI.
+  shared filesystem, Markdown, LaTeX, tabs, and editing logic.
+- [`docs/technical/architecture.md`](technical/architecture.md) — implemented
+  technical boundaries.
+- [`docs/technical/ui-architecture.md`](technical/ui-architecture.md) — current
+  UI composition and state.

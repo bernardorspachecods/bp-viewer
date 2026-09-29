@@ -1,27 +1,27 @@
-# Teste de links Markdown
+# Markdown link test
 
-Usa esta página para confirmar que a app distingue links web de ficheiros
-locais que não são visualizados pelo BP Viewer.
+Use this page to confirm that the app distinguishes web links from local files
+that are not previewed by BP Viewer.
 
 ## Links externos
 
 - [Abrir example.com](https://example.com)
-- [Abrir a documentação Apple](https://developer.apple.com/documentation/webkit)
+- [Open Apple documentation](https://developer.apple.com/documentation/webkit)
 
-Ambos devem abrir no browser predefinido do macOS.
+Both should open in the macOS default browser.
 
-## Ficheiros locais não suportados
+## Unsupported local files
 
-- [Abrir ficheiro de texto](plain-text.txt)
-- [Abrir CSV](data.csv)
+- [Open text file](plain-text.txt)
+- [Open CSV](data.csv)
 
-Estes devem abrir na aplicação predefinida do macOS, sem criar uma tab de
-preview no BP Viewer.
+These should open in the macOS default app without creating a preview tab in
+BP Viewer.
 
 ## Checklist
 
-- [x] Link externo abre no browser.
-- [x] Segundo link externo abre no browser.
-- [x] Ficheiro `.txt` abre na aplicação predefinida.
-- [x] Ficheiro `.csv` abre na aplicação predefinida.
-- [x] A app permanece aberta e utilizável depois de cada clique.
+- [x] The external link opens in the browser.
+- [x] The second external link opens in the browser.
+- [x] The `.txt` file opens in the default app.
+- [x] The `.csv` file opens in the default app.
+- [x] The app remains open and usable after each click.

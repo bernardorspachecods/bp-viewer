@@ -1,12 +1,12 @@
-# Contexto de `scripts/`
+# `scripts/` context
 
-Scripts locais para desenvolvimento da app macOS:
+Local scripts for macOS app development:
 
-- `dev-run.sh` recompila e reinicia a app quando `Sources/` muda.
-- `build-app.sh [debug|release]` cria o bundle `.app` local e copia os
-  recursos necessários.
-- `restart-app.sh` fecha instâncias locais, recompila em `debug` e abre o
+- `dev-run.sh` rebuilds and restarts the app when `Sources/` changes.
+- `build-app.sh [debug|release]` creates the local `.app` bundle and copies the
+  required resources.
+- `restart-app.sh` closes local instances, rebuilds in `debug`, and opens the
   bundle.
 
-São ferramentas de desenvolvimento, não dependências do runtime da app. Os
-artefactos são escritos em `.build/`
+These are development tools, not app runtime dependencies. Artifacts are
+written to `.build/`.

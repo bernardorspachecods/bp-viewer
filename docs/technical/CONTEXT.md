@@ -1,12 +1,10 @@
-# Contexto de `docs/technical/`
+# `docs/technical/` context
 
-Esta pasta descreve a arquitetura que existe no código atual.
+This directory describes the architecture present in the current code.
 
-- [`architecture.md`](architecture.md) — módulos, fluxo de dados, renderização,
-  filesystem, persistência e limites de segurança.
-- [`ui-architecture.md`](ui-architecture.md) — composição da janela, estado da
-  sessão, superfícies e interações da UI.
+- [`architecture.md`](architecture.md) — modules, data flow, rendering, filesystem, persistence, and security boundaries.
+- [`ui-architecture.md`](ui-architecture.md) — window composition, session state, surfaces, and UI interactions.
 
-O comportamento observável consolidado está em
-[`../current-state.md`](../current-state.md). O código em `Sources/` prevalece
-quando um detalhe de implementação divergir da documentação.
+Consolidated observable behavior is documented in
+[`../current-state.md`](../current-state.md). Code in `Sources/` takes precedence
+when an implementation detail differs from the documentation.

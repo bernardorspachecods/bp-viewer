@@ -1,9 +1,9 @@
-# Contexto de `Tests/`
+# `Tests/` context
 
-Este diretório contém testes do Swift Package. O target atual
-`BPViewerAppTests` verifica o core através de `MarkdownAdapterTests.swift`.
+This directory contains Swift Package tests. The current
+`BPViewerAppTests` target checks the core through `MarkdownAdapterTests.swift`.
 
-Os runners executáveis em [`Sources/`](../Sources/CONTEXT.md) são a validação
-determinística usada quando o toolchain local não disponibiliza o módulo
-`Testing`. Não duplicar nesses testes a lógica dos runners sem uma razão de
-integração clara.
+The executable runners in [`Sources/`](../Sources/CONTEXT.md) provide
+deterministic validation when the local toolchain does not provide the
+`Testing` module. Do not duplicate runner logic in these tests without a clear
+integration reason.

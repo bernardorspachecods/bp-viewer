@@ -1,172 +1,173 @@
-# Plano: editor LaTeX equivalente ao editor Markdown
+# Plan: LaTeX editor equivalent to the Markdown editor
 
-## Estado
+## Status
 
-Plano confirmado para implementação. O `go` do utilizador já foi dado.
+Approved for implementation. The user has already given the go-ahead.
 
-## Objetivo
+## Objective
 
-Fazer o editor LaTeX oferecer o mesmo fluxo de edição source do Markdown:
-duplo clique no preview, source/split view, preview live, Undo/Redo, Save,
-Discard Changes, conflitos externos, Disk Diff, Git Diff, pesquisa e
-navegação entre preview e source.
+Give the LaTeX editor the same source editing workflow as Markdown: double-click
+the preview, source/split view, live preview, Undo/Redo, Save, Discard Changes,
+external conflicts, Disk Diff, Git Diff, search, and navigation between preview
+and source.
 
-O preview LaTeX continuará a ser PDFKit. Neste contexto, “preview live”
-significa recompilar assincronamente depois de aproximadamente dois segundos
-sem alterações, preservando o último PDF válido enquanto a compilação corre ou
-falha.
+The LaTeX preview will continue to use PDFKit. In this context, “live preview”
+means recompiling asynchronously after approximately two seconds without
+changes, while preserving the last valid PDF if compilation is running or fails.
 
-## Decisões de produto
+## Product decisions
 
-- A edição começa por duplo clique no PDF LaTeX.
-- Se a tab tiver um ficheiro contextual, esse ficheiro é o source editado;
-  caso contrário, é editado o root principal.
-- O preview compila sempre o root principal, incorporando o rascunho do source
-  contextual.
-- O debounce inicial do preview live é de aproximadamente dois segundos.
-- Compilações obsoletas são canceladas ou ignoradas; nunca podem substituir um
-  PDF produzido por um rascunho mais recente.
-- SyncTeX é gerado quando possível e o duplo clique posiciona o cursor na
-  linha/coluna correspondente. Sem mapa disponível, o editor usa um fallback
-  seguro de posição.
-- Âncoras e referências internas permanecem navegáveis no PDF. Links externos
-  abrem no browser e links para ficheiros suportados passam pelo router da app.
-- O source pode ser guardado mesmo quando a compilação falha. O último PDF
-  válido permanece visível e o diagnóstico de compilação é apresentado.
-- Uma alteração externa no source editado abre o painel de conflito. Uma
-  alteração externa noutra dependência apenas dispara nova compilação mantendo
-  o rascunho.
-- Disk Diff e Git Diff comparam sempre o ficheiro efetivamente editado, não
-  necessariamente o root representado pela tab.
-- `Discard Git Changes` repõe apenas o ficheiro editado para `HEAD`, numa única
-  confirmação, e recompila o projeto pelo root.
-- O source LaTeX usa highlighting específico para comandos, comentários,
-  ambientes, argumentos e matemática, com fallback monoespaçado.
+- Editing starts with a double-click on the LaTeX PDF.
+- If the tab has a contextual file, that file is the source being edited;
+  otherwise, edit the main root file.
+- The preview always compiles the main root, incorporating the contextual
+  source draft.
+- The initial live preview debounce is approximately two seconds.
+- Obsolete compilations are cancelled or ignored; they must never replace a PDF
+  produced from a newer draft.
+- SyncTeX is generated when possible, and a double-click places the cursor at
+  the corresponding line and column. If no map is available, the editor uses a
+  safe position fallback.
+- Internal anchors and references remain navigable in the PDF. External links
+  open in the browser, and links to supported files go through the app router.
+- The source can be saved even if compilation fails. The last valid PDF remains
+  visible and the compilation diagnostic is displayed.
+- An external change to the edited source opens the conflict panel. An external
+  change to another dependency only triggers recompilation and preserves the
+  draft.
+- Disk Diff and Git Diff always compare the file actually being edited, which
+  is not necessarily the root represented by the tab.
+- `Discard Git Changes` restores only the edited file to `HEAD` in a single
+  confirmation and recompiles the project from its root.
+- LaTeX source uses syntax highlighting for commands, comments, environments,
+  arguments, and mathematics, with a monospaced fallback.
 
-## Desenho técnico
+## Technical design
 
-### Sessão source comum
+### Shared source session
 
-A sessão atualmente chamada `MarkdownEditSession` já é usada por Markdown e
-JSON. Deve ser aprofundada para uma sessão source comum, evitando uma segunda
-implementação paralela para LaTeX. A sessão concentra source base/atual,
-Undo/Redo, estado de gravação, conflito e modo source/split/diff.
+The session currently called `MarkdownEditSession` is already used by Markdown
+and JSON. It should be extended into a common source session to avoid a second,
+parallel LaTeX implementation. The session owns the base and current source,
+Undo/Redo, save state, conflicts, and source/split/diff mode.
 
-Markdown mantém o merge estrutural que já conhece blocos Markdown; LaTeX usa
-merge de texto apropriado ao source TeX. A UI e o diff não devem conhecer essas
-diferenças.
+Markdown keeps its structural merge, which understands Markdown blocks; LaTeX
+uses a text merge suited to TeX source. The UI and diff should not know about
+these differences.
 
-### Compilação com rascunho
+### Compilation with a draft
 
-`LocalLatexAdapter` deverá aceitar um override em memória para o ficheiro
-editado. O adapter prepara uma sobreposição temporária com paths relativos
-estáveis, compila o root nessa sobreposição, mantém o projeto original
-intocado e devolve:
+`LocalLatexAdapter` should accept an in-memory override for the edited file. The
+adapter prepares a temporary overlay with stable relative paths, compiles the
+root in that overlay, leaves the original project untouched, and returns:
 
-- PDF válido;
-- dependências observadas pelo recorder;
-- diagnóstico de compilação;
-- dados SyncTeX suficientes para mapear posição PDF para source.
+- a valid PDF;
+- dependencies observed by the recorder;
+- compilation diagnostics;
+- enough SyncTeX data to map a PDF position to source.
 
-O pipeline existente de roots, engines, bibliografia, permissões externas,
-shell escape, timeout e cache mantém-se. Previews de rascunho não devem
-contaminar o cache persistente de previews guardados.
+The existing pipeline for roots, engines, bibliography, external permissions,
+shell escape, timeouts, and caching remains in place. Draft previews must not
+pollute the persistent cache of saved previews.
 
-### Estado da tab e coordenação
+### Tab state and coordination
 
-`DocumentTab` passa a representar também a sessão LaTeX e o URL do source
-contextual. `presentationMode` e `DocumentDiffCoordinator` deixam de assumir
-que o source é sempre `tab.url`.
+`DocumentTab` will also represent the LaTeX session and contextual source URL.
+`presentationMode` and `DocumentDiffCoordinator` must stop assuming that the
+source is always `tab.url`.
 
-`AppModel` coordena o ciclo de vida: entrada por duplo clique, source/split,
-alterações, debounce, gravação, descarte, conflitos, diffs e re-renderização.
-O watcher observa o source editado, o root, dependências locais e dependências
-externas autorizadas.
+`AppModel` coordinates the lifecycle: entry via double-click, source/split,
+changes, debounce, saving, discarding, conflicts, diffs, and rerendering. The
+watcher observes the edited source, the root, local dependencies, and authorized
+external dependencies.
 
 ### UI
 
-O editor LaTeX reutiliza a toolbar, action bar, diff view, gutter, pesquisa e
-editor AppKit já usados pelo Markdown. A split view apresenta o source à
-esquerda e o PDF à direita. O PDF recebe callbacks para duplo clique com
-posição e routing de links.
+The LaTeX editor reuses the toolbar, action bar, diff view, gutter, search, and
+AppKit editor already used by Markdown. The split view shows the source on the
+left and the PDF on the right. The PDF provides callbacks for double-clicks
+with position and link routing.
 
-## Fatias de implementação
+## Implementation slices
 
-Cada fatia começa por um teste focado, passa por uma implementação mínima e
-termina com os testes relevantes e validação manual.
+Each slice starts with a focused test, proceeds through a minimal implementation,
+and ends with the relevant tests and manual validation.
 
-1. Generalizar a sessão source e os modos de apresentação para LaTeX.
-2. Adicionar o URL editável contextual e baselines de Disk/Git baseados nesse
-   URL.
-3. Adicionar overrides temporários ao adapter LaTeX, preservando includes,
-   imagens e bibliografia sem alterar a pasta do utilizador.
-4. Gerar e interpretar SyncTeX, incluindo fallback quando a ferramenta/mapa
-   não estiver disponível.
-5. Adicionar highlighting LaTeX ao `SourceEditorView`.
-6. Ligar o PDF à entrada por duplo clique, ao source editor e à split view.
-7. Implementar preview live com debounce, cancelamento/gerações e último PDF
-   válido.
-8. Implementar Save, Esc, Discard Changes, conflitos externos e alterações em
-   dependências.
-9. Ligar Disk Diff, Git Diff e Discard Git Changes ao source contextual.
-10. Ligar links internos, externos e ficheiros ao comportamento definido.
-11. Atualizar o estado atual, arquitetura técnica, UI architecture e fixtures
-    depois do comportamento estar implementado e validado.
+1. Generalize the source session and presentation modes for LaTeX.
+2. Add the editable contextual URL and Disk/Git baselines based on that URL.
+3. Add temporary overrides to the LaTeX adapter, preserving includes, images,
+   and bibliography without changing the user's folder.
+4. Generate and interpret SyncTeX, including a fallback when the tool or map is
+   unavailable.
+5. Add LaTeX syntax highlighting to `SourceEditorView`.
+6. Connect the PDF to double-click entry, the source editor, and split view.
+7. Implement live preview with debounce, cancellation/generations, and the last
+   valid PDF.
+8. Implement Save, Esc, Discard Changes, external conflicts, and dependency
+   changes.
+9. Connect Disk Diff, Git Diff, and Discard Git Changes to the contextual
+   source.
+10. Connect internal, external, and file links to the defined behavior.
+11. Update the current state, technical architecture, UI architecture, and
+    fixtures after the behavior is implemented and validated.
 
-## Testes
+## Tests
 
-Os contratos puros ficam em `BPViewerCore` e são exercitados pelos testes e
-pelos runners existentes. A ordem test-first cobre:
+Pure contracts live in `BPViewerCore` and are exercised by the existing tests
+and runners. The test-first sequence covers:
 
-- transições source/split/diff e histórico Undo/Redo;
-- root `main.tex` com capítulo incluído editado por override;
-- garantia de que preview live não escreve no projeto original;
-- preservação do PDF anterior em compilação falhada;
-- dependências e bibliografia com source contextual;
-- parsing/mapeamento SyncTeX e fallback;
-- baselines de diff no ficheiro contextual;
-- conflito no source editado e recompilação por dependência externa;
-- routing de links PDF;
-- transições observáveis do `AppModel` e da toolbar.
+- source/split/diff transitions and Undo/Redo history;
+- a `main.tex` root with an included chapter edited through an override;
+- ensuring live preview does not write to the original project;
+- preserving the previous PDF after failed compilation;
+- dependencies and bibliography with a contextual source;
+- SyncTeX parsing/mapping and fallback;
+- diff baselines for the contextual file;
+- conflicts in the edited source and recompilation after an external dependency
+  changes;
+- PDF link routing;
+- observable `AppModel` and toolbar transitions.
 
-As fixtures manuais devem incluir documento multi-ficheiro, imagem, referências
-cruzadas, bibliografia, erro de compilação e alteração externa sucessiva.
+Manual fixtures should include a multi-file document, an image, cross-references,
+a bibliography, a compilation error, and successive external changes.
 
-## Critérios de conclusão
+## Completion criteria
 
-- Duplo clique no PDF entra no source correto e usa SyncTeX quando disponível.
-- Source e PDF funcionam em split view.
-- Alterações atualizam o PDF após o debounce sem substituir resultados novos
-  por resultados obsoletos.
-- Undo/Redo, Save, Esc e Discard Changes têm o mesmo significado que no
-  Markdown.
-- Disk Diff e Git Diff mostram o ficheiro contextual correto.
-- Conflitos externos protegem o rascunho e permitem escolher a versão.
-- Erros de compilação preservam o último PDF válido e permitem guardar source.
-- Links internos, externos e locais seguem as regras definidas.
-- Testes, runners, build, `git diff --check` e validação manual passam.
-- Depois de cada ronda que altera a app, `./scripts/restart-app.sh` conclui o
-  build e abre a versão mais recente.
+- Double-clicking the PDF enters the correct source and uses SyncTeX when
+  available.
+- Source and PDF work in split view.
+- Changes update the PDF after the debounce, without replacing newer results
+  with obsolete ones.
+- Undo/Redo, Save, Esc, and Discard Changes have the same meaning as in Markdown.
+- Disk Diff and Git Diff show the correct contextual file.
+- External conflicts protect the draft and let the user choose a version.
+- Compilation errors preserve the last valid PDF and still allow the source to
+  be saved.
+- Internal, external, and local links follow the defined rules.
+- Tests, runners, build, `git diff --check`, and manual validation pass.
+- After each round that changes the app, `./scripts/restart-app.sh` completes
+  the build and opens the latest version.
 
-## Fora de escopo
+## Out of scope
 
-- Editor multi-ficheiro completo com vários sources simultaneamente editáveis.
-- Formatação semântica automática de LaTeX.
-- Auto-save ou colaboração.
-- Compilação por cada tecla sem debounce.
-- Suporte garantido a SyncTeX quando a instalação LaTeX local não o produzir.
+- A full multi-file editor with several sources editable at once.
+- Automatic semantic formatting of LaTeX.
+- Auto-save or collaboration.
+- Compilation on every keystroke without debounce.
+- Guaranteed SyncTeX support when the local LaTeX installation does not produce
+  it.
 
-## Riscos
+## Risks
 
-- Compilações longas podem exigir cancelamento real do processo, além da
-  proteção por geração já usada pelo coordinator.
-- A sobreposição temporária precisa de respeitar paths relativos complexos,
-  `\\input`, `\\include`, `\\graphicspath` e bibliografia.
-- Algumas engines ou distribuições podem não disponibilizar SyncTeX ou
-  produzir mapas incompletos.
-- Projetos grandes e dependências externas podem tornar o preview live caro.
+- Long compilations may require actual process cancellation in addition to the
+  generation protection already used by the coordinator.
+- The temporary overlay must handle complex relative paths, `\\input`,
+  `\\include`, `\\graphicspath`, and bibliography correctly.
+- Some engines or distributions may not provide SyncTeX or may produce
+  incomplete maps.
+- Large projects and external dependencies may make live preview expensive.
 
-## Referências
+## References
 
 - [`docs/current-state.md`](docs/current-state.md)
 - [`docs/technical/architecture.md`](docs/technical/architecture.md)

@@ -1,49 +1,48 @@
 # Viewer
 
-Visualizador local para projetos académicos escritos em Markdown, LaTeX, JSON,
-CSV, Word, PDF e imagens no macOS.
+Local viewer for academic projects written in Markdown, LaTeX, JSON, CSV, Word,
+PDF, and image formats on macOS.
 
-O `Viewer` abre uma pasta local, acompanha alterações aos ficheiros-fonte e
-apresenta o resultado renderizado ou formatado. Ficheiros Markdown podem ser
-editados no source, em modo integral ou numa split view com preview live.
-Ficheiros PDF podem ser lidos diretamente dentro da app.
+The `Viewer` opens a local folder, watches source files for changes, and displays
+the rendered or formatted result. Markdown files can be edited in source mode
+or in a split view with a live preview. PDF files can be read directly in the app.
 
-## Requisitos
+## Requirements
 
-- macOS compatível com a plataforma definida em `Package.swift`;
-- toolchain Swift compatível com `Package.swift`;
-- instalação local de LaTeX para abrir projetos `.tex`.
+- macOS compatible with the platform specified in `Package.swift`;
+- a Swift toolchain compatible with `Package.swift`;
+- a local LaTeX installation to open `.tex` projects.
 
-## Executar localmente
+## Run locally
 
 ```bash
 swift run BPViewer
 ```
 
-Para desenvolvimento, use o launcher que observa `Sources/` e recompila a app
-quando o código muda:
+For development, use the launcher that watches `Sources/` and rebuilds the app
+when the code changes:
 
 ```bash
 ./scripts/dev-run.sh
 ```
 
-Para gerar uma build `.app` local:
+To build a local `.app` bundle:
 
 ```bash
 ./scripts/build-app.sh
 ```
 
-Para fechar instâncias antigas, recompilar e abrir uma instância nova:
+To close older instances, rebuild, and open a new instance:
 
 ```bash
 ./scripts/restart-app.sh
 ```
 
-O bundle não inclui o TeX Live; a app usa a instalação LaTeX local do Mac.
+The bundle does not include TeX Live; the app uses the Mac's local LaTeX installation.
 
-## Validação rápida
+## Quick validation
 
-Os runners validam a lógica principal sem depender de interação com a janela:
+The runners validate the core logic without requiring window interaction:
 
 ```bash
 swift run BPViewerContractRunner

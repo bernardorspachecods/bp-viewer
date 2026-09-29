@@ -1,19 +1,15 @@
-# Contexto de `docs/reference/`
+# `docs/reference/` context
 
-Esta pasta preserva registos históricos de trabalho e validação que ainda
-podem explicar decisões ou resultados anteriores. Não é fonte de verdade para
-produto nem para o estado atual da implementação.
+This directory preserves historical work and validation records that may still
+explain earlier decisions or results. It is not the source of truth for the
+product or the current implementation state.
 
-- [`foundation-tests.md`](foundation-tests.md) — histórico da primeira
-  integração dos contratos de fundação.
-- [`markdown-fixtures.md`](markdown-fixtures.md) — histórico da validação
-  manual de imagens e matemática Markdown.
-- [`research/CONTEXT.md`](research/CONTEXT.md) — briefs, relatórios e síntese
-  da pesquisa técnica histórica.
+- [`foundation-tests.md`](foundation-tests.md) — history of the first integration of the foundation contracts.
+- [`markdown-fixtures.md`](markdown-fixtures.md) — history of manual validation for Markdown images and mathematics.
+- [`research/CONTEXT.md`](research/CONTEXT.md) — briefs, reports, and synthesis of historical technical research.
 
-Para o estado atual, consultar o [estado da app](../current-state.md), a
-[arquitetura técnica](../technical/architecture.md) e os mapas de
-[fixtures](../../Fixtures/CONTEXT.md).
-Registos arquivados não devem ser reescritos para acompanhar alterações
-normais; corrigir apenas links claramente quebrados ou anotar uma errata
-histórica.
+For the current state, see the [app state](../current-state.md), the
+[technical architecture](../technical/architecture.md), and the
+[fixture index](../../Fixtures/CONTEXT.md).
+Archived records should not be rewritten to track routine changes; fix only
+clearly broken links or add a historical erratum.

@@ -1,14 +1,14 @@
 # Markdown validation: remote image
 
-Esta fixture valida que o preview mantém e tenta carregar uma imagem remota
-quando existe ligação à internet.
+This fixture verifies that the preview retains and attempts to load a remote
+image when an internet connection is available.
 
-![Imagem remota de teste](https://placehold.co/640x160/png?text=bp-viewer+remote "Imagem remota")
+![Remote test image](https://placehold.co/640x160/png?text=bp-viewer+remote "Remote image")
 
-## Resultado esperado
+## Expected result
 
-Com internet, a imagem remota deve aparecer. Sem internet, é aceitável que o
-browser mostre a imagem em falta; isso não deve impedir o resto do Markdown de
-ser apresentado.
+With an internet connection, the remote image should appear. Without one, the
+browser may show a missing image; this should not prevent the rest of the
+Markdown from being displayed.
 
-Esta URL não é uma dependência local observada pelo watcher da app.
+This URL is not a local dependency monitored by the app's watcher.

@@ -1,1 +1,1 @@
-Ficheiro local de texto para testar destinos não suportados pelo preview Markdown.
+Local text file for testing targets unsupported by the Markdown preview.

@@ -1,179 +1,185 @@
-# Síntese técnica para decisão humana
+# Technical synthesis for human decision-making
 
-Esta síntese reúne os quatro relatórios de investigação recebidos para o `bp-viewer`. Não revalida independentemente as fontes primárias citadas nos reports nem substitui testes no Mac e com os documentos reais de Bernardo. Quando uma conclusão depende de detalhe, a secção do report original é indicada.
+This synthesis brings together the four research reports prepared for `bp-viewer`. It does not independently revalidate the primary sources cited in the reports or replace testing on a Mac with Bernardo's actual documents. Where a conclusion depends on a specific detail, the relevant section of the original report is cited.
 
-**Estado de uso:** este é um registo de evidência e comparação, não a fonte de
-verdade do produto. O MVP atual já adotou SwiftUI/AppKit nativo para uso pessoal
-no macOS; as alternativas abaixo permanecem úteis para contexto e para decisões
-técnicas ainda abertas, mas não são fonte do estado atual da app.
+**Usage status:** this is a record of evidence and comparisons, not the product's
+source of truth. The current MVP has adopted native SwiftUI/AppKit for personal
+use on macOS. The alternatives below remain useful context for technical
+decisions that are still open, but they do not describe the app's current state.
 
-## 1. Resumo executivo
+## 1. Executive summary
 
-Os quatro reports permitem definir uma base segura para um protótipo, mas não permitem escolher automaticamente uma stack final. A decisão mais sólida neste momento é sobre os contratos e invariantes da aplicação, não sobre SwiftUI, Tauri, Electron, PDF, HTML, MacTeX, Tectonic, `remark` ou outro candidato.
+The four reports provide a sound basis for a prototype, but do not automatically
+select a final stack. The strongest decision at this point concerns the app's
+contracts and invariants, not SwiftUI, Tauri, Electron, PDF, HTML, MacTeX,
+Tectonic, `remark`, or another candidate.
 
-### O que já pode orientar o MVP
+### What can already guide the MVP
 
-- A pasta aberta pelo utilizador, as permissões e o estado da raiz devem ser modelados explicitamente. Uma string de caminho não basta para representar acesso persistente no macOS.
-- O watcher deve ser tratado como sinal de invalidação. A verdade vem de novo snapshot/re-scan do filesystem; eventos podem ser agrupados, duplicados, perdidos ou indicar uma alteração de raiz.
-- O adapter deve declarar dependências. Um Markdown pode depender de imagens e outros documentos; um LaTeX pode depender de `.tex`, `.bib`, `.sty`, `.cls`, imagens, fontes e ferramentas auxiliares.
-- Renderizações devem ser versionadas por geração. Uma renderização antiga, mesmo que termine depois, nunca pode substituir o preview da alteração mais recente.
-- Compilação e artefactos temporários devem ficar fora da pasta raw do utilizador. Processos precisam de timeout, cancelamento, captura de logs e diagnóstico estruturado.
-- Markdown/HTML deve ser tratado como conteúdo não confiável: sanitização allow-list, JavaScript de conteúdo desligado, CSP, recursos confinados à raiz autorizada e navegação interceptada.
-- LaTeX deve ser tratado como execução de ferramentas potencialmente perigosas: shell escape desligado por defeito, workspace temporário, limites de recursos e nenhuma instalação automática de pacotes no primeiro caminho.
+- The user's open folder, permissions, and root state should be modeled explicitly. A path string alone cannot represent persistent access on macOS.
+- Treat the watcher as an invalidation signal. The source of truth is a fresh filesystem snapshot/rescan; events may be coalesced, duplicated, dropped, or indicate a root change.
+- Adapters should declare dependencies. A Markdown file may depend on images and other documents; a LaTeX file may depend on `.tex`, `.bib`, `.sty`, `.cls`, images, fonts, and helper tools.
+- Version renders by generation. An older render must never replace the preview for the latest change, even if it finishes later.
+- Keep compilation and temporary artifacts outside the user's source folder. Processes need timeouts, cancellation, log capture, and structured diagnostics.
+- Treat Markdown/HTML as untrusted content: use allowlist sanitization, disable content JavaScript, apply CSP, confine resources to the authorized root, and intercept navigation.
+- Treat LaTeX as execution of potentially dangerous tools: disable shell escape by default, use a temporary workspace, set resource limits, and do not automatically install packages in the initial workflow.
 
-### As escolhas que continuam humanas
+### Decisions that remain with the user
 
-- Se o preview de LaTeX deve privilegiar fidelidade visual do PDF compilado ou navegação/semântica de HTML.
-- Se o primeiro alvo é um protótipo pessoal dependente de ferramentas instaladas no Mac ou uma aplicação distribuível e sandboxed.
-- A comparação de shells continua como contexto; para o MVP atual, a escolha de produto já é nativo SwiftUI/AppKit. Uma reconsideração só faria sentido se o modo de distribuição ou os testes locais mudassem.
-- Que dialecto Markdown, matemática, links fora da raiz, links externos e engines LaTeX fazem parte do uso real.
+- Whether the LaTeX preview should prioritize visual fidelity to the compiled PDF or HTML navigation and semantics.
+- Whether the first target is a personal prototype that depends on tools installed on the Mac, or a distributable sandboxed app.
+- Shell comparisons remain context; the current MVP has already chosen native SwiftUI/AppKit. Reconsider this only if distribution requirements or local tests change.
+- Which Markdown dialect, mathematics, links outside the root, external links, and LaTeX engines are part of real usage.
 
-**Estado global:** há recomendações condicionais com confiança variável; não há decisão técnica final aprovada.
+**Overall status:** the reports offer conditional recommendations with varying confidence; no final technical decision has been approved.
 
-## 2. Estado atual: o que os quatro reports permitem afirmar e o que não permitem
+## 2. Current state: what the four reports do and do not establish
 
-### Factos reportados pelos agentes
+### Findings reported by the agents
 
-Os reports apresentam como capacidades documentadas, ligadas às suas matrizes de claims e evidências:
+The reports describe the following as documented capabilities, linked to their claim and evidence matrices:
 
-- CommonMark é a base sintática mais clara; GFM acrescenta, entre outras coisas, tabelas, footnotes, task lists, strikethrough e autolinks. Nenhum destes standards fornece por si só bibliografia académica, includes ou referências semânticas entre capítulos ([Markdown → HTML](reports/markdown-html.md), secções 5–8).
-- `cmark-gfm`, `markdown-it`, `micromark`, `remark`/`unified`, `swift-markdown` e `markdown-rs` cobrem partes diferentes do problema. `remark`/`unified` oferece uma cadeia AST extensível; `cmark-gfm` oferece um núcleo nativo pequeno; as outras alternativas têm combinações próprias de extensões, renderer e integração ([Markdown → HTML](reports/markdown-html.md), secção 6).
-- Uma distribuição TeX tradicional com `latexmk` acompanha múltiplas passagens, ficheiros incluídos, gráficos e bibliografia; Tectonic oferece executável/bundle, cache e opções offline, mas tem diferenças de engine, bundle e Biber. TeX4ht, lwarp e LaTeXML convertem para HTML por caminhos diferentes do PDF original ([LaTeX → preview](reports/latex-preview.md), secções 5–9).
-- No macOS, seleção de pastas, security-scoped bookmarks, FSEvents e `Process` têm APIs próprias. FSEvents pode coalescer ou perder eventos; `NSFilePresenter` não cobre todas as escritas low-level ([desktop e filesystem](reports/desktop-filesystem.md), secções 5 e 8).
-- `WKWebView` e PDFKit oferecem superfícies adequadas para leitura, mas HTML e PDF podem conter riscos de navegação, recursos ou actions. App Sandbox e notarização reduzem determinados riscos e impõem restrições, mas não tornam conteúdo ou compiladores confiáveis ([preview, segurança e distribuição](reports/preview-security-distribution.md), secções 5–10).
+- CommonMark is the clearest syntactic baseline; GFM adds tables, footnotes, task lists, strikethrough, and autolinks, among other features. Neither standard provides academic bibliographies, includes, or semantic cross-chapter references ([Markdown → HTML](reports/markdown-html.md), sections 5–8).
+- `cmark-gfm`, `markdown-it`, `micromark`, `remark`/`unified`, `swift-markdown`, and `markdown-rs` address different parts of the problem. `remark`/`unified` offers an extensible AST pipeline; `cmark-gfm` offers a small native core; the other options have their own combinations of extensions, rendering, and integration ([Markdown → HTML](reports/markdown-html.md), section 6).
+- A traditional TeX distribution with `latexmk` handles multiple passes, included files, graphics, and bibliographies. Tectonic offers an executable/bundle, cache, and offline options, but differs in engine, bundle, and Biber support. TeX4ht, lwarp, and LaTeXML convert to HTML through approaches distinct from the original PDF ([LaTeX → preview](reports/latex-preview.md), sections 5–9).
+- On macOS, folder selection, security-scoped bookmarks, FSEvents, and `Process` have dedicated APIs. FSEvents can coalesce or drop events; `NSFilePresenter` does not cover every low-level write ([desktop and filesystem](reports/desktop-filesystem.md), sections 5 and 8).
+- `WKWebView` and PDFKit provide suitable reading surfaces, but HTML and PDF can pose navigation, resource, or action risks. App Sandbox and notarization reduce certain risks and impose restrictions, but do not make content or compilers trustworthy ([preview, security, and distribution](reports/preview-security-distribution.md), sections 5–10).
 
-### Inferências técnicas que os reports suportam
+### Technical inferences supported by the reports
 
-- Uma arquitetura por contratos — sessão, filesystem, watcher, índice de dependências, coordenador de renderização, runner de processos e sink de preview — reduz o acoplamento entre shell, adapters e formato do artefacto. É a recomendação central de [desktop e filesystem](reports/desktop-filesystem.md), secções 9–10.
-- Pré-renderizar fora da WebView torna mais clara a separação entre leitura/resolução, parsing, sanitização e apresentação. Não elimina a necessidade de controlar HTML, URLs, recursos e CSP ([Markdown → HTML](reports/markdown-html.md), secção 7; [preview, segurança e distribuição](reports/preview-security-distribution.md), secção 7).
-- PDF é a referência mais direta se “preview” significa confirmar a composição produzida pelo LaTeX. HTML é potencialmente melhor para estrutura, pesquisa e acessibilidade, mas abre uma fronteira de compatibilidade que precisa de ser aceite e medida ([LaTeX → preview](reports/latex-preview.md), secções 7, 15 e 16).
+- A contract-based architecture — session, filesystem, watcher, dependency index, render coordinator, process runner, and preview sink — reduces coupling among the shell, adapters, and artifact format. This is the central recommendation in [desktop and filesystem](reports/desktop-filesystem.md), sections 9–10.
+- Prerendering outside the WebView clarifies the separation between reading/resolution, parsing, sanitization, and presentation. It does not remove the need to control HTML, URLs, resources, and CSP ([Markdown → HTML](reports/markdown-html.md), section 7; [preview, security, and distribution](reports/preview-security-distribution.md), section 7).
+- PDF is the most direct reference if “preview” means checking the composition produced by LaTeX. HTML may be better for structure, search, and accessibility, but introduces a compatibility boundary that must be accepted and measured ([LaTeX → preview](reports/latex-preview.md), sections 7, 15, and 16).
 
-### O que os reports não demonstram
+### What the reports do not establish
 
-- Não demonstram um vencedor em memória, arranque, velocidade ou manutenção entre SwiftUI/AppKit, Tauri, Electron e Flutter. O report desktop rejeita benchmarks comparativos não controlados (claim C19).
-- Não demonstram que uma cadeia Markdown reproduz os documentos reais de Bernardo, nem que KaTeX ou MathJax cobre a matemática usada.
-- Não demonstram que MacTeX, BasicTeX ou qualquer instalação TeX externa possa ser usada numa aplicação sandboxed distribuída pela Mac App Store. O report de segurança identifica isto como incompatibilidade material a testar.
-- Não demonstram que Tectonic seja compatível com a tese real, incluindo engine, fontes, paths, pacotes, bibliografia e Biber.
-- Não demonstram equivalência visual geral entre PDF, TeX4ht, lwarp e LaTeXML.
-- Não demonstram os valores corretos de debounce, estabilidade de escrita, timeout, limite de output ou memória.
-- Não demonstram o comportamento efetivo de `WKWebView` e PDFKit perante todos os paths, symlinks, redirects, annotations e actions no macOS mínimo escolhido.
+- They do not establish a winner for memory, startup, speed, or maintenance among SwiftUI/AppKit, Tauri, Electron, and Flutter. The desktop report rejects uncontrolled comparative benchmarks (claim C19).
+- They do not establish that a Markdown pipeline reproduces Bernardo's actual documents or that KaTeX or MathJax covers the mathematics he uses.
+- They do not establish that MacTeX, BasicTeX, or any external TeX installation can be used in a sandboxed app distributed through the Mac App Store. The security report identifies this as a material incompatibility to test.
+- They do not establish Tectonic's compatibility with the real thesis, including its engine, fonts, paths, packages, bibliography, and Biber.
+- They do not establish general visual equivalence among PDF, TeX4ht, lwarp, and LaTeXML.
+- They do not establish the right debounce, write-stability, timeout, output-limit, or memory values.
+- They do not establish how `WKWebView` and PDFKit actually behave with every path, symlink, redirect, annotation, and action on the chosen minimum macOS version.
 
-### Como ler as conclusões
+### How to read the conclusions
 
-Os quatro documentos são resultados de agentes de pesquisa. As suas fontes primárias, versões observadas, limitações e razões para parar estão preservadas nos reports originais. Nesta síntese:
+The four documents are research-agent reports. Their primary sources, observed versions, limitations, and stopping rationale are preserved in the original reports. In this synthesis:
 
-- **Facto reportado** significa uma capacidade ou limitação que o agente ligou a documentação/evidência no report; não significa revalidação nesta tarefa.
-- **Inferência técnica** significa uma conclusão de adequação derivada dos factos, com as limitações descritas.
-- **Recomendação condicional** significa uma direção que só é válida sob determinadas prioridades ou resultados de testes.
-- **Decisão de Bernardo** significa uma escolha de produto, uso, risco ou distribuição que não deve ser tomada pelo agente.
+- **Reported fact** means a capability or limitation the agent tied to documentation/evidence in the report; it does not mean that it was revalidated for this task.
+- **Technical inference** means a suitability conclusion derived from the facts, subject to the described limitations.
+- **Conditional recommendation** means a direction that is valid only under certain priorities or test results.
+- **Bernardo's decision** means a product, usage, risk, or distribution choice that the agent should not make.
 
-## 3. Decisões acionáveis sem preferência pessoal: contratos, invariantes, testes e guardrails que podem orientar o MVP
+## 3. Actionable decisions without personal preference: contracts, invariants, tests, and guardrails for the MVP
 
-Estas não escolhem uma tecnologia. São um registo histórico das regras que os
-reports sugeriram para o fluxo então descrito.
+These do not choose a technology. They record the rules the reports suggested
+for the workflow described at the time.
 
-### 3.1 Contratos mínimos entre componentes
+### 3.1 Minimum contracts between components
 
-**Facto reportado:** [desktop e filesystem](reports/desktop-filesystem.md), secção 9, propõe contratos independentes. A forma abaixo é uma consolidação operacional desses contratos.
+**Reported fact:** [desktop and filesystem](reports/desktop-filesystem.md), section 9, proposes independent contracts. The table below is an operational consolidation of those contracts.
 
-| Contrato | Deve representar | Não deve assumir |
+| Contract | Should represent | Must not assume |
 |---|---|---|
-| `ProjectSession` | raiz aberta, bookmark/referência, estado `available`, `permissionLost`, `rootMoved` ou `closed`, e associação de IDs a caminhos relativos | que um caminho textual continue autorizado depois de reiniciar |
-| `FileSystemGateway` | listar, enumerar, ler, obter metadata, resolver caminho relativo e distinguir ausência, remoção, corrida e permissão | que a UI possa ler qualquer path arbitrário |
-| `FileWatcher` | batches com sessão, sequência, paths observados, tipos de mudança e `rescanScope` | que um evento contenha o conteúdo final ou seja completo |
-| `DependencyIndex` | manifesto por documento, dependências, referências não resolvidas e geração | que todos os auxiliares estejam visíveis na árvore ou dentro da raiz |
-| `RenderCoordinator` | render por documento e revisão, cancelamento, geração e fila | que duas renderizações do mesmo documento possam publicar livremente |
-| `ProcessRunner` | executável identificado, argumentos separados, ambiente, diretório temporário, stdout/stderr, timeout, cancelamento e estado final | que “processo terminou” implique “artefacto válido existe” |
-| `PreviewSink` | artefacto, documento, geração e diagnósticos; rejeição de gerações antigas | que o artefacto seja sempre HTML ou sempre PDF |
+| `ProjectSession` | open root, bookmark/reference, `available`, `permissionLost`, `rootMoved`, or `closed` state, and mapping from IDs to relative paths | that a text path remains authorized after restart |
+| `FileSystemGateway` | list, enumerate, read, retrieve metadata, resolve relative paths, and distinguish missing, removed, racing, and permission states | that the UI can read any arbitrary path |
+| `FileWatcher` | batches with session, sequence, observed paths, change types, and `rescanScope` | that an event contains final content or is complete |
+| `DependencyIndex` | per-document manifest, dependencies, unresolved references, and generation | that all helpers appear in the tree or are inside the root |
+| `RenderCoordinator` | render by document and revision, cancellation, generation, and queue | that two renders of the same document can publish freely |
+| `ProcessRunner` | identified executable, separate arguments, environment, temporary directory, stdout/stderr, timeout, cancellation, and final state | that “process ended” means “valid artifact exists” |
+| `PreviewSink` | artifact, document, generation, and diagnostics; rejection of old generations | that the artifact is always HTML or always PDF |
 
-**Invariante:** a UI recebe resultados aprovados pelo shell/coordenador; não inicia compiladores, não decide que um evento é conteúdo final e não lê paths arbitrários.
+**Invariant:** the UI receives results approved by the shell/coordinator; it does not start compilers, treat an event as final content, or read arbitrary paths.
 
-### 3.2 Invariantes de filesystem e atualização
+### 3.2 Filesystem and update invariants
 
-**Recomendação condicional comum aos reports:**
+**Conditional recommendation common to the reports:**
 
-1. Iniciar o watcher antes do primeiro scan.
-2. Manter um snapshot atual da hierarquia observada.
-3. Agrupar eventos próximos, mas fazer re-scan sempre que o evento indicar coalescing, perda, root change ou escopo incerto.
-4. Reabrir e validar o conteúdo após eventos; não confiar apenas no path recebido.
-5. Representar remoção, rename, raiz movida e perda de permissão como estados explícitos.
-6. Calcular documentos afetados a partir do `DependencyIndex`, não apenas do ficheiro selecionado.
-7. Incrementar uma geração quando uma alteração relevante for reconhecida.
-8. Publicar apenas o resultado cuja geração ainda é atual.
+1. Start the watcher before the first scan.
+2. Keep a current snapshot of the observed hierarchy.
+3. Group nearby events, but rescan whenever an event indicates coalescing, loss, root change, or uncertain scope.
+4. Reopen and validate content after events; do not trust only the received path.
+5. Represent removal, rename, moved root, and lost permission as explicit states.
+6. Determine affected documents from the `DependencyIndex`, not just the selected file.
+7. Increment a generation when a relevant change is recognized.
+8. Publish only a result whose generation is still current.
 
-**Testes mínimos:** escrita incremental; rename atómico; várias alterações rápidas; alteração de imagem, `.bib`, `.sty`, `.cls` ou include; remoção/rename de dependência; eventos coalescidos ou dropped; raiz movida/removida; bookmark stale; reinício; symlinks, Unicode, espaços e case-only rename.
+**Minimum tests:** incremental write; atomic rename; several rapid changes; changes to an image, `.bib`, `.sty`, `.cls`, or include; dependency removal/rename; coalesced or dropped events; moved/removed root; stale bookmark; restart; symlinks, Unicode, spaces, and case-only rename.
 
-### 3.3 Invariantes de compilação e artefactos
+### 3.3 Compilation and artifact invariants
 
-- Compilar num workspace temporário por projeto/root, fora da pasta raw.
-- Passar argumentos separados ao processo, nunca uma shell command string derivada do conteúdo.
-- Capturar stdout, stderr, log e, quando disponível, recorder/dependency file.
-- Impor timeout, limite de output e cancelamento; verificar se descendentes relevantes terminam.
-- Serializar compilação por root e impedir duas escritas concorrentes no mesmo output.
-- Diferenciar sucesso, sucesso com warnings, PDF parcial, erro fatal, timeout, cancelamento, dependência ausente, ferramenta ausente e pedido de input.
-- Manter o último preview válido apenas se a política de UX o confirmar, marcando-o como desatualizado e sem o apresentar como resultado atual.
-- Não instalar pacotes automaticamente no fluxo base sem decisão explícita; instalação em runtime reduz esforço inicial, mas prejudica previsibilidade offline.
+- Compile in a temporary workspace per project/root, outside the source folder.
+- Pass separate arguments to the process; never construct a shell command string from content.
+- Capture stdout, stderr, logs, and, when available, the recorder/dependency file.
+- Enforce timeouts, output limits, and cancellation; check that relevant child processes terminate.
+- Serialize compilation per root and prevent concurrent writes to the same output.
+- Distinguish success, success with warnings, partial PDF, fatal error, timeout, cancellation, missing dependency, missing tool, and input prompt.
+- Keep the last valid preview only if the UX policy calls for it, mark it stale, and do not present it as the current result.
+- Do not install packages automatically in the base workflow without an explicit decision; runtime installation reduces initial effort but harms offline predictability.
 
-### 3.4 Guardrails de preview e conteúdo
+### 3.4 Preview and content guardrails
 
-**Recomendação condicional com confiança alta no report de segurança:**
+**Conditional recommendation with high confidence in the security report:**
 
-- tratar Markdown/HTML, imagens, SVG e PDF como conteúdo potencialmente hostil;
-- desativar JavaScript de conteúdo na `WKWebView` por defeito;
-- sanitizar HTML depois das transformações que possam introduzir conteúdo inseguro, com allow-list pequena e versionada;
-- aplicar CSP de defesa em profundidade e não expor bridge nativa desnecessária;
-- bloquear `script`, handlers `on*`, `iframe`, `object`, `embed`, forms, `base` e HTML/SVG/CSS não validados;
-- resolver recursos dentro da raiz canónica autorizada, com política explícita para `..`, paths absolutos e symlinks;
-- interceptar navegação, redirects, novas janelas e downloads;
-- não carregar links externos dentro do preview; se essa opção existir, exigir ação explícita;
-- tratar actions PDF como comportamento a bloquear ou confirmar, nunca como simples desenho;
-- manter o data store web não persistente se o preview não precisar de estado web;
-- não conceder entitlement de rede se o MVP não precisar de rede.
+- treat Markdown/HTML, images, SVG, and PDF as potentially hostile content;
+- disable content JavaScript in `WKWebView` by default;
+- sanitize HTML after transformations that could introduce unsafe content, using a small, versioned allowlist;
+- apply CSP as defense in depth and do not expose an unnecessary native bridge;
+- block `script`, `on*` handlers, `iframe`, `object`, `embed`, forms, `base`, and unvalidated HTML/SVG/CSS;
+- resolve resources inside the authorized canonical root, with an explicit policy for `..`, absolute paths, and symlinks;
+- intercept navigation, redirects, new windows, and downloads;
+- do not load external links inside the preview; if that option exists, require an explicit action;
+- block or confirm PDF actions; do not treat them as mere rendering;
+- keep the web data store nonpersistent if the preview does not need web state;
+- do not grant a network entitlement if the MVP does not need network access.
 
-**Limite importante:** estes guardrails são inferências de defesa em profundidade dos reports. Não constituem garantia de segurança contra bugs de WebKit, PDFKit, compiladores, parsers ou bibliotecas.
+**Important limitation:** these guardrails are defense-in-depth inferences from the reports. They do not guarantee security against bugs in WebKit, PDFKit, compilers, parsers, or libraries.
 
-### 3.5 Critérios de aceitação transversais
+### 3.5 Cross-cutting acceptance criteria
 
-O MVP só deve considerar um fluxo validado quando conseguir demonstrar, para um fixture representativo:
+The MVP should consider a workflow validated only after it demonstrates the following with a representative fixture:
 
-- abrir uma raiz autorizada e recuperá-la segundo a política escolhida;
-- refletir alterações externas sem publicar estado incompleto ou obsoleto;
-- localizar dependências mesmo que estejam ocultas no filtro da árvore;
-- não escrever artefactos de compilação na pasta raw;
-- mostrar erro estruturado sem perder automaticamente o último preview válido, caso essa UX seja escolhida;
-- bloquear scripts, esquemas perigosos, escapes de raiz e actions externas não confirmadas;
-- cancelar ou invalidar uma renderização lenta sem deixar uma geração antiga vencer;
-- funcionar sem rede durante a utilização, dentro das dependências previamente disponibilizadas.
+- open an authorized root and restore it according to the chosen policy;
+- reflect external changes without publishing incomplete or stale state;
+- locate dependencies even if they are hidden by the tree filter;
+- avoid writing compilation artifacts into the source folder;
+- show structured errors without automatically losing the last valid preview, if that UX is chosen;
+- block scripts, dangerous schemes, root escapes, and unconfirmed external actions;
+- cancel or invalidate a slow render without allowing an old generation to win;
+- work offline during use, given the dependencies made available in advance.
 
-## 4. Matriz de decisões técnicas
+## 4. Technical decision matrix
 
-“Estado” descreve o que os reports permitem fazer agora; não significa decisão aprovada.
-Na linha do shell, “aberta” descreve apenas a comparação dos reports; o plano
-atual já regista SwiftUI/AppKit como escolha do MVP pessoal.
+“Status” describes what the reports currently support; it does not mean an
+approved decision. In the shell row, “open” refers only to the report
+comparison; the current plan already records SwiftUI/AppKit as the personal
+MVP choice.
 
-| Decisão | Alternativas reais | Evidência dos reports | Trade-offs | Impacto | Estado |
+| Decision | Real alternatives | Evidence in reports | Trade-offs | Impact | Status |
 |---|---|---|---|---|---|
-| Shell desktop | SwiftUI/AppKit; Tauri 2; Electron 44; Flutter | [desktop](reports/desktop-filesystem.md), secções 6–7 e 12 | Nativo favorece permissões e integração; Tauri separa core Rust/UI web; Electron favorece Node/web aceitando bundle e releases; Flutter não mostrou vantagem específica | Afeta UI, IPC, permissões, empacotamento e adapters | **Aberta; opinião e testes locais** |
-| Persistência da pasta | bookmarks security-scoped; equivalente mediado pelo shell; seleção a cada arranque | [desktop](reports/desktop-filesystem.md), E1–E2; [segurança](reports/preview-security-distribution.md), E12–E14 | Bookmarks preservam intenção, mas podem ficar stale e exigem `start/stop`; plugins Tauri não demonstram persistência macOS suficiente | Afeta restauração de tabs, acesso e distribuição sandboxed | **Contrato necessário; mecanismo aberto** |
-| Semântica do watcher | FSEvents direto; watcher de framework; `notify`; Chokidar; Watchman | [desktop](reports/desktop-filesystem.md), E3–E5 e E8–E16 | APIs/abstrações variam em ergonomia; Watchman é mais robusto mas adiciona daemon; nenhum elimina snapshot e re-scan | Afeta atualização, CPU, instalação e recuperação | **Invariante fechada; implementação aberta** |
-| Fonte de verdade da mudança | eventos; snapshot/re-scan | FSEvents pode coalescer, perder ou pedir `MustScanSubDirs` ([desktop](reports/desktop-filesystem.md), E3–E4) | Snapshot pode ser caro; eventos sozinhos são incompletos | Afeta correção da árvore e invalidação | **Snapshot/re-scan condicionalmente obrigatório** |
-| Modelo de dependências | apenas ficheiro aberto; manifesto do adapter; re-scan amplo | [desktop](reports/desktop-filesystem.md), secções 9–10; [Markdown](reports/markdown-html.md), C12–C14; [LaTeX](reports/latex-preview.md), C7–C11 | Manifesto exige trabalho, mas observar só o ficheiro aberto perde imagens/includes/bibliografia | Afeta renders corretos e custo de scan | **Manifesto recomendado; detalhes abertos** |
-| Coordenação de render | fila serial; concorrência limitada; cancelamento; descarte por geração | [desktop](reports/desktop-filesystem.md), secções 9–10; [LaTeX](reports/latex-preview.md), secção 12 | Serializar protege outputs; concorrência pode reduzir espera mas aumenta contenção e risco | Afeta UX, CPU e integridade do preview | **Geração e rejeição de antigos fechadas; limites abertos** |
-| Markdown base | `remark`/`unified`; `cmark-gfm`/`swift-markdown`; `markdown-it`; `micromark`; `markdown-rs` | [Markdown](reports/markdown-html.md), secções 5–7 e 10 | AST/extensibilidade contra runtime/dependências; renderer próprio contra menor integração | Afeta dialecto, links, matemática, sanitização e manutenção | **Aberta; depende do runtime e corpus** |
-| Matemática Markdown | KaTeX; MathJax; sem matemática inicial; renderer próprio | [Markdown](reports/markdown-html.md), C9–C10 e secção 7 | KaTeX é HTML estático/previsível mas não suporta `\\label`, `\\ref`, `\\eqref`; MathJax cobre mais mas é mais pesado/assíncrono | Afeta fidelidade e pipeline de segurança | **Aberta; fixture real obrigatório** |
-| Saída LaTeX | PDF; HTML; híbrida PDF+HTML | [LaTeX](reports/latex-preview.md), secções 7, 15–16 | PDF maximiza fidelidade; HTML favorece estrutura/pesquisa/acessibilidade; híbrido duplica cadeias e falhas | Afeta definição de “preview”, viewer e custo | **Decisão de uso de Bernardo** |
-| Engine/distribuição LaTeX | TeX Live/MacTeX + `latexmk`; MiKTeX; Tectonic; BasicTeX | [LaTeX](reports/latex-preview.md), secções 6, 8, 16; [segurança](reports/preview-security-distribution.md), secções 6–10 | TeX tradicional é mais abrangente; Tectonic simplifica instalação mas diverge em engine/cache/Biber; MiKTeX pode instalar pela rede | Afeta compatibilidade, offline, tamanho e suporte | **Aberta; corpus real e distribuição necessária** |
-| Root LaTeX | escolha manual; descoberta heurística; configuração persistida | [LaTeX](reports/latex-preview.md), secção 9; visão, “LaTeX” | Capítulo isolado normalmente não compila; heurística pode encontrar zero/múltiplos candidatos | Afeta UX de abertura e dependências | **Comportamento de pedir escolha já previsto; algoritmo aberto** |
-| Wrapper LaTeX | `latexmk`; watch do Tectonic; watcher/coordenador da app | [LaTeX](reports/latex-preview.md), C6–C8 e secções 12–13 | Watch externo não resolve root, debounce, geração, cancelamento nem concorrência | Afeta simplicidade e diagnóstico | **A app continua responsável; ferramenta aberta** |
-| Superfície HTML | `WKWebView` estática; esquema app-owned; texto nativo; Quick Look | [segurança](reports/preview-security-distribution.md), secções 6–7; [Markdown](reports/markdown-html.md), secção 7 | `loadFileURL` é simples; esquema app-owned controla mais mas cria lógica; Quick Look controla menos | Afeta segurança, recursos e CSS | **WKWebView condicionalmente favorecida; configuração aberta** |
-| Superfície PDF | PDFKit; Quick Look; Preview externo | [LaTeX](reports/latex-preview.md), C16; [segurança](reports/preview-security-distribution.md), C9–C11 | PDFKit dá controlo e pesquisa; Quick Look é simples; externo quebra fluxo | Afeta leitura, actions e isolamento | **PDFKit recomendação condicional; não aprovada** |
-| Links e recursos locais | permitir dentro da raiz; negar fora; pedir autorização adicional | [Markdown](reports/markdown-html.md), C12 e secção 7; [segurança](reports/preview-security-distribution.md), secções 7.2–7.3 | Permitir aumenta compatibilidade; negar reduz superfície; autorização adicional complica UX/permissões | Afeta imagens, links e segurança | **Política de produto aberta; raiz canónica é guardrail** |
-| Links externos | bloquear; abrir com ação explícita; carregar no preview | [segurança](reports/preview-security-distribution.md), secção 7.3 | Bloquear maximiza contenção; browser externo preserva utilidade mas desloca risco; carregar na WebView aumenta exposição | Afeta leitura e rede | **Recomendação condicional: não carregar automaticamente** |
-| Segurança LaTeX | shell escape off; restricted allow-list; escape completo | [LaTeX](reports/latex-preview.md), C18; [segurança](reports/preview-security-distribution.md), C16–C17 | Off quebra documentos dependentes; restricted reduz risco mas não torna input confiável; completo é incompatível com postura defensiva inicial | Afeta compatibilidade e ameaça | **Off por defeito; exceções exigem decisão/teste** |
-| Workspace de compilação | diretório raw; temp isolado; helper/XPC | [LaTeX](reports/latex-preview.md), secções 11 e 14; [segurança](reports/preview-security-distribution.md), secções 7.5 e 10 | Raw é simples mas expõe fontes; temp reduz danos; XPC melhora separação mas aumenta complexidade | Afeta segurança, limpeza e sandbox | **Temp fora da raiz é guardrail; grau de isolamento aberto** |
-| Distribuição | protótipo local com TeX externo; app fora da App Store; App Store sandboxed com helpers empacotados | [segurança](reports/preview-security-distribution.md), C18–C21 e secção 10 | TeX externo reduz bundle mas conflita com sandbox; empacotar controla versões mas aumenta tamanho, assinatura, licenças e manutenção | Pode redefinir toda a arquitetura LaTeX | **Decisão de distribuição de Bernardo** |
-| Offline | dependências empacotadas/cache completo; instalação em runtime; rede opcional | [Markdown](reports/markdown-html.md), escopo e C6–C7; [LaTeX](reports/latex-preview.md), C3–C5; [segurança](reports/preview-security-distribution.md), C18 | Cache completo é previsível; runtime conveniente mas depende de rede; Tectonic `--only-cached` falha com cache incompleto | Afeta primeiro arranque e falhas | **Uso sem rede é princípio; composição aberta** |
-| Licenciamento | usar ferramentas externas; redistribuir subconjunto TeX; redistribuir stack JS/Rust | Ledgers dos quatro reports, sobretudo [LaTeX](reports/latex-preview.md), secções 14 e 21, e [segurança](reports/preview-security-distribution.md), E18 | Externo reduz inventário da app; empacotado exige inventário e assinatura por componente | Afeta distribuição e manutenção | **Validação legal/empacotamento pendente** |
+| Decision | Real alternatives | Evidence in reports | Trade-offs | Impact | Status |
+|---|---|---|---|---|---|
+| Desktop shell | SwiftUI/AppKit; Tauri 2; Electron 44; Flutter | [desktop](reports/desktop-filesystem.md), sections 6–7 and 12 | Native favors permissions and integration; Tauri separates Rust core and web UI; Electron favors Node/web at the cost of bundle size and releases; Flutter showed no specific advantage | Affects UI, IPC, permissions, packaging, and adapters | **Open; requires opinion and local tests** |
+| Folder persistence | security-scoped bookmarks; shell-mediated equivalent; select on every launch | [desktop](reports/desktop-filesystem.md), E1–E2; [security](reports/preview-security-distribution.md), E12–E14 | Bookmarks preserve intent but may become stale and require `start/stop`; Tauri plugins do not demonstrate sufficient macOS persistence | Affects tab restoration, access, and sandboxed distribution | **Contract required; mechanism open** |
+| Watcher semantics | direct FSEvents; framework watcher; `notify`; Chokidar; Watchman | [desktop](reports/desktop-filesystem.md), E3–E5 and E8–E16 | APIs/abstractions vary in ergonomics; Watchman is more robust but adds a daemon; none eliminates snapshots and rescans | Affects updates, CPU, installation, and recovery | **Invariant settled; implementation open** |
+| Source of truth for changes | events; snapshot/rescan | FSEvents may coalesce, drop, or request `MustScanSubDirs` ([desktop](reports/desktop-filesystem.md), E3–E4) | A snapshot may be expensive; events alone are incomplete | Affects tree correctness and invalidation | **Snapshot/rescan conditionally required** |
+| Dependency model | open file only; adapter manifest; broad rescan | [desktop](reports/desktop-filesystem.md), sections 9–10; [Markdown](reports/markdown-html.md), C12–C14; [LaTeX](reports/latex-preview.md), C7–C11 | A manifest takes work, but watching only the open file misses images/includes/bibliography | Affects correct renders and scan cost | **Manifest recommended; details open** |
+| Render coordination | serial queue; limited concurrency; cancellation; generation-based discard | [desktop](reports/desktop-filesystem.md), sections 9–10; [LaTeX](reports/latex-preview.md), section 12 | Serialization protects outputs; concurrency may reduce wait but increases contention and risk | Affects UX, CPU, and preview integrity | **Generation and rejection of old results settled; limits open** |
+| Markdown foundation | `remark`/`unified`; `cmark-gfm`/`swift-markdown`; `markdown-it`; `micromark`; `markdown-rs` | [Markdown](reports/markdown-html.md), sections 5–7 and 10 | AST/extensibility versus runtime/dependencies; custom renderer versus less integration work | Affects dialect, links, mathematics, sanitization, and maintenance | **Open; depends on runtime and corpus** |
+| Markdown mathematics | KaTeX; MathJax; no initial math; custom renderer | [Markdown](reports/markdown-html.md), C9–C10 and section 7 | KaTeX is static/predictable HTML but does not support `\\label`, `\\ref`, `\\eqref`; MathJax covers more but is heavier/asynchronous | Affects fidelity and security pipeline | **Open; real fixture required** |
+| LaTeX output | PDF; HTML; PDF+HTML hybrid | [LaTeX](reports/latex-preview.md), sections 7, 15–16 | PDF maximizes fidelity; HTML favors structure/search/accessibility; hybrid duplicates pipelines and failure modes | Affects the meaning of “preview,” viewer, and cost | **Bernardo's usage decision** |
+| LaTeX engine/distribution | TeX Live/MacTeX + `latexmk`; MiKTeX; Tectonic; BasicTeX | [LaTeX](reports/latex-preview.md), sections 6, 8, 16; [security](reports/preview-security-distribution.md), sections 6–10 | Traditional TeX is broader; Tectonic simplifies installation but differs in engine/cache/Biber; MiKTeX may install over the network | Affects compatibility, offline use, size, and support | **Open; real corpus and distribution tests required** |
+| LaTeX root | manual choice; heuristic discovery; persisted configuration | [LaTeX](reports/latex-preview.md), section 9; overview, “LaTeX” | A standalone chapter usually does not compile; heuristics may find zero or multiple candidates | Affects opening UX and dependencies | **Prompting for a choice is planned; algorithm open** |
+| LaTeX wrapper | `latexmk`; Tectonic watch; app watcher/coordinator | [LaTeX](reports/latex-preview.md), C6–C8 and sections 12–13 | External watch does not resolve roots, debounce, generations, cancellation, or concurrency | Affects simplicity and diagnostics | **App remains responsible; tool open** |
+| HTML surface | static `WKWebView`; app-owned scheme; native text; Quick Look | [security](reports/preview-security-distribution.md), sections 6–7; [Markdown](reports/markdown-html.md), section 7 | `loadFileURL` is simple; an app-owned scheme offers more control but requires logic; Quick Look offers less control | Affects security, resources, and CSS | **`WKWebView` conditionally favored; configuration open** |
+| PDF surface | PDFKit; Quick Look; external Preview | [LaTeX](reports/latex-preview.md), C16; [security](reports/preview-security-distribution.md), C9–C11 | PDFKit offers control and search; Quick Look is simple; external Preview breaks the flow | Affects reading, actions, and isolation | **PDFKit is a conditional recommendation; not approved** |
+| Local links and resources | allow within root; deny outside; ask for additional authorization | [Markdown](reports/markdown-html.md), C12 and section 7; [security](reports/preview-security-distribution.md), sections 7.2–7.3 | Allowing increases compatibility; denying reduces exposure; extra authorization complicates UX/permissions | Affects images, links, and security | **Product policy open; canonical root is a guardrail** |
+| External links | block; open after explicit action; load in preview | [security](reports/preview-security-distribution.md), section 7.3 | Blocking maximizes containment; external browser preserves utility but moves risk; loading in WebView increases exposure | Affects reading and network access | **Conditional recommendation: do not load automatically** |
+| LaTeX security | shell escape off; restricted allowlist; full escape | [LaTeX](reports/latex-preview.md), C18; [security](reports/preview-security-distribution.md), C16–C17 | Off breaks dependent documents; restricted lowers risk but does not make input trusted; full escape conflicts with an initial defensive posture | Affects compatibility and threat exposure | **Off by default; exceptions require a decision/test** |
+| Compilation workspace | source directory; isolated temp; helper/XPC | [LaTeX](reports/latex-preview.md), sections 11 and 14; [security](reports/preview-security-distribution.md), sections 7.5 and 10 | Source directory is simple but exposes sources; temp reduces harm; XPC improves separation but adds complexity | Affects security, cleanup, and sandboxing | **Temp outside root is a guardrail; degree of isolation open** |
+| Distribution | local prototype with external TeX; app outside App Store; sandboxed App Store app with bundled helpers | [security](reports/preview-security-distribution.md), C18–C21 and section 10 | External TeX reduces bundle size but conflicts with sandboxing; bundling controls versions but increases size, signing, licensing, and maintenance | May redefine the entire LaTeX architecture | **Bernardo's distribution decision** |
+| Offline use | bundled dependencies/full cache; runtime installation; optional network | [Markdown](reports/markdown-html.md), scope and C6–C7; [LaTeX](reports/latex-preview.md), C3–C5; [security](reports/preview-security-distribution.md), C18 | Full cache is predictable; runtime installation is convenient but needs network; Tectonic `--only-cached` fails with an incomplete cache | Affects first launch and failures | **Offline use is a principle; composition open** |
+| Licensing | use external tools; redistribute a TeX subset; redistribute JS/Rust stack | Ledgers in all four reports, especially [LaTeX](reports/latex-preview.md), sections 14 and 21, and [security](reports/preview-security-distribution.md), E18 | External tools reduce the app's inventory; bundled tools require inventory and signing each component | Affects distribution and maintenance | **Legal/packaging review pending** |
 
 ## 5. Decisões que dependem da opinião/uso pessoal de Bernardo
 
@@ -224,31 +230,31 @@ As perguntas abaixo são deliberadamente simples. Cada opção tem uma consequê
 
 | Opção | Recomendação condicional | Consequência |
 |---|---|---|
-| **Negar fora da raiz** | Se contenção e previsibilidade forem prioridade | Política simples e segura; alguns projetos existentes deixam de compilar/renderizar |
-| **Pedir autorização adicional** | Se há dependências legítimas fora da raiz e Bernardo aceita uma decisão explícita | Mantém controlo; exige múltiplos scopes/bookmarks, watcher adicional e UX de permissões |
-| **Permitir automaticamente** | Só se a conveniência superar claramente a ameaça | Maior compatibilidade, mas contraria a postura de raiz autorizada e aumenta exfiltração/escrita acidental |
+| **Deny access outside the root** | If containment and predictability are priorities | Simple, safe policy; some existing projects will no longer compile/render |
+| **Ask for additional authorization** | If there are legitimate dependencies outside the root and Bernardo accepts an explicit choice | Preserves control; requires multiple scopes/bookmarks, an additional watcher, and permission UX |
+| **Allow automatically** | Only if convenience clearly outweighs the threat | Greater compatibility, but conflicts with the authorized-root posture and increases accidental exfiltration/writes |
 
-**Decisão de Bernardo:** os projetos são autocontidos ou é normal partilharem recursos fora da pasta aberta?
+**Bernardo's decision:** are projects self-contained, or is it normal for them to share resources outside the open folder?
 
-### 5.6 Como devem funcionar links externos?
-
-| Opção | Recomendação condicional | Consequência |
-|---|---|---|
-| **Bloquear** | Se o preview deve permanecer offline e estritamente local | Maior contenção; links web deixam de ser úteis |
-| **Abrir externamente após ação explícita** | Se links bibliográficos/web são úteis, mas não devem carregar na WebView | Preserva utilidade com decisão visível; desloca o risco de rede para o browser |
-| **Carregar no preview** | Apenas se interatividade/rede for requisito real | Exige política CSP/rede muito mais ampla e aumenta a superfície de ataque |
-
-**Decisão de Bernardo:** links externos fazem parte da tarefa de leitura ou são apenas conveniência?
-
-### 5.7 Quão compatível deve ser a compilação LaTeX?
+### 5.6 How should external links work?
 
 | Opção | Recomendação condicional | Consequência |
 |---|---|---|
-| **Compatibilidade com o ambiente atual da tese** | Se a tese já compila num engine/distribuição conhecidos | Melhor probabilidade de fidelidade; dependência externa e configuração local tornam-se centrais |
-| **Ambiente controlado/portável** | Se reprodutibilidade, offline e distribuição pesarem mais | Considerar Tectonic ou TeX empacotado, mas validar engine, Biber, fontes, paths e licenças |
-| **Compatibilidade ampla com projetos TeX arbitrários** | Só com aceitação de custo elevado | Aproxima TeX Live/MacTeX completo; aumenta bundle, superfície de execução e suporte |
+| **Block** | If the preview must remain offline and strictly local | Greater containment; web links are no longer useful |
+| **Open externally after an explicit action** | If bibliographic/web links are useful but must not load in the WebView | Preserves utility with a visible choice; moves network risk to the browser |
+| **Load in the preview** | Only if interactivity/network access is a real requirement | Requires a much broader CSP/network policy and increases attack surface |
 
-**Decisão de Bernardo:** a app precisa de abrir a tese dele ou de ser uma ferramenta geral para projetos LaTeX?
+**Bernardo's decision:** are external links part of the reading task or only a convenience?
+
+### 5.7 How compatible must LaTeX compilation be?
+
+| Opção | Recomendação condicional | Consequência |
+|---|---|---|
+| **Compatibility with the thesis's current environment** | If the thesis already compiles with a known engine/distribution | Better chance of fidelity; external dependencies and local configuration become central |
+| **Controlled/portable environment** | If reproducibility, offline use, and distribution matter more | Consider Tectonic or bundled TeX, but validate the engine, Biber, fonts, paths, and licenses |
+| **Broad compatibility with arbitrary TeX projects** | Only if higher costs are acceptable | Approaches full TeX Live/MacTeX; increases bundle size, execution surface, and support needs |
+
+**Bernardo's decision:** does the app need to open his thesis, or be a general tool for LaTeX projects?
 
 ## 6. Conflitos e incompatibilidades entre reports
 

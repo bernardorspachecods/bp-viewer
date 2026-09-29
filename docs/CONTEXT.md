@@ -1,18 +1,15 @@
-# Contexto de `docs/`
+# `docs/` context
 
-Esta pasta contém a documentação atual e os arquivos históricos do projeto.
+This directory contains the current documentation and historical project records.
 
-## Fontes atuais
+## Current sources
 
-- [`current-state.md`](current-state.md) — comportamento observável atual da
-  app e entradas principais do código.
-- [`technical/CONTEXT.md`](technical/CONTEXT.md) — router da arquitetura
-  técnica atual.
+- [`current-state.md`](current-state.md) — observable app behavior and main code entry points.
+- [`technical/CONTEXT.md`](technical/CONTEXT.md) — index for the current technical architecture.
 
-## Arquivos históricos
+## Historical records
 
-- [`reference/CONTEXT.md`](reference/CONTEXT.md) — registos históricos de
-  integração, validação e pesquisa; não são fonte de comportamento atual.
+- [`reference/CONTEXT.md`](reference/CONTEXT.md) — historical integration, validation, and research records; they are not a source for current behavior.
 
-A documentação ativa não contém planos, hipóteses de produto ou checklists de
-validação. O código em `Sources/` prevalece para detalhes implementacionais.
+Active documentation does not contain plans, product hypotheses, or validation
+checklists. Code in `Sources/` takes precedence for implementation details.

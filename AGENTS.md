@@ -1,12 +1,11 @@
-# Regras específicas da repo
+# Repository-specific instructions
 
-## Fecho de ronda de trabalho
+## End of a work round
 
-Não executar a meio de alterações /rondas de trabalho, executa apenas no fim de parares de trabalhar:
+Do not run this in the middle of a round of changes. Run it only after you have finished working:
 
 ```bash
 ./scripts/restart-app.sh
 ```
 
-Só entregar a ronda depois de confirmar que o script concluiu o build e abriu a
-app. Comunicar explicitamente se essa execução falhar. A execução falhar nao é razão para alterar trabalho de outros agentes
+Do not hand off the round until you have confirmed that the script completed the build and opened the app. Explicitly report if the command fails. A failure is not a reason to change another agent's work.

@@ -1,14 +1,9 @@
-# Contexto de `MarkdownValidation`
+# `MarkdownValidation` context
 
-Esta fixture cobre renderização de uma imagem SVG local, matemática TeX comum
-e uma imagem remota.
+This fixture covers rendering a local SVG image, common TeX notation, and a remote image.
 
-- Abra `01-local-and-math.md` na app para validar `images/local-diagram.svg`,
-  fórmulas inline e fórmulas em bloco.
-- Abra `02-remote-image.md` com internet disponível para validar o recurso
-  remoto; offline, a ausência da imagem é um resultado ambiental separado.
-- Alterar `images/local-diagram.svg` permite verificar a atualização por
-  dependência local.
+- Open `01-local-and-math.md` in the app to validate `images/local-diagram.svg`, inline formulas, and display formulas.
+- Open `02-remote-image.md` with an internet connection to validate the remote resource. Offline, a missing image is an environmental result.
+- Change `images/local-diagram.svg` to verify updates triggered by a local dependency.
 
-O registo histórico e as limitações desta fixture estão em
-[`docs/reference/markdown-fixtures.md`](../../docs/reference/markdown-fixtures.md).
+The historical record and limitations of this fixture are documented in [`docs/reference/markdown-fixtures.md`](../../docs/reference/markdown-fixtures.md).

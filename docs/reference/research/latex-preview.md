@@ -1,47 +1,47 @@
-# Brief de pesquisa: LaTeX → preview
+# Research brief: LaTeX → preview
 
-## Objetivo
+## Objective
 
-Determinar como o `bp-viewer` deve processar documentos LaTeX locais e apresentar um preview útil, considerando documentos de tese reais e alterações feitas por ferramentas externas.
+Determine how `bp-viewer` should process local LaTeX documents and provide a useful preview, taking real thesis documents and changes made by external tools into account.
 
-## Pergunta principal
+## Main question
 
-Que estratégias de processamento e apresentação de LaTeX são viáveis no macOS para o MVP — incluindo os seus custos, dependências, limitações e qualidade de resultado?
+Which LaTeX processing and presentation strategies are viable on macOS for the MVP, including their costs, dependencies, limitations, and output quality?
 
-## Deve investigar
+## Research questions
 
-- estratégias de saída visualmente relevantes, incluindo PDF, HTML ou abordagens híbridas;
-- engines, compiladores, wrappers e ferramentas de build local materialmente viáveis;
-- dependência de MacTeX, TeX Live, MiKTeX ou alternativas, sem assumir nenhuma como obrigatória;
-- documentos multi-ficheiro, `\input`, `\include`, imagens, bibliografia e referências cruzadas;
-- deteção de dependências e recompilação após alterações externas;
-- compilação incremental, tempos de espera e concorrência entre compilações;
-- localização de artefactos temporários sem poluir o projeto do utilizador;
-- extração e apresentação de erros e avisos de compilação;
-- pacotes LaTeX incompatíveis, casos que exigem interação e limites de execução;
-- permissões, processos externos, licenciamento e distribuição no macOS;
-- fidelidade do resultado para uma tese e implicações de acessibilidade ou pesquisa no preview.
+- visually relevant output strategies, including PDF, HTML, or hybrid approaches;
+- materially viable engines, compilers, wrappers, and local build tools;
+- reliance on MacTeX, TeX Live, MiKTeX, or alternatives, without assuming any is required;
+- multi-file documents, `\input`, `\include`, images, bibliographies, and cross-references;
+- dependency detection and recompilation after external changes;
+- incremental compilation, wait times, and concurrent compilations;
+- locating temporary artifacts without cluttering the user's project;
+- extracting and displaying compilation errors and warnings;
+- incompatible LaTeX packages, cases that require interaction, and execution limits;
+- permissions, external processes, licensing, and macOS distribution;
+- output fidelity for a thesis and accessibility or search implications in the preview.
 
-## Fora do escopo
+## Out of scope
 
-- escolher a framework desktop ou o visualizador final;
-- implementar um compilador ou um sistema de build;
-- assumir que HTML é necessariamente melhor que PDF, ou vice-versa;
-- investigar editores LaTeX completos;
-- decidir funcionalidades de escrita ou colaboração.
+- choosing the desktop framework or final viewer;
+- implementing a compiler or build system;
+- assuming HTML is necessarily better than PDF, or vice versa;
+- researching full-featured LaTeX editors;
+- deciding writing or collaboration features.
 
-Deve indicar claramente que partes dependem do viewer e da arquitetura envolvente, remetendo a análise detalhada para os briefs correspondentes.
+Clearly identify which parts depend on the viewer and surrounding architecture, and refer detailed analysis to the corresponding briefs.
 
-## Cenários mínimos a avaliar
+## Minimum scenarios to evaluate
 
-- um `main.tex` que inclui vários capítulos;
-- bibliografia e referências cruzadas que exigem mais de uma passagem;
-- uma imagem ou pacote ausente;
-- alterações sucessivas no ficheiro principal e num ficheiro incluído;
-- uma compilação que falha ou fica bloqueada.
+- a `main.tex` file that includes several chapters;
+- a bibliography and cross-references that require multiple passes;
+- a missing image or package;
+- successive changes to the main file and an included file;
+- a compilation that fails or becomes stuck.
 
-## Resultado específico
+## Deliverable
 
-Entregar uma comparação das estratégias descobertas, uma recomendação condicional para o MVP, pré-requisitos locais, principais riscos e um plano de testes com documentos LaTeX representativos.
+Compare the identified strategies and provide a conditional MVP recommendation, local prerequisites, key risks, and a test plan using representative LaTeX documents.
 
-Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega) e separar capacidade documentada de adequação inferida ao `bp-viewer`.
+Use the [shared report format](CONTEXT.md#formato-de-entrega) and distinguish documented capabilities from suitability inferred for `bp-viewer`.

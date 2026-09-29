@@ -1,9 +1,9 @@
-# Arquivo de pesquisa técnica
+# Technical research archive
 
-Esta pasta preserva relatórios e briefs históricos usados durante a construção
-da app. O conteúdo pode conter alternativas, planos e decisões que já não
-representam o código atual.
+This directory preserves historical reports and briefs used while building the
+app. Its contents may include alternatives, plans, and decisions that no longer
+represent the current code.
 
-Não é uma fonte ativa. Para saber como a app funciona hoje, consultar
+This is not an active source. To see how the app works today, consult
 [`../../current-state.md`](../../current-state.md) e
 [`../../technical/CONTEXT.md`](../../technical/CONTEXT.md).

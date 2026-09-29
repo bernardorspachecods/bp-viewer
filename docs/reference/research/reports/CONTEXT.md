@@ -1,17 +1,14 @@
-# Contexto de `docs/reference/research/reports/`
+# `docs/reference/research/reports/` context
 
-Esta pasta contém os quatro relatórios concluídos da pesquisa técnica. São
-evidência e recomendações condicionais, não decisões aprovadas do produto.
+This directory contains the four completed technical research reports. They
+provide evidence and conditional recommendations, not approved product decisions.
 
-- `markdown-html.md` — parser, AST, matemática, links e sanitização.
-- `latex-preview.md` — PDF/HTML, engines, bibliografia, dependências e
-  artefactos.
-- `desktop-filesystem.md` — shell macOS, permissões, watchers, contratos e
-  processos.
-- `preview-security-distribution.md` — WebKit, PDFKit, sandbox, helpers,
-  shell escape e distribuição.
+- `markdown-html.md` — parser, AST, mathematics, links, and sanitization.
+- `latex-preview.md` — PDF/HTML, engines, bibliography, dependencies, and artifacts.
+- `desktop-filesystem.md` — macOS shell, permissions, watchers, contracts, and processes.
+- `preview-security-distribution.md` — WebKit, PDFKit, sandbox, helpers, shell escape, and distribution.
 
-O processo comum, o formato dos relatórios e a síntese ficam no
-[`CONTEXT.md` pai](../CONTEXT.md). A consolidação está em
-[`../synthesis.md`](../synthesis.md). Nenhum relatório desta pasta é fonte
-ativa da app.
+The shared process, report format, and synthesis are documented in the
+[`parent CONTEXT.md`](../CONTEXT.md). The consolidated findings are in
+[`../synthesis.md`](../synthesis.md). None of the reports in this directory is
+an active source for the app.

@@ -2,10 +2,10 @@
 
 Status: `historical_record`
 
-Este ficheiro preserva o registo da primeira integração dos testes de
-fundação. Os números e commits abaixo são evidência histórica dessa ronda; a
-cobertura atual deixou de ser mantida neste registo; o comportamento atual está
-em [`current-state.md`](../current-state.md).
+This file preserves the record of the first integration of the foundation
+tests. The numbers and commits below are historical evidence from that round;
+this record is no longer maintained as coverage changes. Current behavior is
+documented in [`current-state.md`](../current-state.md).
 
 ## Objective
 

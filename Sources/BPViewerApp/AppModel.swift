@@ -502,12 +502,12 @@ final class AppModel: ObservableObject {
         openDocument(url: node.url)
     }
 
-    func createNewMarkdownDocument() {
+    func createNewMarkdownDocument(source: String = "") {
         var tab = DocumentTab.untitledMarkdown()
-        let transition = documentEditCoordinator.beginMarkdown(source: "")
+        let transition = documentEditCoordinator.beginMarkdown(source: source)
         var editSession = transition.session
         editSession.saveState = .unsaved
-        tab.markdownSource = transition.source
+        tab.markdownSource = source
         tab.markdownBlocks = transition.markdownBlocks
         tab.markdownEditSession = editSession
 

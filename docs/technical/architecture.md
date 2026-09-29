@@ -1,134 +1,133 @@
-# Arquitetura técnica atual
+# Current technical architecture
 
-## Organização dos módulos
+## Module organization
 
 ```text
 BPViewerApp
-├── AppModel                  intents da UI e coordenação da sessão
-├── ActiveDocumentWatcher     adaptação de eventos de ficheiros ativos
-├── WorkspaceTreeSession      árvore lazy, filtros e watchers do workspace
-├── DocumentRenderCoordinator renders e cancelamento por tab
-├── DocumentEditCoordinator  sessões, conflitos e gravação de documentos
-├── DocumentDiffCoordinator  baselines de disco/Git e composição do diff
-├── RootView / WorkspaceView  composição da janela
-├── WorkspaceWindowManager    tabs nativas e modelos por workspace
-├── SidebarView               árvore e navegação do workspace
-├── MarkdownPreviewView       composição do preview e edição Markdown
-├── MarkdownWebPreview        ponte WebKit, JavaScript e navegação Markdown
-├── SourceEditorView          editor AppKit, gutter e decorações partilhados
-│                             por Markdown, JSON e diff
-├── JSONPreviewView           preview JSON raw numerado
-├── CSVPreviewView            preview CSV tabular
-├── LatexPreviewView          edição LaTeX e split source/PDF
-├── LatexSyncTeXLookup        duplo clique PDF → source
-├── PDFPreviewView            preview PDF e superfície PDF partilhada
-├── ImagePreviewView          preview nativo de imagens raster
-├── DocxPreviewView           preview Word através de HTML/WebKit
-├── SettingsView              preferências da app
-└── SnapshotSupport           seleção e janelas de snapshots
+├── AppModel                  UI intents and session coordination
+├── ActiveDocumentWatcher     active file event adapter
+├── WorkspaceTreeSession      lazy tree, filters, and workspace watchers
+├── DocumentRenderCoordinator rendering and cancellation by tab
+├── DocumentEditCoordinator  document sessions, conflicts, and saving
+├── DocumentDiffCoordinator  disk/Git baselines and diff composition
+├── RootView / WorkspaceView  window composition
+├── WorkspaceWindowManager    native tabs and per-workspace models
+├── SidebarView               workspace tree and navigation
+├── MarkdownPreviewView       preview composition and Markdown editing
+├── MarkdownWebPreview        WebKit, JavaScript, and Markdown navigation bridge
+├── SourceEditorView          AppKit editor, gutter, and decorations shared
+│                             by Markdown, JSON, and diff
+├── JSONPreviewView           numbered raw JSON preview
+├── CSVPreviewView            tabular CSV preview
+├── LatexPreviewView          LaTeX editing and source/PDF split view
+├── LatexSyncTeXLookup        PDF double-click → source
+├── PDFPreviewView            PDF preview and shared PDF surface
+├── ImagePreviewView          native raster image preview
+├── DocxPreviewView           Word preview through HTML/WebKit
+├── SettingsView              app preferences
+└── SnapshotSupport           snapshot selection and windows
 
 BPViewerCore
-├── FileSystemFoundation      nós e scanner
-├── SessionModels             modelos puros de sessão e persistência
-├── DocumentTabSession        invariantes e transições das tabs
-├── WorkspaceSessionCoordinator persistência e sessão de workspace
-├── DocumentOpenCoordinator   resolução de documentos e contexto LaTeX
+├── FileSystemFoundation      nodes and scanner
+├── SessionModels             pure session and persistence models
+├── DocumentTabSession        tab invariants and transitions
+├── WorkspaceSessionCoordinator workspace persistence and session
+├── DocumentOpenCoordinator   document resolution and LaTeX context
 ├── MarkdownAdapter            Markdown → HTML
-├── MarkdownEditing / Merge   edição e merge de Markdown
-├── DocumentDiff              diff puro entre duas fontes de texto
-├── CSVAdapter                 parsing e HTML estático para preview CSV
-├── MarkdownPreviewLink       resolução de links
-├── MathMLRenderer            matemática TeX → MathML
-├── LatexRootDiscovery        descoberta de roots
-├── LatexAdapter               compilação, overrides e diagnóstico LaTeX
-├── LatexSyntaxHighlighter     tokens e paleta de source LaTeX
-├── LatexRenderCache           cache de resultados
-└── LatexTabContextPersistence contexto de capítulos LaTeX
+├── MarkdownEditing / Merge   Markdown editing and merge
+├── DocumentDiff              pure diff between two text sources
+├── CSVAdapter                 parsing and static HTML for CSV preview
+├── MarkdownPreviewLink       link resolution
+├── MathMLRenderer            TeX mathematics → MathML
+├── LatexRootDiscovery        root discovery
+├── LatexAdapter               LaTeX compilation, overrides, and diagnostics
+├── LatexSyntaxHighlighter     LaTeX source tokens and palette
+├── LatexRenderCache           result cache
+└── LatexTabContextPersistence LaTeX chapter context
 ```
 
-`BPViewerApp` contém a integração macOS e o estado observável. `BPViewerCore`
-contém a lógica sem UI usada pela app e pelos runners executáveis. Os targets
-`BPViewerContractRunner` e `BPViewerFoundationRunner` exercitam essa lógica
-partilhada.
+`BPViewerApp` contains macOS integration and observable state. `BPViewerCore`
+contains UI-independent logic used by the app and executable runners. The
+`BPViewerContractRunner` and `BPViewerFoundationRunner` targets exercise this
+shared logic.
 
-## Coordenação
+## Coordination
 
-`AppModel`, isolado no `MainActor`, é o coordenador efetivo da apresentação de
-um workspace. `WorkspaceWindowManager` mantém uma instância do modelo por tab
-nativa e partilha o coordenador de persistência entre elas. O modelo mantém o
-estado observável das tabs e encaminha intents para os módulos de
-sessão e para os coordenadores especializados. `DocumentTabSession`
-mantém as invariantes das tabs; `WorkspaceSessionCoordinator` concentra
-persistência e estado por workspace; `DocumentOpenCoordinator` resolve URLs e
-contexto LaTeX; `ActiveDocumentWatcher` adapta eventos Darwin para a UI.
-`WorkspaceTreeSession` encapsula o scanning lazy, filtro, expansão e watchers
-da árvore; `DocumentRenderCoordinator` encapsula gerações, cancelamento e
-renderização; `DocumentEditCoordinator` encapsula undo/redo, validação,
-gravação explícita e conflitos; `DocumentDiffCoordinator` seleciona e obtém
-baselines sem expor Git à UI. O `DocumentDiffEngine` no Core compara fontes em
-memória e devolve um resultado independente de Markdown ou JSON. Estes módulos
-devolvem valores e eventos, sem mutar diretamente `AppModel`.
+`AppModel`, isolated on the `MainActor`, is the effective coordinator for a
+workspace's presentation. `WorkspaceWindowManager` keeps one model instance per
+native tab and shares the persistence coordinator among them. The model
+maintains observable tab state and routes intents to session modules and
+specialized coordinators. `DocumentTabSession` maintains tab invariants;
+`WorkspaceSessionCoordinator` handles persistence and per-workspace state;
+`DocumentOpenCoordinator` resolves URLs and LaTeX context; `ActiveDocumentWatcher`
+adapts Darwin events for the UI. `WorkspaceTreeSession` encapsulates lazy
+scanning, filtering, expansion, and tree watchers; `DocumentRenderCoordinator`
+encapsulates generations, cancellation, and rendering; `DocumentEditCoordinator`
+encapsulates undo/redo, validation, explicit saving, and conflicts;
+`DocumentDiffCoordinator` selects and retrieves baselines without exposing Git
+to the UI. The Core's `DocumentDiffEngine` compares in-memory sources and
+returns a result independent of Markdown or JSON. These modules return values
+and events without directly mutating `AppModel`.
 
 O fluxo principal é:
 
 ```text
-ação da UI
+UI action
   → AppModel
-    → sessão de workspace / coordinator de render / coordinator de edição
+    → workspace session / render coordinator / edit coordinator
         → scanner / watcher / adapter / process runner
-        → DocumentTab e estado SwiftUI
-        → preview Markdown, JSON, CSV, PDF ou Quick Look
+        → DocumentTab and SwiftUI state
+        → Markdown, JSON, CSV, PDF, or Quick Look preview
 ```
 
-## Filesystem e atualização
+## Filesystem and updates
 
-- `FileSystemScanner` cria `FileNode` com path absoluto, path relativo, tipo e
-  filhos carregados.
-- A árvore começa com o nível superior e carrega filhos quando uma pasta é
-  expandida. Pesquisar ou desligar o filtro de compatibilidade pode exigir a
-  indexação completa.
-- Watchers de diretórios atualizam a árvore. Watchers dos ficheiros ativos e das
-  dependências invalidam o preview. Durante a edição, uma alteração externa é
-  reconciliada como conflito; não dispara autosave Markdown.
-- Cada render usa uma geração. Resultados cancelados ou obsoletos não substituem
-  o estado mais recente da tab.
+- `FileSystemScanner` creates `FileNode` values with absolute and relative paths,
+  a type, and loaded children.
+- The tree starts at the top level and loads children when a folder is expanded.
+  Searching or disabling the compatibility filter may require a full index.
+- Directory watchers update the tree. Watchers for active files and dependencies
+  invalidate the preview. During editing, an external change is reconciled as a
+  conflict; it does not trigger Markdown autosave.
+- Each render uses a generation. Cancelled or obsolete results do not replace
+  the tab's latest state.
 
-## Renderização
+## Rendering
 
-O `SwiftMarkdownAdapter` usa `swift-markdown` para produzir HTML próprio. Faz
-escaping de texto e atributos, controla esquemas de URL, embebe imagens locais,
-recolhe dependências e cria outline e blocos editáveis.
+`SwiftMarkdownAdapter` uses `swift-markdown` to produce custom HTML. It escapes
+text and attributes, controls URL schemes, embeds local images, collects
+dependencies, and creates an outline and editable blocks.
 
-O `LocalLatexAdapter` resolve a root, prepara um workspace temporário (ou uma
-overlay quando existe rascunho contextual), executa o compiler através de
-`ProcessRunner`, recolhe dependências, valida o PDF produzido e devolve dados
-SyncTeX quando disponíveis. O cache é indexado por root, dependências,
-compiler e configuração; previews de rascunho não entram no cache.
+`LocalLatexAdapter` resolves the root, prepares a temporary workspace (or an
+overlay when there is a contextual draft), runs the compiler through
+`ProcessRunner`, collects dependencies, validates the generated PDF, and returns
+SyncTeX data when available. The cache is keyed by root, dependencies,
+compiler, and configuration; draft previews are not cached.
 
-Imagens suportadas são lidas como bytes e validadas através do ImageIO antes de
-serem entregues à superfície nativa. O preview não altera o ficheiro original.
+Supported images are read as bytes and validated through ImageIO before being
+passed to the native surface. The preview does not alter the original file.
 
-## Persistência e artefactos
+## Persistence and artifacts
 
-- `AppState` é um modelo `Codable` com versão de schema em `SessionModels.swift`.
-- `AppStateStore` guarda o estado JSON em `UserDefaults`; o acesso é encapsulado
-  por `WorkspaceSessionCoordinator`.
-- O estado global guarda tema, sidebar, zooms predefinidos e `shell escape`.
-- A lista ordenada de workspaces abertos e o workspace ativo são guardados no
-  estado da app para restaurar as tabs nativas ao iniciar.
-- O estado por documento guarda zoom, outline e posição de leitura.
-- O estado por workspace guarda tabs, expansão, scroll, filtro, seleção de root,
-  autorizações externas e registos de snapshots.
-- O estado transitório do diff vive apenas na sessão em memória; HTML, PDF,
-  logs e conteúdo raw não são usados como estado persistido da sessão.
-- Os PNG dos snapshots ficam fora do repositório, em Application Support.
+- `AppState` is a `Codable` model with a schema version in `SessionModels.swift`.
+- `AppStateStore` stores JSON state in `UserDefaults`; access is encapsulated by
+  `WorkspaceSessionCoordinator`.
+- Global state stores the theme, sidebar, default zoom levels, and `shell escape`.
+- The ordered list of open workspaces and the active workspace are stored in the
+  app state to restore native tabs at launch.
+- Per-document state stores zoom, outline, and reading position.
+- Per-workspace state stores tabs, expansion, scroll, filter, root selection,
+  external permissions, and snapshot records.
+- Transient diff state exists only in the in-memory session; HTML, PDFs, logs,
+  and raw content are not persisted as session state.
+- Snapshot PNG files are stored outside the repository, in Application Support.
 
-## Limites de segurança
+## Security boundaries
 
-- O HTML Markdown usa uma Content Security Policy local e não habilita scripts
-  de conteúdo.
-- A app não escreve artefactos de compilação na pasta raw do utilizador.
-- Paths de dependências LaTeX são resolvidos e filtrados antes da compilação.
-- Dependências fora da raiz exigem confirmação explícita e são observadas depois
-  de autorizadas.
-- O `shell escape` começa desativado e é uma preferência explícita da app.
+- Markdown HTML uses a local Content Security Policy and does not enable content
+  scripts.
+- The app does not write build artifacts into the user's source folder.
+- LaTeX dependency paths are resolved and filtered before compilation.
+- Dependencies outside the root require explicit approval and are watched after
+  authorization.
+- `shell escape` is disabled by default and is an explicit app preference.

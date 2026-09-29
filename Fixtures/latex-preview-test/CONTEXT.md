@@ -1,9 +1,9 @@
-# Contexto da fixture LaTeX
+# LaTeX fixture context
 
-Abra `main.tex` no `bp-viewer`. O documento deve produzir várias páginas e
-inclui índice, referências cruzadas, equação, tabela, listas, links, um
-diagrama TikZ incluído por `fixture-diagram.tex` e bibliografia BibTeX em
-`references.bib`.
+Open `main.tex` in `bp-viewer`. The document should produce multiple pages and
+includes a table of contents, cross-references, an equation, a table, lists,
+links, a TikZ diagram included from `fixture-diagram.tex`, and a BibTeX
+bibliography in `references.bib`.
 
 Para validar fora da app, a partir desta pasta:
 
@@ -19,6 +19,6 @@ open main.pdf
 rm -rf "$WORKSPACE"
 ```
 
-O comando usa BibTeX clássico, disponível na instalação atual. Não requer
-`latexmk`, `biber` ou shell escape. Os artefactos ficam no workspace temporário
-e não nesta pasta.
+The command uses classic BibTeX, available in the current installation. It does
+not require `latexmk`, `biber`, or shell escape. Artifacts are kept in the
+temporary workspace, not in this directory.

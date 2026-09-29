@@ -1,21 +1,15 @@
-# Contexto de `Sources/`
+# `Sources/` context
 
-Este diretório contém os targets Swift definidos em [Package.swift](../Package.swift).
+This directory contains the Swift targets defined in [Package.swift](../Package.swift).
 
-- [`BPViewerCore/`](BPViewerCore/CONTEXT.md) — modelos e lógica partilhável
-  para filesystem, sessão/tabs, persistência, abertura de documentos, Markdown,
-  LaTeX e merge/edição.
-- [`BPViewerApp/`](BPViewerApp/CONTEXT.md) — app macOS SwiftUI/AppKit e a
-  coordenação do estado da sessão.
-- `BPViewerContractRunner/` — contratos executáveis do adapter Markdown e da
-  cadeia LaTeX/process runner.
-- `BPViewerFoundationRunner/` — contratos executáveis das fundações de
-  filesystem, árvore, tabs, persistência e edição/merge.
-- `BPViewerTabPrototype/` e `BPViewerWindowTabPrototype/` — protótipos
-  isolados de comportamento de tabs; não são a app principal.
+- [`BPViewerCore/`](BPViewerCore/CONTEXT.md) — shared models and logic for the filesystem, sessions and tabs, persistence, document opening, Markdown, LaTeX, and editing and merge.
+- [`BPViewerApp/`](BPViewerApp/CONTEXT.md) — the macOS SwiftUI/AppKit app and session state coordination.
+- `BPViewerContractRunner/` — executable contracts for the Markdown adapter and LaTeX/process runner pipeline.
+- `BPViewerFoundationRunner/` — executable contracts for filesystem, tree, tabs, persistence, and editing and merge foundations.
+- `BPViewerTabPrototype/` and `BPViewerWindowTabPrototype/` — isolated prototypes of tab behavior; they are not the main app.
 
-Os runners e protótipos não devem criar uma segunda implementação da app:
-extraem ou exercitam seams do core quando isso for possível. O estado atual e a
-arquitetura estão em [`docs/current-state.md`](../docs/current-state.md),
+The runners and prototypes should not create a second implementation of the app:
+extract or exercise core seams where possible. The current state and
+architecture are documented in [`docs/current-state.md`](../docs/current-state.md),
 [`docs/technical/architecture.md`](../docs/technical/architecture.md) e
 [`docs/technical/ui-architecture.md`](../docs/technical/ui-architecture.md).

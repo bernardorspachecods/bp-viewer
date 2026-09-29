@@ -1,45 +1,45 @@
-# Brief de pesquisa: Markdown → HTML
+# Research brief: Markdown → HTML
 
-## Objetivo
+## Objective
 
-Determinar quais as abordagens tecnicamente viáveis para converter ficheiros Markdown locais em HTML renderizado dentro do `bp-viewer`, preservando um fluxo de atualização automática e uma experiência de leitura adequada a uma tese.
+Determine which approaches are technically viable for converting local Markdown files to HTML rendered inside `bp-viewer`, while preserving automatic updates and a reading experience suited to a thesis.
 
-## Pergunta principal
+## Main question
 
-Que parser e pipeline Markdown → HTML oferecem o melhor equilíbrio entre fidelidade, extensibilidade, suporte a conteúdo académico, funcionamento offline, segurança e complexidade para o MVP em macOS?
+Which Markdown parser and Markdown-to-HTML pipeline offer the best balance of fidelity, extensibility, academic content support, offline operation, security, and complexity for the macOS MVP?
 
-## Deve investigar
+## Research questions
 
-- variantes de Markdown relevantes e compatibilidade com documentos reais;
-- arquitetura do parser e extensão por plugins ou transformações;
-- matemática, blocos de código, tabelas, citações, notas e referências;
-- imagens, links relativos, âncoras e referências entre ficheiros;
-- CSS, temas e controlo do HTML gerado;
-- sanitização e tratamento de conteúdo local potencialmente perigoso;
-- atualização depois de alterações externas e custo de re-renderização;
-- dependências, execução offline, licenciamento e manutenção;
-- diferenças entre renderização no cliente e pré-renderização no processo local;
-- casos em que Markdown não consegue reproduzir requisitos académicos sem ferramentas adicionais.
+- relevant Markdown variants and compatibility with real documents;
+- parser architecture and extension through plugins or transformations;
+- mathematics, code blocks, tables, quotations, notes, and references;
+- images, relative links, anchors, and cross-file references;
+- CSS, themes, and control over generated HTML;
+- sanitization and handling of potentially unsafe local content;
+- updates after external changes and the cost of rerendering;
+- dependencies, offline operation, licensing, and maintenance;
+- differences between client-side rendering and prerendering in the local process;
+- cases where Markdown cannot meet academic requirements without additional tools.
 
-## Fora do escopo
+## Out of scope
 
-- escolher a framework desktop;
-- desenhar a interface completa;
-- implementar o adapter;
-- decidir features de edição;
-- fazer uma comparação genérica de todos os parsers existentes.
+- choosing the desktop framework;
+- designing the full interface;
+- implementing the adapter;
+- deciding editing features;
+- conducting a generic comparison of every existing parser.
 
-Pode registar dependências da WebView ou do desktop quando forem materialmente relevantes, mas remeter a análise detalhada para os briefs correspondentes.
+WebView or desktop dependencies may be noted when materially relevant, but refer detailed analysis to the corresponding briefs.
 
-## Cenários mínimos a avaliar
+## Minimum scenarios to evaluate
 
-- um capítulo Markdown com matemática e imagens relativas;
-- um documento com subpastas e links para outros ficheiros;
-- uma alteração frequente feita por um processo externo;
-- HTML ou Markdown com conteúdo que não deve poder executar scripts arbitrários.
+- a Markdown chapter with mathematics and relative images;
+- a document with subfolders and links to other files;
+- a frequent change made by an external process;
+- HTML or Markdown containing content that must not be able to execute arbitrary scripts.
 
-## Resultado específico
+## Deliverable
 
-Entregar uma comparação de abordagens descobertas, uma recomendação condicional para o MVP, os requisitos que a podem alterar e uma lista curta de testes locais necessários para validar a escolha.
+Compare the identified approaches and provide a conditional MVP recommendation, requirements that could change it, and a short list of local tests needed to validate the choice.
 
-Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega) e não apresentar uma preferência como facto.
+Use the [shared report format](CONTEXT.md#formato-de-entrega) and do not present a preference as a fact.

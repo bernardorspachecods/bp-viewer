@@ -1,46 +1,46 @@
-# Brief de pesquisa: desktop e filesystem
+# Research brief: desktop and filesystem
 
-## Objetivo
+## Objective
 
-Determinar a arquitetura mínima de uma aplicação desktop para macOS que navegue por pastas locais, observe alterações e coordene os adapters de renderização sem editar os ficheiros-fonte.
+Determine the minimum architecture for a macOS desktop app that browses local folders, watches for changes, and coordinates rendering adapters without editing source files.
 
-## Pergunta principal
+## Main question
 
-Que opções de shell desktop e integração com o filesystem oferecem o fluxo mais simples e fiável para o `bp-viewer` pessoal, mantendo abertas as escolhas dos adapters?
+Which desktop shell and filesystem integration options provide the simplest, most reliable workflow for personal use of `bp-viewer`, while leaving adapter choices open?
 
-## Deve investigar
+## Research questions
 
-- opções de aplicação desktop adequadas ao macOS e os seus custos operacionais;
-- acesso a pastas, seleção de diretórios, navegação hierárquica e permissões;
-- APIs ou bibliotecas de file watching e comportamento em renomeações, remoções, escritas atómicas e alterações rápidas;
-- debounce, filas de renderização, cancelamento e prevenção de condições de corrida;
-- descoberta de dependências relacionadas com o ficheiro visualizado;
-- execução e supervisão de processos externos;
-- comunicação entre shell, adapter e superfície de preview;
-- consumo de memória, arranque, empacotamento e manutenção;
-- associação de ficheiros, drag-and-drop e abertura de uma pasta, apenas quando relevantes para o MVP;
-- limitações específicas do macOS e custos de permissões persistentes.
+- desktop app options suitable for macOS and their operational costs;
+- folder access, directory selection, hierarchical navigation, and permissions;
+- file watching APIs or libraries and their behavior on renames, removals, atomic writes, and rapid changes;
+- debouncing, render queues, cancellation, and race condition prevention;
+- discovery of dependencies related to the viewed file;
+- execution and supervision of external processes;
+- communication between the shell, adapter, and preview surface;
+- memory use, startup, packaging, and maintenance;
+- file associations, drag and drop, and opening a folder, only where relevant to the MVP;
+- macOS-specific limitations and the cost of persistent permissions.
 
-## Fora do escopo
+## Out of scope
 
-- escolher o parser Markdown ou a estratégia LaTeX;
-- fazer uma análise detalhada de segurança de WebViews e PDFs;
-- criar a aplicação ou um protótipo;
-- suportar Windows ou Linux no MVP;
-- substituir completamente o Finder ou construir um gestor de ficheiros geral.
+- choosing the Markdown parser or LaTeX strategy;
+- conducting a detailed security analysis of WebViews and PDFs;
+- creating the app or a prototype;
+- supporting Windows or Linux in the MVP;
+- completely replacing Finder or building a general-purpose file manager.
 
-Pode comparar tecnologias concretas, mas deve começar pelos requisitos e não por uma preferência de framework.
+Concrete technologies may be compared, but start with requirements rather than a framework preference.
 
-## Cenários mínimos a avaliar
+## Minimum scenarios to evaluate
 
-- abrir uma pasta com subpastas e muitos ficheiros;
-- o LLM substituir um ficheiro através de escrita atómica;
-- várias alterações consecutivas enquanto existe uma compilação em curso;
-- alterar um ficheiro incluído sem alterar o ficheiro aberto;
-- perder e recuperar permissões de acesso a uma pasta.
+- opening a folder with subfolders and many files;
+- an LLM replacing a file through an atomic write;
+- several successive changes while a compilation is in progress;
+- changing an included file without changing the open file;
+- losing and restoring access permissions for a folder.
 
-## Resultado específico
+## Deliverable
 
-Entregar uma comparação das opções de shell e integração local, uma recomendação condicional para o MVP, os contratos necessários entre componentes e os testes de filesystem que devem ser feitos antes de congelar a arquitetura.
+Compare shell and local integration options; provide a conditional MVP recommendation, the contracts needed between components, and filesystem tests to run before finalizing the architecture.
 
-Usar o [formato comum do plano](CONTEXT.md#formato-de-entrega). Remeter segurança detalhada e distribuição para o brief próprio, evitando duplicação.
+Use the [shared report format](CONTEXT.md#formato-de-entrega). Refer detailed security and distribution topics to their dedicated brief to avoid duplication.

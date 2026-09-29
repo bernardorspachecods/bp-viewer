@@ -109,8 +109,10 @@ struct BPViewerApp: App {
     }
 }
 
+@MainActor
 final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     private var localKeyMonitor: Any?
+    private var codexReplyCapture: CodexReplyCaptureController?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         WorkspaceWindowManager.shared.prepareForTermination()
@@ -118,6 +120,10 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let captureController = CodexReplyCaptureController()
+        codexReplyCapture = captureController
+        captureController.registerGlobalShortcut()
+
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard flags == [.command],
@@ -140,6 +146,7 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        codexReplyCapture?.unregisterGlobalShortcut()
         if let localKeyMonitor {
             NSEvent.removeMonitor(localKeyMonitor)
         }

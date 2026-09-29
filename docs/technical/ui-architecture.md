@@ -1,17 +1,17 @@
-# Arquitetura de UI atual
+# Current UI architecture
 
-## Composição da janela
+## Window composition
 
 ```text
 RootView
 └── WorkspaceView
     ├── Topbar
     ├── SidebarView
-    │   ├── cabeçalho da pasta
-    │   ├── pesquisa e filtro
-    │   └── árvore de ficheiros
+    │   ├── folder header
+    │   ├── search and filter
+    │   └── file tree
     ├── tab bar
-    └── superfície do documento
+    └── document surface
         ├── MarkdownPreviewView
         ├── JSONPreviewView
         ├── CSVPreviewView
@@ -21,149 +21,158 @@ RootView
         └── DocxPreviewView
 ```
 
-`DocumentOutlineView`, `DocumentDiffView`, `SettingsView` e os overlays de erro, escolha de root,
-permissão e mudança de workspace são apresentados pela camada da app. Os
-snapshots usam uma janela AppKit separada.
+`DocumentOutlineView`, `DocumentDiffView`, `SettingsView`, and the error,
+root selection, permission, and workspace-switch overlays are presented by the
+app layer. Snapshots use a separate AppKit window.
 
-## Estado da UI
+## UI state
 
-`WorkspaceWindowManager` gere as tabs nativas do macOS e mantém um `AppModel`
-por janela/tab de workspace. `AppModel` é o `ObservableObject` principal de
-cada workspace e publica a raiz, árvore, tabs,
-tab ativa, pesquisa, alvo da pesquisa, filtro, expansão, sidebar, zoom, tema,
-estado de pesquisa, pedidos de seleção LaTeX e captura de snapshots. A sessão de tabs, persistência
-e resolução de documentos vivem no Core; a árvore é mantida por
-`WorkspaceTreeSession`; pedidos de renderização, edição e baselines de diff são
-tratados, respetivamente, por `DocumentRenderCoordinator`,
-`DocumentEditCoordinator` e `DocumentDiffCoordinator`, que devolvem eventos ou
-valores aplicados pelo `AppModel`.
+`WorkspaceWindowManager` manages native macOS tabs and keeps an `AppModel` for
+each workspace window/tab. `AppModel` is the main `ObservableObject` for each
+workspace and publishes its root, tree, tabs, active tab, search, search target,
+filter, expansion, sidebar, zoom, theme, search state, LaTeX selection requests,
+and snapshot capture. Tab sessions, persistence, and document resolution live
+in Core; `WorkspaceTreeSession` maintains the tree. Render, edit, and diff
+baseline requests are handled by `DocumentRenderCoordinator`,
+`DocumentEditCoordinator`, and `DocumentDiffCoordinator`, respectively; they
+return events or values that `AppModel` applies.
 
-Os modelos principais são:
+`CodexReplyCaptureController` registers `⇧⌘E` as a global shortcut, sends
+`Ctrl+O` to the Codex CLI in the active terminal window, confirms a clipboard
+change, and opens a new in-memory Markdown tab with the response. Sending
+keystrokes requires macOS Accessibility permission, as does Terminal
+automation in Prompt Wiz. macOS presents the permission prompt at most once per
+session if permission is not already active. `scripts/build-app.sh` uses the
+existing Apple Development identity in the Keychain to preserve the signing
+identity across rebuilds; it does not create certificates.
 
-- `DocumentTab` — identidade do ficheiro, tipo, contexto, estado do preview,
-  artefacto atual, outline, zoom, posição de leitura, dependências e erro.
-- `SourceEditSession` — modo source/split, source base e atual, gravação,
-  histórico undo/redo e conflito externo.
-- `DocumentDiff` — resultado puro e reutilizável, independente do formato,
-  com linhas/hunks, números de linha e referência selecionada.
-- `AppState`, `WorkspaceState` e `DocumentState` — estado persistido no Core;
-  `WorkspaceSessionCoordinator` gere a sua leitura e escrita.
+The main models are:
+
+- `DocumentTab` — file identity, type, context, preview state, current artifact,
+  outline, zoom, reading position, dependencies, and error.
+- `SourceEditSession` — source/split mode, base and current source, saving,
+  undo/redo history, and external conflicts.
+- `DocumentDiff` — reusable, format-independent result with lines/hunks, line
+  numbers, and selected reference.
+- `AppState`, `WorkspaceState`, and `DocumentState` — state persisted in Core;
+  `WorkspaceSessionCoordinator` manages reads and writes.
 - `PreviewStatus` — `idle`, `updating`, `ready`, `stale`, `failed`,
-  `unavailable`, `cancelled` e `timeout`.
+  `unavailable`, `cancelled`, and `timeout`.
 
-## Superfícies
+## Surfaces
 
 ### Sidebar
 
-`SidebarView` apresenta a raiz aberta, a pesquisa, o filtro de compatibilidade,
-o estado de indexação e a árvore lazy. Selecionar um ficheiro pede ao
-`AppModel` para abrir ou focar a tab correspondente.
-As ramificações expandidas são achatadas em linhas visíveis antes de serem
-entregues à `LazyVStack`, para que o scroll não tenha de construir uma view
-recursiva com todos os descendentes.
-O cabeçalho fecha todas as pastas; em cada pasta de primeiro nível, o mesmo
-comando aparece no hover e limpa apenas o ramo dessa pasta.
+`SidebarView` displays the open root, search, compatibility filter, indexing
+state, and lazy tree. Selecting a file asks `AppModel` to open or focus the
+corresponding tab.
 
-O menu de contexto usa `WorkspaceFileOperations` para renomear
-pastas/ficheiros, duplicar e enviar itens para o Lixo, mantendo tabs abertas
-sincronizadas com os novos caminhos. Ficheiros são `draggable` por caminho e as
-pastas aceitam `dropDestination`, que executa o movimento apenas dentro da raiz
-do workspace. Duas zonas de drop nas extremidades laterais da lista também
-representam a root aberta, permitindo devolver um ficheiro à root sem depender
-de espaço vazio no fim da árvore.
+Expanded branches are flattened into visible rows before they are passed to
+`LazyVStack`, so scrolling does not need to build a recursive view containing
+all descendants.
+
+The header collapses all folders; on each first-level folder, the same command
+appears on hover and clears only that folder's branch.
+
+The context menu uses `WorkspaceFileOperations` to rename folders/files,
+duplicate items, and move items to the Trash while keeping open tabs synced with
+their new paths. Files are draggable by path, and folders accept
+`dropDestination`, which moves items only within the workspace root. Two drop
+zones at the sides of the list also represent the open root, allowing a file to
+be moved back to the root without relying on empty space at the end of the tree.
 
 ### Tabs
 
-A tab bar apresenta o nome e o contexto do ficheiro, o estado do preview e as
-ações de fecho. O botão `+` cria uma tab Markdown transitória em memória; o
-local do ficheiro só é escolhido pelo painel de gravação. A ordenação,
-unicidade e tab ativa são mantidas por `DocumentTabSession` no Core, e tabs
-transitórias não entram na persistência do workspace.
+The tab bar shows the file name and context, preview state, and close actions.
+The `+` button creates a transient in-memory Markdown tab; the file location is
+chosen only in the save panel. `DocumentTabSession` in Core maintains ordering,
+uniqueness, and the active tab. Transient tabs are not included in workspace
+persistence.
 
 ### Markdown
 
-`MarkdownPreviewView` compõe o HTML, a pesquisa, o outline, o zoom, o estado de
-renderização e os erros. A barra de pesquisa comum vive na superfície da tab e
-segue o foco entre o editor source e o preview em split view. `MarkdownWebPreview` contém a `WKWebView`, o
-JavaScript, a navegação e a posição de leitura. `SourceEditorView` contém o
-editor AppKit partilhado por Markdown e JSON. Um duplo clique abre o editor de
-source Markdown, cujo syntax highlighting usa uma paleta própria para os temas
-claro e escuro; a toolbar alterna entre o editor integral e o split view, que
-mantém o source à esquerda e o preview live à direita. O outline é redimensionável
-por ficheiro e restaura a largura guardada desse documento.
-`DocumentDiffView` é acionada pela toolbar e mantém a referência read-only à
-esquerda e o editor real à direita. Pode comparar o disco ou `HEAD`; ao sair,
-restaura o modo anterior. Os dois editores partilham o scroll vertical, usando
-o mesmo mapa de alturas por linha, para manter as linhas correspondentes
-alinhadas enquanto qualquer uma das colunas é deslocada.
+`MarkdownPreviewView` composes the HTML, search, outline, zoom, rendering state,
+and errors. The shared search bar lives on the tab surface and follows focus
+between the source editor and preview in split view. `MarkdownWebPreview`
+contains the `WKWebView`, JavaScript, navigation, and reading position.
+`SourceEditorView` contains the AppKit editor shared by Markdown and JSON.
+Double-clicking opens the Markdown source editor, whose syntax highlighting uses
+a palette for light and dark themes. The toolbar switches between the full
+editor and split view, which keeps the source on the left and live preview on
+the right. The outline is resizable per file and restores that document's saved
+width.
+
+The toolbar opens `DocumentDiffView`, which keeps the read-only reference on the
+left and the actual editor on the right. It can compare against disk or `HEAD`;
+when closed, it restores the previous mode. Both editors share vertical
+scrolling and use the same per-line height map to keep corresponding lines
+aligned as either column scrolls.
 
 ### PDF
 
-`PDFPreviewView` apresenta PDFs locais e os artefactos LaTeX em `PDFView`,
-controla zoom, pesquisa, outline, posição de leitura, impressão e navegação de
-links. A pesquisa comum encaminha as operações para PDFKit.
+`PDFPreviewView` displays local PDFs and LaTeX artifacts in `PDFView`, and
+controls zoom, search, outline, reading position, printing, and link navigation.
+The shared search routes operations to PDFKit.
 
-### Imagens
+### Images
 
-`ImagePreviewView` apresenta PNG, JPG/JPEG, WebP e HEIC/HEIF num canvas
-read-only com cartão, borda e sombra, ajuste automático à janela, scroll para
-imagens ampliadas, zoom partilhado da tab, refresh e captura de snapshots.
-Alterações no ficheiro ativo provocam nova leitura através do
-`DocumentRenderCoordinator`.
+`ImagePreviewView` displays PNG, JPG/JPEG, WebP, and HEIC/HEIF in a read-only
+canvas with a card, border, and shadow; automatic fit-to-window; scrolling for
+enlarged images; shared tab zoom; refresh; and snapshot capture. Changes to the
+active file trigger a new read through `DocumentRenderCoordinator`.
 
 ### LaTeX
 
-`LatexPreviewView` compõe a toolbar de edição, o editor `NSTextView`, o diff e
-o `PDFPreviewView` em split view. O duplo clique no PDF envia página e
-coordenadas para `LatexSyncTeXLookup`, que resolve o ficheiro/linha e aplica o
-cursor; quando SyncTeX não existe, a entrada no source continua disponível.
-Quando SyncTeX devolve uma linha do `.bbl` gerado, `AppModel` usa o conteúdo
-guardado desse `.bbl` para encontrar a chave da entrada e abrir o `.bib`.
-`SourceEditorView` aplica a paleta `LatexSyntaxColorPalette`. O PDF encaminha
-links locais para o router do `AppModel` e links externos para o browser.
+`LatexPreviewView` composes the editing toolbar, `NSTextView` editor, diff, and
+`PDFPreviewView` in split view. Double-clicking the PDF sends the page and
+coordinates to `LatexSyncTeXLookup`, which resolves the file and line and moves
+the cursor. Source editing remains available when SyncTeX is missing. When
+SyncTeX returns a line from the generated `.bbl`, `AppModel` uses the saved `.bbl`
+contents to find the entry key and open the `.bib` file.
+
+`SourceEditorView` applies the `LatexSyntaxColorPalette`. The PDF routes local
+links to the `AppModel` router and external links to the browser.
 
 ### JSON
 
-`JSONPreviewView` apresenta o JSON validado numa superfície raw read-only
-monoespaçada selecionável, preservando literalmente as linhas do source,
-incluindo vazias, com numeração, zoom e captura de snapshots. Um duplo clique troca para o editor raw
-monoespaçado, com undo/redo, gravação explícita apenas para JSON válido,
-validação antes de gravar e resolução de conflitos externos; não há split view.
-Preview e editor usam a mesma barra de pesquisa e o foco define o alvo. O diff
-usa a mesma `DocumentDiffView` que Markdown; o editor AppKit partilhado fornece
-o gutter de linhas e as decorações Git-like do lado direito. JSON inválido ao sair do editor
-abre uma confirmação para continuar ou descartar.
+`JSONPreviewView` displays validated JSON in a selectable, monospaced,
+read-only raw surface. It preserves source lines exactly, including empty ones,
+and provides line numbers, zoom, and snapshot capture. Double-clicking switches
+to a monospaced raw editor with undo/redo, explicit saving for valid JSON only,
+validation before saving, and external conflict resolution; there is no split
+view. Preview and editor use the same search bar, with focus determining the
+search target. Diff uses the same `DocumentDiffView` as Markdown; the shared
+AppKit editor provides the line gutter and Git-like decorations on the right.
+Invalid JSON on exit opens a confirmation to continue editing or discard.
 
 ### CSV
 
-`CSVPreviewView` apresenta os dados numa tabela HTML selecionável, com cabeçalho,
-números de linha, scroll horizontal, zoom, pesquisa e captura de snapshots.
-Duplo-clique permite editar células existentes; `Enter` confirma, `Esc` cancela
-ou confirma a célula no rascunho, e a gravação é feita com `Save` ou `⌘S`.
-`Undo`/`Redo` e os atalhos `⌘Z`/`⇧⌘Z` operam sobre o rascunho sem gravar.
-Não existem operações para criar/remover
-linhas ou colunas.
+`CSVPreviewView` displays data in a selectable HTML table with a header, row
+numbers, horizontal scrolling, zoom, search, and snapshot capture. Double-click
+edits existing cells; `Enter` confirms, `Esc` cancels or confirms the cell in
+the draft, and `Save` or `⌘S` saves the file. `Undo`/`Redo` and `⌘Z`/`⇧⌘Z` work
+on the draft without saving. Rows and columns cannot be created or removed.
 
 ### Word
 
-`DocxPreviewView` converte o conteúdo rico do `.docx` para HTML local e
-apresenta-o numa `WKWebView` com canvas, página branca e magnificação ligada ao
-zoom da app. A pesquisa comum encaminha as queries para a WebKit.
+`DocxPreviewView` converts rich `.docx` content to local HTML and displays it in
+a `WKWebView` with a canvas, white page, and magnification linked to the app's
+zoom. Shared search routes queries to WebKit.
 
-### Sistema visual e preferências
+### Visual system and preferences
 
-`DesignSystem.swift` concentra tokens, botões de toolbar, badges, estados vazios
-e controlos reutilizáveis. `SettingsView` altera tema, zooms predefinidos e
-modo de `shell escape` através do `AppModel`.
+`DesignSystem.swift` contains tokens, toolbar buttons, badges, empty states, and
+reusable controls. `SettingsView` changes the theme, default zoom levels, and
+`shell escape` mode through `AppModel`.
 
-## Interações de nível de janela
+## Window-level interactions
 
-`RootView` encaminha comandos para abrir pasta, atualizar o preview, alternar
-tema/sidebar, mostrar pesquisa, controlar zoom, selecionar tabs e capturar
-snapshots. `WorkspaceWindowManager` cria e agrupa as janelas como tabs nativas,
-restaura a ordem dos workspaces e encaminha os comandos globais para a janela
-ativa. `AppModel` trata também abertura pelo Finder, drag-and-drop, atalhos de
-documentos e confirmação ao fechar uma tab nativa com alterações.
+`RootView` routes commands to open a folder, refresh the preview, toggle the
+theme/sidebar, show search, control zoom, select tabs, and capture snapshots.
+`WorkspaceWindowManager` creates and groups windows as native tabs, restores
+workspace order, and routes global commands to the active window. `AppModel` also
+handles opening from Finder, drag and drop, document shortcuts, and confirmation
+when closing a native tab with changes.
 
-As views não executam diretamente scanners, compiladores ou persistência; enviam
-ações ao `AppModel` e renderizam o estado publicado por ele.
+Views do not run scanners, compilers, or persistence directly; they send actions
+to `AppModel` and render the state it publishes.

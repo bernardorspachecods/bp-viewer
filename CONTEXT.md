@@ -1,25 +1,16 @@
-# Contexto do repositório
+# Repository context
 
-Este ficheiro orienta a repo-mãe `bp-viewer`.
-## Estrutura
+This file provides orientation for the `bp-viewer` parent repository.
+## Structure
 
-- [`Package.swift`](Package.swift) — manifesto, produtos, targets e dependências
-  Swift.
-- [`Sources/CONTEXT.md`](Sources/CONTEXT.md) — fronteiras dos targets Swift e
-  respetivos contextos locais.
-- [`Tests/CONTEXT.md`](Tests/CONTEXT.md) — testes do package e relação com os
-  runners executáveis.
-- [`Fixtures/CONTEXT.md`](Fixtures/CONTEXT.md) — corpora controlados para
-  validação manual.
-- [`docs/CONTEXT.md`](docs/CONTEXT.md) — mapa da documentação durável; as
-  autoridades específicas ficam dentro dessa pasta.
-- [`scripts/CONTEXT.md`](scripts/CONTEXT.md) — launchers locais de build e
-  desenvolvimento.
-- [`Resources/CONTEXT.md`](Resources/CONTEXT.md) — recursos do bundle macOS.
-- [`PLAN.md`](PLAN.md) — plano confirmado para o editor LaTeX equivalente ao
-  editor Markdown.
-- [`AGENTS.md`](AGENTS.md) — regra específica para fechar rondas que alterem a
-  app.
+- [`Package.swift`](Package.swift) — Swift manifest, products, targets, and dependencies.
+- [`Sources/CONTEXT.md`](Sources/CONTEXT.md) — Swift target boundaries and their local contexts.
+- [`Tests/CONTEXT.md`](Tests/CONTEXT.md) — package tests and how they relate to the executable runners.
+- [`Fixtures/CONTEXT.md`](Fixtures/CONTEXT.md) — controlled corpora for manual validation.
+- [`docs/CONTEXT.md`](docs/CONTEXT.md) — map of durable documentation; authoritative details are kept in that directory.
+- [`scripts/CONTEXT.md`](scripts/CONTEXT.md) — local build and development launchers.
+- [`Resources/CONTEXT.md`](Resources/CONTEXT.md) — macOS bundle resources.
+- [`PLAN.md`](PLAN.md) — approved plan for a LaTeX editor equivalent to the Markdown editor.
+- [`AGENTS.md`](AGENTS.md) — app-specific instructions for closing a work round.
 
-`.build/`, `.swiftpm/` e `DerivedData/` são artefactos ou estado gerado; não são
-entradas de desenvolvimento nem devem receber contexto durável.
+`.build/`, `.swiftpm/`, and `DerivedData/` contain generated artifacts or state. They are not development inputs and should not contain durable context.
