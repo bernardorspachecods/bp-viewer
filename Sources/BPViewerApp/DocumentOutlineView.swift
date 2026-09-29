@@ -53,7 +53,7 @@ struct DocumentInteractionToolbar: View {
 
     var body: some View {
         HStack(spacing: BPTokens.Spacing.sm) {
-            HStack(spacing: BPTokens.Spacing.sm) {
+            HStack(spacing: BPTokens.Spacing.xxs) {
                 if isOutlineAvailable {
                     DocumentEditModeButton(
                         title: "Outline",

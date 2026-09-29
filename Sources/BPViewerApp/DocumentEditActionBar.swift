@@ -55,15 +55,18 @@ struct DocumentEditModeButton: View {
             Label(title, systemImage: systemImage)
                 .font(BPTokens.Typography.caption)
                 .foregroundStyle(isActive ? Color.primary : BPTokens.Color.muted)
-                .padding(.horizontal, BPTokens.Spacing.xs)
-                .padding(.vertical, BPTokens.Spacing.xxs)
+                .padding(.horizontal, BPTokens.Spacing.sm)
+                .padding(.vertical, BPTokens.Spacing.xs)
+                .frame(minHeight: BPTokens.Size.iconHitTarget)
+                .background {
+                    RoundedRectangle(cornerRadius: BPTokens.Radius.sm)
+                        .fill(isActive ? Color.primary.opacity(0.08) : .clear)
+                        .padding(.horizontal, BPTokens.Spacing.xxs)
+                        .padding(.vertical, BPTokens.Spacing.xs - BPTokens.Spacing.xxs)
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(
-            RoundedRectangle(cornerRadius: BPTokens.Radius.sm)
-                .fill(isActive ? Color.primary.opacity(0.08) : .clear)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
         .focusable(false)
         .accessibilityValue(isActive ? "Active" : "Inactive")
     }

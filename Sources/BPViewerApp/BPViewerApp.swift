@@ -112,6 +112,11 @@ struct BPViewerApp: App {
 final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     private var localKeyMonitor: Any?
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        WorkspaceWindowManager.shared.prepareForTermination()
+        return .terminateNow
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
