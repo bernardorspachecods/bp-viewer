@@ -178,8 +178,30 @@ private struct MarkdownHTMLDocument {
             pre { overflow-x: auto; padding: 16px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); }
             pre code { padding: 0; background: transparent; }
             blockquote { margin-left: 0; padding-left: 16px; border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent); }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); padding: 8px 10px; text-align: left; }
+            table {
+              border-collapse: separate;
+              border-spacing: 0;
+              width: 100%;
+              max-width: 100%;
+              table-layout: fixed;
+              font: inherit;
+            }
+            th, td {
+              border: 0;
+              border-right: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+              border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+              overflow-wrap: anywhere;
+              padding: 8px 10px;
+              text-align: left;
+            }
+            table tr:first-child > th,
+            table tr:first-child > td {
+              border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+            }
+            table th:first-child,
+            table td:first-child {
+              border-left: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+            }
             .bp-special-placeholder { cursor: pointer; border: 1px dashed color-mix(in srgb, currentColor 28%, transparent); border-radius: 6px; padding: 10px; color: -apple-system-secondary-label; white-space: pre-wrap; }
           </style>
         </head>
