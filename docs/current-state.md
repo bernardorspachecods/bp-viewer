@@ -182,8 +182,15 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   without a default path; the first `Save` opens a panel to choose the `.md` file.
 - The global `⇧⌘E` shortcut, when a Terminal, iTerm2, Ghostty, WezTerm,
   Alacritty, Kitty, or Warp window is active, sends `Ctrl+O` to the Codex CLI.
-  After confirming a new response in the clipboard, Viewer opens a new in-memory
-  Markdown tab with that response. The response is not saved automatically.
+  After confirming a new response in the clipboard, Viewer saves it as Markdown
+  in `~/Downloads/Codex Responses` and opens the saved document in a tab. The
+  folder is created if needed. Files are named `Codex Reply.md` and receive a
+  numeric suffix when that name already exists.
+  The shortcut opens the saved file in the last focused Viewer window when that
+  window is open. If it is minimized, Viewer opens a standalone capture window
+  for the file with its sidebar hidden and leaves the workspace minimized.
+  Closing the last window leaves Viewer running so its global shortcut stays
+  available; quitting Viewer ends the shortcut until the app is launched again.
   Sending keystrokes requires macOS Accessibility permission; after granting it,
   you may need to quit and reopen Viewer for the change to take effect.
 - Tabs, active tab, LaTeX context, theme, sidebar width and visibility, per-file

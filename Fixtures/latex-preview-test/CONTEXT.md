@@ -5,7 +5,7 @@ includes a table of contents, cross-references, an equation, a table, lists,
 links, a TikZ diagram included from `fixture-diagram.tex`, and a BibTeX
 bibliography in `references.bib`.
 
-Para validar fora da app, a partir desta pasta:
+To validate outside the app, from this folder:
 
 ```bash
 WORKSPACE="$(mktemp -d)"

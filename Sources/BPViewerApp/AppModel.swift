@@ -69,6 +69,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPerformingFileOperation = false
 
     private let workspaceSession: WorkspaceSessionCoordinator
+    private let persistsSharedConfiguration: Bool
     private let documentOpenCoordinator = DocumentOpenCoordinator()
     private let snapshotArtifactStore = SnapshotArtifactStore()
     private lazy var snapshotWindowManager = SnapshotWindowManager { [weak self] id in
@@ -109,10 +110,12 @@ final class AppModel: ObservableObject {
         documentDiffCoordinator: DocumentDiffCoordinator = DocumentDiffCoordinator(),
         workspaceSession: WorkspaceSessionCoordinator = WorkspaceSessionCoordinator(),
         initialRootURL: URL? = nil,
-        restoresLastWorkspace: Bool = true
+        restoresLastWorkspace: Bool = true,
+        persistsSharedConfiguration: Bool = true
     ) {
         self.documentDiffCoordinator = documentDiffCoordinator
         self.workspaceSession = workspaceSession
+        self.persistsSharedConfiguration = persistsSharedConfiguration
         let configuration = workspaceSession.configuration
         theme = AppThemePreference(rawValue: configuration.theme) ?? .dark
         sidebarVisible = configuration.sidebarVisible
@@ -517,6 +520,20 @@ final class AppModel: ObservableObject {
         syncPreviewZoomToActiveTab()
         renderActiveTabIfNeeded()
         persistState()
+    }
+
+    func createSavedMarkdownDocument(source: String, at destinationURL: URL) async -> Bool {
+        createNewMarkdownDocument(source: source)
+        guard let tabID = activeTabID,
+              let session = tabs.first(where: { $0.id == tabID })?.markdownEditSession else {
+            return false
+        }
+        return commitUntitledMarkdown(
+            tabID: tabID,
+            session: session,
+            selectedURL: destinationURL,
+            finishEditing: true
+        )
     }
 
     func reload(_ node: FileNode) {
@@ -2576,6 +2593,24 @@ final class AppModel: ObservableObject {
             return false
         }
 
+        return commitUntitledMarkdown(
+            tabID: tabID,
+            session: session,
+            selectedURL: selectedURL,
+            finishEditing: finishEditing
+        )
+    }
+
+    private func commitUntitledMarkdown(
+        tabID: String,
+        session: MarkdownEditSession,
+        selectedURL: URL,
+        finishEditing: Bool
+    ) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].isUntitled else { return false }
+        tabs[index].markdownEditSession?.saveState = .saving
+
         let targetURL = markdownSaveURL(for: selectedURL)
         let outcome = documentEditCoordinator.commitMarkdown(
             url: targetURL,
@@ -3051,14 +3086,8 @@ final class AppModel: ObservableObject {
     }
 
     func persistState() {
-        workspaceSession.persist(
-            rootURL: rootURL,
-            tabs: tabs,
-            activeTabID: activeTabID,
-            expandedPaths: expandedPaths,
-            treeScrollOffset: treeScrollOffset,
-            compatibleOnly: compatibleOnly,
-            configuration: WorkspaceSessionConfiguration(
+        let configuration = persistsSharedConfiguration
+            ? WorkspaceSessionConfiguration(
                 theme: theme.rawValue,
                 sidebarVisible: sidebarVisible,
                 sidebarWidth: sidebarWidth,
@@ -3066,6 +3095,16 @@ final class AppModel: ObservableObject {
                 defaultMarkdownZoom: defaultMarkdownZoom,
                 defaultLatexZoom: defaultLatexZoom
             )
+            : workspaceSession.configuration
+
+        workspaceSession.persist(
+            rootURL: rootURL,
+            tabs: tabs,
+            activeTabID: activeTabID,
+            expandedPaths: expandedPaths,
+            treeScrollOffset: treeScrollOffset,
+            compatibleOnly: compatibleOnly,
+            configuration: configuration
         )
     }
 

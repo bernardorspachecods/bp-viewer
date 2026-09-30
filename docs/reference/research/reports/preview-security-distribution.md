@@ -1,472 +1,474 @@
-# Relatório de investigação: preview, segurança e distribuição
+# Research report: preview, security, and distribution
 
-Data de acesso web: 09-09-2026  
-Repositório verificado: [arquivo da pesquisa](../CONTEXT.md), [brief de preview](../preview-security-distribution.md) e [estado atual](../../../current-state.md)
-Estado da repo no momento da investigação: sem alterações.
+Web access date: 2026-09-09  
+Repository context: [research archive](../CONTEXT.md), [preview brief](../preview-security-distribution.md), and [current state](../../../current-state.md)
+Repository state during research: no changes.
 
-## 1. Resumo executivo
+## 1. Executive summary
 
-A combinação com melhor relação entre controlo, integração nativa e risco delimitável é:
+The combination with the best balance of control, native integration, and bounded risk is:
 
-- Markdown: `WKWebView` para HTML estático, com JavaScript de conteúdo desativado, sanitização allow-list, política CSP, carregamento de recursos limitado à pasta autorizada e navegação interceptada.
-- LaTeX: PDFKit para apresentar o PDF produzido, com ações e links tratados explicitamente; Quick Look é uma alternativa simples, mas oferece menos controlo.
-- Ficheiros: App Sandbox, acesso read-only à pasta escolhida pelo utilizador e bookmarks com security scope para reabrir o projeto.
-- Compilação: diretório temporário fora da pasta do projeto, limites de tempo/saída/recursos, shell escape desativado ou restrito e nenhum pacote instalado automaticamente.
+- Markdown: `WKWebView` for static HTML, with content JavaScript disabled, allowlist sanitization, a CSP policy, resource loading limited to the authorized folder, and intercepted navigation.
+- LaTeX: PDFKit to display the generated PDF, with actions and links handled explicitly; Quick Look is a simple alternative but offers less control.
+- Files: App Sandbox, read-only access to the folder selected by the user, and security-scoped bookmarks to reopen the project.
+- Compilation: a temporary directory outside the project folder, time/output/resource limits, shell escape disabled or restricted, and no automatic package installation.
 
-A maior incompatibilidade permanece entre:
+The main incompatibility remains between:
 
-1. usar uma instalação LaTeX externa, como MacTeX;
-2. manter a aplicação sandboxed, especialmente com distribuição pela Mac App Store.
+1. using an external LaTeX installation such as MacTeX;
+2. keeping the application sandboxed, especially for Mac App Store distribution.
 
-A documentação da Apple indica que permissões para ficheiros escolhidos pelo utilizador não autorizam executar programas localizados fora da app, container ou app group. Para uma distribuição sandboxed, a alternativa tecnicamente mais controlável é empacotar executáveis auxiliares assinados, possivelmente atrás de XPC. Isso aumenta bastante o tamanho, manutenção e complexidade de licenciamento.
+Apple documentation indicates that permissions for user-selected files do not authorize running programs located outside the app, container, or app group. For sandboxed distribution, the most controllable technical alternative is to bundle signed helper executables, possibly behind XPC. This substantially increases size, maintenance, and licensing complexity.
 
-Nenhuma opção deve ser classificada como “segura” em absoluto. As recomendações abaixo reduzem o impacto de conteúdo local comprometido, mas não eliminam vulnerabilidades em WebKit, PDFKit, parsers, compiladores ou bibliotecas.
+No option should be considered absolutely “safe.” The recommendations below reduce the impact of compromised local content but do not eliminate vulnerabilities in WebKit, PDFKit, parsers, compilers, or libraries.
 
-## 2. Pergunta e decisão suportada
+## 2. Question and supported decision
 
-Foi investigado como:
+The research examined how to:
 
-- apresentar HTML local e PDFs;
-- limitar JavaScript, navegação e acesso a ficheiros;
-- processar Markdown, imagens, PDFs e projectos LaTeX potencialmente hostis;
-- usar App Sandbox, permissões e security-scoped bookmarks;
-- executar compiladores auxiliares;
-- distribuir e atualizar a aplicação fora ou dentro da Mac App Store.
+- display local HTML and PDFs;
+- limit JavaScript, navigation, and file access;
+- process potentially hostile Markdown, images, PDFs, and LaTeX projects;
+- use App Sandbox, permissions, and security-scoped bookmarks;
+- run helper compilers;
+- distribute and update the application inside or outside the Mac App Store.
 
-A pesquisa suporta uma arquitetura de preview estático com defesa em profundidade. Não suporta ainda uma decisão final sobre a estratégia de execução/empacotamento do LaTeX.
+The research supports a static preview architecture with defense in depth. It does not yet support a final decision on the LaTeX execution/bundling strategy.
 
-## 3. Escopo e pressupostos
+## 3. Scope and assumptions
 
-### Incluído
+### Included
 
-- conteúdo local modificado por processos externos, incluindo LLMs;
-- conteúdo deliberadamente malicioso dentro da pasta aberta;
-- tentativas de aceder a ficheiros fora da pasta autorizada;
-- HTML/JavaScript, imagens, SVG, PDF, links e artefactos LaTeX;
-- comprometimento do processo de preview ou compilador;
-- uso pessoal no macOS e possível distribuição futura.
+- local content modified by external processes, including LLMs;
+- deliberately malicious content inside the opened folder;
+- attempts to access files outside the authorized folder;
+- HTML/JavaScript, images, SVG, PDF, links, and LaTeX artifacts;
+- compromise of the preview process or compiler;
+- personal use on macOS and possible future distribution.
 
-### Excluído
+### Excluded
 
-- modelo completo de ameaça para distribuição pública;
-- decisão do parser Markdown ou compilador LaTeX;
-- implementação;
-- comparação com outros sistemas operativos;
-- autenticação, cloud ou colaboração;
-- garantia contra um macOS ou utilizador já comprometido.
+- complete threat model for public distribution;
+- decision on the Markdown parser or LaTeX compiler;
+- implementation;
+- comparison with other operating systems;
+- authentication, cloud services, or collaboration;
+- protection against an already compromised macOS system or user account.
 
-### Modelo de ameaça usado
+### Threat model
 
-Assume-se que:
+Assumptions:
 
-- o utilizador pode abrir uma pasta que contém ficheiros hostis;
-- o conteúdo pode tentar executar código, ler ficheiros, fazer pedidos de rede ou consumir recursos;
-- a app corre com a identidade do utilizador;
-- não há intenção de dar à app acesso global ao computador;
-- o utilizador ainda controla acções explícitas como escolher uma pasta ou abrir um link externo.
+- the user may open a folder containing hostile files;
+- content may try to execute code, read files, make network requests, or consume resources;
+- the app runs under the user's identity;
+- the app is not intended to have global access to the computer;
+- the user still controls explicit actions such as selecting a folder or opening an external link.
 
-Não se assume que App Sandbox, notarização ou sanitização tornam um ficheiro confiável.
+App Sandbox, notarization, and sanitization are not assumed to make a file trustworthy.
 
-## 4. Critérios de avaliação
+## 4. Evaluation criteria
 
-- contenção de conteúdo hostil;
-- controlo de acesso a ficheiros;
-- controlo de rede e navegação;
-- qualidade do preview;
-- isolamento e recuperação após falhas;
-- funcionamento offline;
-- dependências e actualizações;
-- compatibilidade com App Sandbox;
-- complexidade operacional;
-- licenciamento e distribuição;
-- previsibilidade em alterações externas.
+- containment of hostile content;
+- file access control;
+- network and navigation control;
+- preview quality;
+- isolation and recovery after failures;
+- offline operation;
+- dependencies and updates;
+- App Sandbox compatibility;
+- operational complexity;
+- licensing and distribution;
+- predictability when files change externally.
 
-## 5. Matriz de claims
+## 5. Claim matrix
 
-| Claim | Importância | Estado | Evidência | Limitações |
+| Claim | Importance | Status | Evidence | Limitations |
 |---|---:|---|---|---|
-| C1. `WKWebView` suporta HTML, CSS, JavaScript, HTML em memória e ficheiros locais. | Alta | Facto | E1 | Não estabelece que conteúdo local seja seguro. |
-| C2. `loadFileURL` pode limitar a leitura a um ficheiro ou directório indicado. | Alta | Facto | E2 | A área indicada continua a ser uma capacidade de leitura; não é uma política completa de paths. |
-| C3. JavaScript de conteúdo está activo por defeito, mas pode ser desactivado por navegação. | Alta | Facto | E3 | JavaScript desligado não impede todos os pedidos passivos nem vulnerabilidades do renderer. |
-| C4. WebKit renderiza conteúdo em processos separados da app. | Alta | Facto | E4 | Isolamento de processo reduz impacto, mas não substitui sandbox nem elimina bugs do WebKit. |
-| C5. `WKNavigationDelegate` permite aceitar ou rejeitar navegações. | Alta | Facto | E5 | A política tem de abranger redirecções, novas janelas, downloads e esquemas não HTTP. |
-| C6. `WKWebsiteDataStore.nonPersistent` evita persistir dados do website em disco. | Média | Facto | E6 | Não controla por si só pedidos de rede ou acesso a ficheiros. |
-| C7. DOMPurify usa uma política allow-list, mas não sanitiza CSS nem impede leaks HTTP por si só. | Alta | Facto | E7 | A versão, configuração e sink exactos têm de ser fixados e testados. |
-| C8. A documentação actual do DOMPurify regista vulnerabilidades recentes e riscos de configuração. | Alta | Facto | E8 | A existência de uma biblioteca não prova segurança da integração. |
-| C9. PDFKit apresenta PDFs, permite selecção, navegação e cópia de texto. | Média | Facto | E9 | PDFKit continua a ser um parser complexo de ficheiros não confiáveis. |
-| C10. PDFs podem conter annotations/actions, incluindo destinos URL, URI, Launch e remote go-to. | Alta | Facto | E10 | A documentação não prova exactamente quais acções o `PDFView` executa automaticamente em cada versão do macOS. |
-| C11. Quick Look suporta PDFs e ficheiros de texto, mas a lista de formatos pode mudar entre versões. | Média | Facto | E11 | Oferece menos controlo de política que uma superfície dedicada. |
-| C12. App Sandbox limita recursos por entitlements e pode conceder acesso recursivo à pasta escolhida. | Alta | Facto | E12 | POSIX ACLs, TCC e estados externos podem continuar a bloquear acesso. |
-| C13. Security-scoped bookmarks permitem persistir acesso a recursos entre lançamentos, exigindo gestão explícita do scope. | Alta | Facto | E12 | O bookmark pode ficar stale ou perder validade. |
-| C14. Um processo auxiliar sandboxed não recebe automaticamente permissões PowerBox obtidas depois do arranque; bookmarks/dados têm de ser passados. | Alta | Facto | E13 | O comportamento exacto depende do tipo de helper e do modelo de distribuição. |
-| C15. XPC é a tecnologia Apple preferida para privilege separation relativamente a um simples child process. | Alta | Facto | E13, E14 | XPC não torna o compilador confiável; apenas cria uma fronteira adicional. |
-| C16. TeX Live trata shell escape como risco; `-shell-escape` permite comandos arbitrários, enquanto o modo restrito limita comandos permitidos. | Muito alta | Facto | E15 | O modo restrito ainda permite leitura/escrita de ficheiros e comandos aprovados. |
-| C17. TeX Live recomenda cuidado adicional com programas contribuídos e uso de subdirectório/chroot para input não confiável. | Muito alta | Facto | E15 | Não é garantia de isolamento no macOS. |
-| C18. MacTeX 2026 requer macOS 11+, é universal para Intel/Arm e o pacote completo tem cerca de 6,4 GB; BasicTeX tem cerca de 134 MB. | Alta | Facto | E16 | Tamanho não inclui necessariamente todas as dependências requeridas por uma tese. |
-| C19. Acesso a ficheiros seleccionados não autoriza, por si só, executar programas fora da app, container ou app group. | Muito alta | Facto | E12 | A compatibilidade exacta com cada modelo de distribuição requer teste local e validação da App Store. |
-| C20. Notarização fora da App Store requer Developer ID, Hardened Runtime, timestamp seguro e assinatura dos executáveis distribuídos. | Alta | Facto | E17 | Notarização não é App Review nem auditoria do conteúdo aberto pela app. |
-| C21. TeX Live contém componentes com licenças próprias, apesar de a distribuição seguir princípios de software livre. | Média | Facto | E18 | Um inventário legal completo ainda é necessário se componentes forem empacotados. |
-| C22. A recomendação de preview estático com JS desligado, sanitização, CSP, política de paths e sandbox é uma inferência de defesa em profundidade. | Muito alta | Inferência | C1–C21 | Não foi validada por protótipo no macOS alvo. |
+| C1. `WKWebView` supports HTML, CSS, JavaScript, in-memory HTML, and local files. | High | Fact | E1 | Does not establish that local content is safe. |
+| C2. `loadFileURL` can limit reading to a specified file or directory. | High | Fact | E2 | The specified area remains a read capability; it is not a complete path policy. |
+| C3. Content JavaScript is enabled by default but can be disabled for navigation. | High | Fact | E3 | Disabling JavaScript does not prevent every passive request or renderer vulnerability. |
+| C4. WebKit renders content in processes separate from the app. | High | Fact | E4 | Process isolation reduces impact but does not replace a sandbox or eliminate WebKit bugs. |
+| C5. `WKNavigationDelegate` can allow or reject navigations. | High | Fact | E5 | The policy must cover redirects, new windows, downloads, and non-HTTP schemes. |
+| C6. `WKWebsiteDataStore.nonPersistent` avoids persisting website data to disk. | Medium | Fact | E6 | It does not by itself control network requests or file access. |
+| C7. DOMPurify uses an allowlist policy, but does not sanitize CSS or prevent HTTP leaks by itself. | High | Fact | E7 | The exact version, configuration, and sink must be pinned and tested. |
+| C8. Current DOMPurify documentation records recent vulnerabilities and configuration risks. | High | Fact | E8 | The existence of a library does not prove that an integration is safe. |
+| C9. PDFKit displays PDFs and supports selection, navigation, and text copying. | Medium | Fact | E9 | PDFKit remains a complex parser for untrusted files. |
+| C10. PDFs can contain annotations/actions, including URL, URI, Launch, and remote go-to destinations. | High | Fact | E10 | The documentation does not prove exactly which actions `PDFView` performs automatically in each macOS version. |
+| C11. Quick Look supports PDFs and text files, but its supported format list may change between versions. | Medium | Fact | E11 | It offers less policy control than a dedicated surface. |
+| C12. App Sandbox limits resources through entitlements and can grant recursive access to the selected folder. | High | Fact | E12 | POSIX ACLs, TCC, and external state may still block access. |
+| C13. Security-scoped bookmarks can persist resource access between launches and require explicit scope management. | High | Fact | E12 | A bookmark may become stale or invalid. |
+| C14. A sandboxed helper does not automatically receive PowerBox permissions acquired after launch; bookmarks/data must be passed to it. | High | Fact | E13 | Exact behavior depends on the helper type and distribution model. |
+| C15. Apple prefers XPC for privilege separation over a simple child process. | High | Fact | E13, E14 | XPC does not make the compiler trustworthy; it only creates another boundary. |
+| C16. TeX Live treats shell escape as a risk; `-shell-escape` permits arbitrary commands, while restricted mode limits allowed commands. | Very high | Fact | E15 | Restricted mode still permits file reads/writes and approved commands. |
+| C17. TeX Live recommends extra care with contributed programs and using a subdirectory/chroot for untrusted input. | Very high | Fact | E15 | This does not guarantee isolation on macOS. |
+| C18. MacTeX 2026 requires macOS 11+, is universal for Intel/Arm, and the full package is about 6.4 GB; BasicTeX is about 134 MB. | High | Fact | E16 | The size may not include every dependency required by a thesis. |
+| C19. Access to user-selected files does not by itself authorize running programs outside the app, container, or app group. | Very high | Fact | E12 | Compatibility with each distribution model requires local testing and App Store validation. |
+| C20. Distribution outside the App Store requires Developer ID, Hardened Runtime, a secure timestamp, and signatures on distributed executables. | High | Fact | E17 | Notarization is not App Review or an audit of content opened by the app. |
+| C21. TeX Live contains components with individual licenses, although the distribution follows free-software principles. | Medium | Fact | E18 | A complete legal inventory is still needed if components are bundled. |
+| C22. Recommending static preview with JS disabled, sanitization, CSP, path policy, and sandboxing is a defense-in-depth inference. | Very high | Inference | C1–C21 | It has not been validated with a prototype on the target macOS version. |
 
-## 6. Alternativas investigadas
+## 6. Alternatives investigated
 
 ### 6.1 Markdown/HTML
 
-| Opção | Vantagens | Riscos/limitações |
+| Option | Advantages | Risks/limitations |
 |---|---|---|
-| `WKWebView` com HTML estático | Boa fidelidade visual; API nativa; suporta CSS, matemática pré-renderizada e imagens | Superfície WebKit; JavaScript e navegação requerem política explícita |
-| `WKWebView` com JavaScript activo | Permite bibliotecas client-side e interacção | Aumenta XSS, exfiltração, consumo de CPU e complexidade de bridge |
-| `WKWebView` com `loadFileURL` | Recurso local simples; Apple permite limitar `readAccessURL` | Paths, symlinks, `..`, URLs absolutas e esquemas continuam a exigir validação |
-| `WKWebView` com esquema app-owned | Permite validar cada pedido de recurso e MIME type | Introduz código nativo de carregamento; um erro pode criar uma nova fronteira insegura |
-| AppKit/texto nativo | Menor superfície web e menos dependências | Menor fidelidade para HTML, CSS, tabelas e matemática |
-| Quick Look | Integração rápida para ficheiros suportados | Lista de formatos variável e menor controlo sobre navegação e conteúdo |
-| HTML com sanitização apenas | Reduz XSS conhecido | Insuficiente contra CSS, pedidos externos, sinks posteriores e reprocessamento |
+| `WKWebView` with static HTML | Good visual fidelity; native API; supports CSS, pre-rendered math, and images | WebKit surface; JavaScript and navigation need an explicit policy |
+| `WKWebView` with active JavaScript | Enables client-side libraries and interaction | Increases XSS, exfiltration, CPU use, and bridge complexity |
+| `WKWebView` with `loadFileURL` | Simple local resource; Apple allows limiting `readAccessURL` | Paths, symlinks, `..`, absolute URLs, and schemes still require validation |
+| `WKWebView` with an app-owned scheme | Allows validation of each resource request and MIME type | Adds native loading code; an error can create a new unsafe boundary |
+| AppKit/native text | Smaller web surface and fewer dependencies | Lower fidelity for HTML, CSS, tables, and math |
+| Quick Look | Fast integration for supported files | Variable format list and less control over navigation and content |
+| HTML with sanitization alone | Reduces known XSS | Insufficient against CSS, external requests, later sinks, and reprocessing |
 
 ### 6.2 PDF
 
-| Opção | Vantagens | Riscos/limitações |
+| Option | Advantages | Risks/limitations |
 |---|---|---|
-| PDFKit | Nativo, controlo de visualização e acesso a annotations/actions | Parser complexo; políticas de links/acções precisam de validação |
-| Quick Look | Simples e integrado no sistema | Menor controlo sobre comportamento e compatibilidade exacta |
-| Abrir no Preview externo | Isola a app no processo do Preview | Transfere risco para outra app e quebra o fluxo pretendido |
+| PDFKit | Native, with control over display and access to annotations/actions | Complex parser; link/action policies need validation |
+| Quick Look | Simple and integrated into the system | Less control over behavior and exact compatibility |
+| Open in external Preview | Isolates the app from the Preview process | Transfers risk to another app and interrupts the intended workflow |
 
 ### 6.3 LaTeX
 
-| Opção | Vantagens | Riscos/limitações |
+| Option | Advantages | Risks/limitations |
 |---|---|---|
-| MacTeX/TeX Live já instalado | Menor pacote da app e maior compatibilidade com ambientes existentes | Dependência externa; conflito com sandbox; versões e paths variáveis |
-| BasicTeX externo | Muito menor que MacTeX completo | Pacotes ausentes; instalação/configuração adicional |
-| Executáveis empacotados | Versões controladas; mais previsível para distribuição | Tamanho, assinatura, actualizações, licenças e possíveis dependências |
-| Helper/XPC empacotado | Melhor separação de processo e permissões | Complexidade de IPC, passagem de bookmarks e assinatura de todos os executáveis |
-| Child process simples | Mais fácil de integrar | A Apple documenta menor separação de privilégios que XPC |
-| Compilação sem isolamento | Integração directa | Não adequada para conteúdo potencialmente hostil; pode escrever no projecto ou executar comandos |
+| Option | Advantages | Risks/limitations |
+|---|---|---|
+| Existing MacTeX/TeX Live installation | Smaller app package and greater compatibility with existing environments | External dependency; sandbox conflict; variable versions and paths |
+| External BasicTeX | Much smaller than full MacTeX | Missing packages; extra installation/configuration |
+| Bundled executables | Controlled versions; more predictable distribution | Size, signing, updates, licenses, and possible dependencies |
+| Bundled helper/XPC | Better process and permission separation | IPC complexity, bookmark passing, and signing every executable |
+| Simple child process | Easier to integrate | Apple documents less privilege separation than with XPC |
+| Compilation without isolation | Direct integration | Unsuitable for potentially hostile content; may write to the project or execute commands |
 
-## 7. Comparação fundamentada
+## 7. Evidence-based comparison
 
-### 7.1 Markdown com HTML ou JavaScript incorporado
+### 7.1 Markdown with HTML or embedded JavaScript
 
-O `WKWebView` tem JavaScript de conteúdo activo por defeito. A Apple documenta que `allowsContentJavaScript = false` impede scripts inline, ficheiros JavaScript referenciados e URLs `javascript:`. Isto reduz substancialmente a superfície do cenário C1, mas não deve ser tratado como sanitização.
+`WKWebView` has content JavaScript enabled by default. Apple documents that `allowsContentJavaScript = false` blocks inline scripts, referenced JavaScript files, and `javascript:` URLs. This substantially reduces the C1 attack surface, but should not be treated as sanitization.
 
-A recomendação condicional é:
+The conditional recommendation is:
 
-1. converter Markdown para HTML;
-2. sanitizar o HTML antes de o entregar ao WebView;
-3. usar uma allow-list pequena;
-4. remover scripts, handlers `on*`, `iframe`, `object`, `embed`, forms, `base`, `link`, `style` e SVG, salvo necessidade validada;
-5. desactivar JavaScript de conteúdo;
-6. aplicar CSP, por exemplo com `script-src 'none'`, `object-src 'none'`, `connect-src 'none'`;
-7. não expor bridge nativa desnecessária ao JavaScript;
-8. interceptar toda a navegação.
+1. convert Markdown to HTML;
+2. sanitize the HTML before passing it to the WebView;
+3. use a small allowlist;
+4. remove scripts, `on*` handlers, `iframe`, `object`, `embed`, forms, `base`, `link`, `style`, and SVG unless a validated need exists;
+5. disable content JavaScript;
+6. apply CSP, for example with `script-src 'none'`, `object-src 'none'`, and `connect-src 'none'`;
+7. do not expose an unnecessary native bridge to JavaScript;
+8. intercept all navigation.
 
-O DOMPurify actual explicita que não sanitiza CSS nem impede pedidos HTTP passivos. Também documenta bypasses e correcções recentes. Por isso, a versão deve ser fixada durante cada build, monitorizada e sujeita a testes de regressão.
+Current DOMPurify documentation states that it does not sanitize CSS or prevent passive HTTP requests. It also documents recent bypasses and fixes. Therefore, pin the version for each build, monitor it, and subject it to regression tests.
 
-### 7.2 Imagens e ficheiros fora da pasta
+### 7.2 Images and files outside the folder
 
-Um `src="../..."` ou URL absoluta não deve ser interpretado como autorização para escapar da pasta aberta.
+A `src="../..."` or an absolute URL should not be interpreted as authorization to escape the opened folder.
 
-Duas abordagens são plausíveis:
+Two approaches are plausible:
 
-- `loadFileURL` com `readAccessURL` exactamente igual à pasta seleccionada;
-- um carregador de recursos app-owned que resolve cada path, verifica que permanece dentro da raiz canónica e só então devolve o conteúdo.
+- `loadFileURL` with `readAccessURL` set to exactly the selected folder;
+- an app-owned resource loader that resolves each path, verifies it remains within the canonical root, and only then returns the content.
 
-A segunda oferece maior controlo sobre paths, MIME types, symlinks e extensões, mas cria mais lógica própria. A primeira é mais simples e está directamente documentada pela Apple.
+The second offers greater control over paths, MIME types, symlinks, and extensions, but requires more custom logic. The first is simpler and directly documented by Apple.
 
-A app não deve seguir automaticamente:
+The app should not automatically follow:
 
-- symlinks que escapem da raiz;
-- paths absolutos;
-- componentes `..` que saiam da raiz;
-- URLs `file:`, `javascript:`, `data:`, `blob:` ou esquemas personalizados não autorizados.
+- symlinks that escape the root;
+- absolute paths;
+- `..` components that leave the root;
+- `file:`, `javascript:`, `data:`, `blob:`, or unauthorized custom-scheme URLs.
 
-A necessidade de referências deliberadamente fora do projecto deve permanecer uma decisão de produto aberta, não uma consequência acidental do renderer.
+The need for references deliberately outside the project should remain an open product decision, not an accidental consequence of the renderer.
 
-### 7.3 Links e navegação
+### 7.3 Links and navigation
 
-`WKNavigationDelegate` permite aceitar ou cancelar navegações antes de carregar o conteúdo. Uma política mínima plausível seria:
+`WKNavigationDelegate` can allow or cancel navigation before loading content. A plausible minimum policy would be:
 
-- links internos: apenas para ficheiros permitidos dentro da raiz;
-- links externos: não carregados dentro do preview; abrir apenas após acção explícita do utilizador;
-- esquemas permitidos externamente: inicialmente apenas `https` e, se necessário, `http`;
-- bloquear `file`, `javascript`, `data`, `blob`, `ftp` e esquemas personalizados;
-- bloquear novas janelas, downloads automáticos e redireccionamentos não esperados.
+- internal links: only to permitted files within the root;
+- external links: do not load inside the preview; open only after an explicit user action;
+- externally permitted schemes: initially only `https` and, if needed, `http`;
+- block `file`, `javascript`, `data`, `blob`, `ftp`, and custom schemes;
+- block new windows, automatic downloads, and unexpected redirects.
 
-Abrir um link explicitamente no browser não é “seguro”: apenas desloca a responsabilidade para outra aplicação, que pode ter acesso a cookies, rede e credenciais do utilizador.
+Explicitly opening a link in the browser is not “safe”: it only moves responsibility to another application, which may have access to the user's cookies, network, and credentials.
 
 ### 7.4 PDF
 
-PDFKit oferece capacidades adequadas para leitura: páginas, zoom, selecção, pesquisa/cópia e navegação. Contudo, o modelo PDF inclui annotations e actions. A Apple documenta tipos URL/URI, Launch, remote go-to e outras acções.
+PDFKit offers suitable reading capabilities: pages, zoom, selection, search/copy, and navigation. However, the PDF model includes annotations and actions. Apple documents URL/URI, Launch, remote go-to, and other action types.
 
-Assim, a app não deve assumir que “PDF é apenas desenho”. É necessário testar, na versão mínima de macOS escolhida:
+Therefore, the app should not assume that “PDF is just a drawing.” Test the following on the chosen minimum macOS version:
 
-- cliques em links HTTP/HTTPS;
-- links `file:`;
+- clicks on HTTP/HTTPS links;
+- `file:` links;
 - Launch actions;
 - remote go-to;
 - attachments;
-- forms e JavaScript específico de PDF;
-- PDFs grandes, corrompidos ou com imagens comprimidas anómalas.
+- forms and PDF-specific JavaScript;
+- large or corrupted PDFs, or PDFs with unusually compressed images.
 
-A preferência condicional é PDFKit como superfície principal, com acções externas bloqueadas ou submetidas a confirmação explícita. Quick Look pode ser fallback, mas não deve ser considerado equivalente em controlo.
+The conditional preference is PDFKit as the primary surface, with external actions blocked or requiring explicit confirmation. Quick Look may serve as a fallback, but should not be considered equivalent in control.
 
-### 7.5 Compilação LaTeX
+### 7.5 LaTeX compilation
 
-Este é o risco mais importante do brief.
+This is the most important risk in the brief.
 
-O TeX Live documenta que:
+TeX Live documents that:
 
-- `-shell-escape` permite executar comandos arbitrários;
-- o modo restrito limita a uma lista de comandos;
-- o processamento de input não confiável deve ser feito com cautela;
-- programas contribuídos podem não ter a mesma robustez dos programas core;
-- subdirectórios isolados ou chroot podem melhorar a segurança.
+- `-shell-escape` allows arbitrary commands to run;
+- restricted mode limits execution to a list of commands;
+- untrusted input should be processed with caution;
+- contributed programs may not be as robust as core programs;
+- isolated subdirectories or chroot may improve security.
 
-Implicações recomendadas:
+Recommended implications:
 
-- nunca compilar directamente dentro da pasta do projecto;
-- criar um workspace temporário;
-- copiar apenas os inputs necessários;
-- produzir PDF, logs e auxiliares apenas no workspace temporário/container;
-- não conceder permissões de escrita à pasta original;
-- desactivar shell escape por defeito;
-- permitir apenas shell escape restrito se uma capacidade requerida o justificar;
-- não instalar pacotes automaticamente;
-- fixar `PATH`, ambiente, directório de trabalho e localização de outputs;
-- definir timeout, limite de logs, limite de tamanho de artefactos e terminação do processo;
-- considerar fontes, `.sty`, `.bst`, `.bib`, scripts, SVG, EPS e conversores como inputs potencialmente activos;
-- limpar ou substituir o workspace após compilação.
+- never compile directly inside the project folder;
+- create a temporary workspace;
+- copy only the required inputs;
+- produce PDFs, logs, and auxiliary files only in the temporary workspace/container;
+- do not grant write permissions to the original folder;
+- disable shell escape by default;
+- allow restricted shell escape only when a required capability justifies it;
+- do not install packages automatically;
+- pin `PATH`, environment, working directory, and output location;
+- set a timeout, log limit, artifact-size limit, and process termination policy;
+- treat source files, `.sty`, `.bst`, `.bib`, scripts, SVG, EPS, and converters as potentially active inputs;
+- clear or replace the workspace after compilation.
 
-A documentação da Apple introduz uma dificuldade adicional: uma app sandboxed não pode usar apenas a permissão de ficheiro escolhido pelo utilizador para executar programas localizados fora da app, container ou app group. Isto coloca a instalação externa do MacTeX fora de uma solução simples e universal para distribuição sandboxed.
+Apple documentation introduces an additional difficulty: a sandboxed app cannot rely solely on user-selected file permission to run programs located outside the app, container, or app group. This means an external MacTeX installation is not a simple, universal solution for sandboxed distribution.
 
-## 8. Evidência
+## 8. Evidence
 
 ### E1–E6: WebKit
 
-- **E1 — WKWebView.** A Apple documenta suporte para HTML, CSS, JavaScript, conteúdo HTML em memória e ficheiros locais: [WKWebView](https://developer.apple.com/documentation/webkit/wkwebview).
-- **E2 — limite de leitura local.** `loadFileURL(_:allowingReadAccessTo:)` permite indicar um ficheiro ou directório de leitura; usar o próprio ficheiro limita a leitura a esse ficheiro: [loadFileURL](https://developer.apple.com/documentation/webkit/wkwebview/loadfileurl%28_%3Aallowingreadaccessto%3A%29).
-- **E3 — JavaScript.** A Apple documenta que `allowsContentJavaScript` é true por defeito e que false impede scripts inline, referências JavaScript e URLs `javascript:`: [allowsContentJavaScript](https://developer.apple.com/documentation/webkit/wkwebpagepreferences/allowscontentjavascript).
-- **E4 — processo de conteúdo.** WebKit renderiza conteúdo em processos separados da app, embora possa partilhar processos conforme limites internos: [WKProcessPool](https://developer.apple.com/documentation/webkit/wkprocesspool).
-- **E5 — navegação.** `WKNavigationDelegate` expõe políticas para aceitar ou cancelar navegações: [WKNavigationDelegate](https://developer.apple.com/documentation/webkit/wknavigationdelegate).
-- **E6 — persistência.** `WKWebsiteDataStore` tem uma variante não persistente que mantém dados em memória: [WKWebsiteDataStore](https://developer.apple.com/documentation/webkit/wkwebsitedatastore).
+- **E1 — WKWebView.** Apple documents support for HTML, CSS, JavaScript, in-memory HTML content, and local files: [WKWebView](https://developer.apple.com/documentation/webkit/wkwebview).
+- **E2 — local read boundary.** `loadFileURL(_:allowingReadAccessTo:)` accepts a file or directory to read; using the file itself limits reading to that file: [loadFileURL](https://developer.apple.com/documentation/webkit/wkwebview/loadfileurl%28_%3Aallowingreadaccessto%3A%29).
+- **E3 — JavaScript.** Apple documents that `allowsContentJavaScript` is true by default and false blocks inline scripts, JavaScript references, and `javascript:` URLs: [allowsContentJavaScript](https://developer.apple.com/documentation/webkit/wkwebpagepreferences/allowscontentjavascript).
+- **E4 — content process.** WebKit renders content in processes separate from the app, though processes may be shared according to internal limits: [WKProcessPool](https://developer.apple.com/documentation/webkit/wkprocesspool).
+- **E5 — navigation.** `WKNavigationDelegate` provides policies to allow or cancel navigation: [WKNavigationDelegate](https://developer.apple.com/documentation/webkit/wknavigationdelegate).
+- **E6 — persistence.** `WKWebsiteDataStore` has a non-persistent variant that keeps data in memory: [WKWebsiteDataStore](https://developer.apple.com/documentation/webkit/wkwebsitedatastore).
 
-Estas fontes estabelecem capacidades da API; não estabelecem que uma configuração concreta seja resistente a todo o conteúdo malicioso.
+These sources establish API capabilities; they do not establish that a specific configuration withstands all malicious content.
 
-### E7–E8: sanitização e CSP
+### E7–E8: Sanitization and CSP
 
-- **E7 — DOMPurify.** A documentação de segurança descreve o modelo allow-list, sanitização DOM, suporte a Trusted Types e limites relativos a CSS e pedidos HTTP: [DOMPurify Security Goals & Threat Model](https://github.com/cure53/DOMPurify/wiki/Security-Goals-%26-Threat-Model).
-- **E8 — manutenção e vulnerabilidades.** A mesma documentação estava actualizada em 09-09-2026 e indicava a linha actual 3.4.x, versão 3.4.15, além de advisories recentes: [DOMPurify Security Advisories](https://github.com/cure53/DOMPurify/security/advisories).
-- **E9 — CSP.** CSP define restrições para scripts, objectos, frames, conexões e recursos; a especificação recomenda evitar `unsafe-inline` e `data:` quando não forem necessários: [Content Security Policy Level 3](https://www.w3.org/TR/CSP/).
+- **E7 — DOMPurify.** Security documentation describes the allowlist model, DOM sanitization, Trusted Types support, and limits regarding CSS and HTTP requests: [DOMPurify Security Goals & Threat Model](https://github.com/cure53/DOMPurify/wiki/Security-Goals-%26-Threat-Model).
+- **E8 — maintenance and vulnerabilities.** The same documentation was current on 2026-09-09 and identified the current 3.4.x line, version 3.4.15, as well as recent advisories: [DOMPurify Security Advisories](https://github.com/cure53/DOMPurify/security/advisories).
+- **E9 — CSP.** CSP defines restrictions for scripts, objects, frames, connections, and resources; the specification recommends avoiding `unsafe-inline` and `data:` when unnecessary: [Content Security Policy Level 3](https://www.w3.org/TR/CSP/).
 
-CSP é defesa em profundidade, não substituto da sanitização nem da política nativa de navegação.
+CSP is defense in depth, not a replacement for sanitization or native navigation policy.
 
 ### E9–E11: PDF
 
-- **E9 — capacidades PDFKit.** `PDFView` apresenta PDF, permite selecção, navegação, zoom e cópia de texto: [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview).
-- **E10 — annotations/actions.** A Apple documenta que PDFs contêm annotations e acções; `PDFAction` pode representar URI/Launch através de `PDFActionURL`: [PDFAnnotation](https://developer.apple.com/documentation/pdfkit/pdfannotation), [PDFAction type](https://developer.apple.com/documentation/pdfkit/pdfaction/type).
-- **E11 — Quick Look.** Quick Look suporta PDFs e texto, mas a lista de tipos suportados pode mudar entre versões do sistema: [Quick Look](https://developer.apple.com/documentation/quicklook/).
+- **E9 — PDFKit capabilities.** `PDFView` displays PDFs and supports selection, navigation, zoom, and text copying: [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview).
+- **E10 — annotations/actions.** Apple documents that PDFs contain annotations and actions; `PDFAction` can represent URI/Launch through `PDFActionURL`: [PDFAnnotation](https://developer.apple.com/documentation/pdfkit/pdfannotation), [PDFAction type](https://developer.apple.com/documentation/pdfkit/pdfaction/type).
+- **E11 — Quick Look.** Quick Look supports PDFs and text, but the list of supported types may change between system versions: [Quick Look](https://developer.apple.com/documentation/quicklook/).
 
-A documentação confirma a existência das superfícies e das acções; não fornece uma classificação de segurança para ficheiros PDF arbitrários.
+The documentation confirms these surfaces and actions exist; it does not provide a security classification for arbitrary PDF files.
 
-### E12–E14: App Sandbox, bookmarks e helpers
+### E12–E14: App Sandbox, bookmarks, and helpers
 
-- **E12 — sandbox e permissões.** A Apple documenta App Sandbox, Open Panels, acesso read-only/read-write a ficheiros escolhidos e acesso recursivo quando é seleccionada uma pasta: [Accessing files from the macOS App Sandbox](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox).
-- **E13 — bookmarks e child processes.** Security-scoped bookmarks podem persistir acesso; permissões obtidas dinamicamente não são automaticamente transmitidas a helpers com sandbox inheritance: [Enabling App Sandbox Inheritance](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html).
-- **E14 — XPC.** A Apple descreve XPC como mecanismo para separar processos e indica que XPC é preferível para privilege separation: [Creating XPC services](https://developer.apple.com/documentation/xpc/creating-xpc-services), [Embedding a helper tool in a sandboxed app](https://developer.apple.com/documentation/xcode/embedding-a-helper-tool-in-a-sandboxed-app).
+- **E12 — sandbox and permissions.** Apple documents App Sandbox, Open Panels, read-only/read-write access to selected files, and recursive access when a folder is selected: [Accessing files from the macOS App Sandbox](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox).
+- **E13 — bookmarks and child processes.** Security-scoped bookmarks can persist access; dynamically acquired permissions are not automatically passed to helpers with sandbox inheritance: [Enabling App Sandbox Inheritance](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html).
+- **E14 — XPC.** Apple describes XPC as a mechanism for process separation and indicates that XPC is preferable for privilege separation: [Creating XPC services](https://developer.apple.com/documentation/xpc/creating-xpc-services), [Embedding a helper tool in a sandboxed app](https://developer.apple.com/documentation/xcode/embedding-a-helper-tool-in-a-sandboxed-app).
 
 ### E15–E16: TeX Live/MacTeX
 
-- **E15 — shell escape e input não confiável.** O TeX Live 2026 descreve shell escapes, modo restrito, riscos dos programas contribuídos e a recomendação de usar subdirectório ou chroot para conteúdo não confiável: [TeX Live Guide 2026](https://tug.org/texlive/doc/texlive-en/texlive-en.html).
-- **E16 — versões e tamanhos.** TeX Live 2026 foi lançado em 01-03-2026. MacTeX 2026 requer macOS 11 ou superior, suporta Intel/Arm e o pacote completo ronda 6,4 GB; BasicTeX ronda 134 MB: [TeX Live](https://tug.org/texlive/), [MacTeX downloads](https://tug.org/mactex/mactex-download.html).
+- **E15 — shell escape and untrusted input.** TeX Live 2026 describes shell escapes, restricted mode, risks from contributed programs, and recommends using a subdirectory or chroot for untrusted content: [TeX Live Guide 2026](https://tug.org/texlive/doc/texlive-en/texlive-en.html).
+- **E16 — versions and sizes.** TeX Live 2026 was released on 2026-03-01. MacTeX 2026 requires macOS 11 or later, supports Intel/Arm, and the full package is about 6.4 GB; BasicTeX is about 134 MB: [TeX Live](https://tug.org/texlive/), [MacTeX downloads](https://tug.org/mactex/mactex-download.html).
 
-### E17–E18: distribuição e licenciamento
+### E17–E18: Distribution and licensing
 
-- **E17 — distribuição fora da App Store.** Para software fora da App Store, a Apple requer Developer ID, assinatura dos executáveis, Hardened Runtime, timestamp seguro e notarização: [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution), [Hardened Runtime](https://developer.apple.com/documentation/security/hardened-runtime).
-- **E18 — dependências TeX.** TeX Live indica que os componentes têm licenças próprias e que a redistribuição deve respeitar as condições de cada componente: [TeX Live copying and redistribution](https://www.tug.org/texlive/copying.html), [About MacTeX](https://tug.org/mactex/aboutmactex.html).
+- **E17 — distribution outside the App Store.** For software distributed outside the App Store, Apple requires Developer ID, signed executables, Hardened Runtime, a secure timestamp, and notarization: [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution), [Hardened Runtime](https://developer.apple.com/documentation/security/hardened-runtime).
+- **E18 — TeX dependencies.** TeX Live states that components have their own licenses and redistribution must comply with each component's terms: [TeX Live copying and redistribution](https://www.tug.org/texlive/copying.html), [About MacTeX](https://tug.org/mactex/aboutmactex.html).
 
-## 9. Conflitos e tentativas de refutação
+## 9. Conflicts and counterarguments
 
-### “WKWebView em processo separado torna HTML seguro”
+### “A separate WKWebView process makes HTML safe”
 
-Refutação: processo separado reduz o impacto de um exploit, mas o processo ainda pode ser comprometido por WebKit. Se tiver acesso a recursos locais, rede ou bridge nativa, a exploração pode continuar relevante.
+Counterargument: a separate process reduces the impact of an exploit, but WebKit can still compromise that process. If it has access to local resources, the network, or a native bridge, exploitation may still matter.
 
-### “Desactivar JavaScript resolve HTML hostil”
+### “Disabling JavaScript solves hostile HTML”
 
-Refutação: HTML pode fazer pedidos passivos através de imagens, CSS e outros recursos. DOMPurify declara explicitamente que não é um CSS sanitizer nem bloqueia todos os HTTP leaks.
+Counterargument: HTML can make passive requests through images, CSS, and other resources. DOMPurify explicitly states that it is not a CSS sanitizer and does not block all HTTP leaks.
 
-### “Sanitizar com DOMPurify basta”
+### “Sanitizing with DOMPurify is enough”
 
-Refutação: a biblioteca não protege se não for chamada correctamente, não protege sinks posteriores, não cobre CSS por defeito e tem riscos associados a versões/configurações. Sanitização deve ser combinada com CSP, JavaScript desligado e isolamento de paths.
+Counterargument: the library offers no protection if called incorrectly, does not protect later sinks, does not cover CSS by default, and has version/configuration risks. Sanitization should be combined with CSP, disabled JavaScript, and path isolation.
 
-### “PDF é apenas output visual”
+### “PDF is only visual output”
 
-Refutação: PDF pode conter annotations e actions de URL, Launch, remote go-to, attachments e formulários. O comportamento exacto do PDFKit deve ser testado na versão de macOS alvo.
+Counterargument: a PDF can contain URL, Launch, and remote go-to annotations/actions, attachments, and forms. PDFKit's exact behavior should be tested on the target macOS version.
 
-### “App Sandbox resolve a execução de LaTeX externo”
+### “App Sandbox solves running external LaTeX”
 
-Refutação: a documentação da Apple indica que permissões de ficheiro escolhido pelo utilizador não autorizam executar programas fora da app, container ou app group. A instalação externa de MacTeX não deve ser assumida compatível com uma app sandboxed distribuível.
+Counterargument: Apple documentation indicates that user-selected file permissions do not authorize running programs outside the app, container, or app group. Do not assume an external MacTeX installation is compatible with a distributable sandboxed app.
 
-### “Notarização valida a segurança da app”
+### “Notarization validates app security”
 
-Refutação: notarização verifica a app distribuída, assinatura e problemas detectáveis pelo serviço. Não valida o conteúdo local que o utilizador abrirá nem substitui controlos de runtime.
+Counterargument: notarization checks the distributed app, its signature, and issues detectable by the service. It does not validate local content the user will open or replace runtime controls.
 
-### “TeX Live restricted shell escape torna compilação segura”
+### “TeX Live restricted shell escape makes compilation safe”
 
-Refutação: reduz a capacidade de executar comandos, mas não torna macros, pacotes, ficheiros auxiliares ou conversores confiáveis. Também não resolve automaticamente leitura/escrita de ficheiros nem exaustão de recursos.
+Counterargument: it reduces the ability to execute commands, but does not make macros, packages, auxiliary files, or converters trustworthy. It also does not automatically address file reads/writes or resource exhaustion.
 
-## 10. Recomendação condicional
+## 10. Conditional recommendation
 
-### Recomendação com confiança alta
+### High-confidence recommendation
 
-Para Markdown:
+For Markdown:
 
 - `WKWebView`;
-- conteúdo tratado como não confiável;
-- HTML sanitizado com allow-list;
-- JavaScript de conteúdo desligado;
-- CSP de defesa em profundidade;
-- nenhum bridge nativo desnecessário;
-- recursos limitados à raiz autorizada;
-- navegação externa apenas por acção explícita;
-- data store não persistente;
-- sem entitlement de rede se o MVP não precisar de rede.
+- treat content as untrusted;
+- sanitize HTML with an allowlist;
+- disable content JavaScript;
+- use CSP as defense in depth;
+- avoid unnecessary native bridges;
+- limit resources to the authorized root;
+- allow external navigation only after explicit action;
+- use a non-persistent data store;
+- omit the network entitlement if the MVP does not need network access.
 
-Para LaTeX:
+For LaTeX:
 
-- PDFKit como superfície de leitura;
-- acções PDF tratadas explicitamente;
-- nenhum abrir automático de paths ou aplicações externas;
-- compilação fora da pasta raw;
-- limites de processo e outputs;
-- shell escape desligado/restrito.
+- use PDFKit as the reading surface;
+- handle PDF actions explicitly;
+- do not automatically open paths or external applications;
+- compile outside the source folder;
+- impose process and output limits;
+- disable or restrict shell escape.
 
-### Condicional decisiva
+### Decisive condition
 
-Se a prioridade futura for App Sandbox e Mac App Store, a estratégia LaTeX deve partir de executáveis auxiliares empacotados, assinados e compatíveis com sandbox/XPC. O custo de empacotar TeX Live completo, ou de seleccionar uma distribuição mínima, deve ser avaliado antes de fechar essa arquitectura.
+If the future priority is App Sandbox and the Mac App Store, the LaTeX strategy should start with bundled, signed helper executables compatible with sandbox/XPC. The cost of bundling full TeX Live, or selecting a minimal distribution, should be assessed before finalizing that architecture.
 
-Se a prioridade for apenas um protótipo pessoal no próprio Mac, pode ser aceitável depender de uma instalação TeX externa, mas isso deve ser registado como risco operacional e de segurança aceite — não como uma solução sandboxed ou universalmente segura.
+If the priority is only a personal prototype on the user's Mac, depending on an external TeX installation may be acceptable, but it should be recorded as an accepted operational and security risk, not as a sandboxed or universally safe solution.
 
-Confiança:
+Confidence:
 
-- APIs de WebKit/PDFKit: alta.
-- Modelo de permissões App Sandbox: alta.
-- Riscos do TeX shell escape: alta.
-- Compatibilidade exacta entre MacTeX externo, sandbox e cada modalidade de distribuição: média/baixa sem teste local.
-- Segurança adversarial da cadeia completa: média/baixa sem protótipo e testes de corpus.
+- WebKit/PDFKit APIs: high.
+- App Sandbox permission model: high.
+- TeX shell escape risks: high.
+- Exact compatibility among external MacTeX, sandboxing, and each distribution model: medium/low without local testing.
+- Adversarial security of the complete toolchain: medium/low without a prototype and corpus tests.
 
-## 11. Implicações para o MVP
+## 11. MVP implications
 
-### Riscos aceites
+### Accepted risks
 
-Condicionalmente aceitáveis para uso pessoal:
+Conditionally acceptable for personal use:
 
-- residual de vulnerabilidades em WebKit, PDFKit ou parsers;
-- conteúdo que consuma recursos, desde que exista timeout e recuperação;
-- necessidade de o utilizador conceder acesso à pasta;
-- dependência de uma instalação TeX externa, se o MVP não for sandboxed/distribuído;
-- abertura de links externos apenas após confirmação explícita.
+- residual vulnerabilities in WebKit, PDFKit, or parsers;
+- resource-consuming content, provided a timeout and recovery mechanism exist;
+- the need for the user to grant folder access;
+- dependence on an external TeX installation if the MVP is not sandboxed/distributed;
+- opening external links only after explicit confirmation.
 
-### Riscos mitigados
+### Mitigated risks
 
-Devem ser tratados pela implementação escolhida:
+These should be addressed by the chosen implementation:
 
-- JavaScript e HTML activo;
-- pedidos de rede não intencionais;
-- referências fora da pasta;
-- escrita do compilador na pasta original;
-- shell escape arbitrário;
-- execução de ferramentas auxiliares;
-- perda de permissões após relançamento;
-- PDFs com acções externas;
-- dependências temporárias misturadas com o projecto;
-- logs sem limite ou processos pendurados.
+- JavaScript and active HTML;
+- unintended network requests;
+- references outside the folder;
+- compiler writes to the original folder;
+- arbitrary shell escape;
+- execution of helper tools;
+- permissions lost after relaunch;
+- PDFs with external actions;
+- temporary dependencies mixed with the project;
+- unbounded logs or hung processes.
 
-### Riscos adiados
+### Deferred risks
 
-Podem ficar fora da primeira validação, mas devem ser explícitos:
+These may remain outside the first validation, but should be explicit:
 
-- suporte a JavaScript client-side;
-- HTML arbitrário com forms, iframes, SVG ou CSS fornecido pelo documento;
-- referências autorizadas fora da pasta escolhida;
-- compilação de projectos com shell escape completo;
-- instalação automática de pacotes TeX;
-- distribuição sandboxed pela Mac App Store com TeX externo;
+- support for client-side JavaScript;
+- arbitrary HTML with forms, iframes, SVG, or document-provided CSS;
+- authorized references outside the selected folder;
+- compiling projects with full shell escape;
+- automatic installation of TeX packages;
+- sandboxed Mac App Store distribution with external TeX;
 - auto-update;
-- garantia contra todos os PDFs malformados;
-- empacotamento completo de MacTeX/TeX Live.
+- protection against every malformed PDF;
+- bundling full MacTeX/TeX Live.
 
-## 12. Mensagens de erro e recuperação
+## 12. Error messages and recovery
 
-A UI deveria distinguir, sem esconder a causa:
+The UI should distinguish these cases without hiding the cause:
 
-- “A pasta não foi autorizada pelo macOS.”
-- “O ficheiro existe, mas está fora da raiz autorizada.”
-- “O recurso foi bloqueado por política de preview.”
-- “O PDF contém uma acção externa que não foi aberta.”
-- “O compilador não foi encontrado ou não é compatível.”
-- “A compilação excedeu o tempo limite.”
-- “A compilação tentou usar shell escape não permitido.”
-- “O PDF/HTML não pôde ser processado.”
-- “O processo de preview terminou; pode ser reiniciado sem alterar os ficheiros raw.”
+- “macOS did not authorize this folder.”
+- “The file exists, but is outside the authorized root.”
+- “The resource was blocked by preview policy.”
+- “The PDF contains an external action that was not opened.”
+- “The compiler was not found or is incompatible.”
+- “Compilation exceeded the time limit.”
+- “Compilation attempted to use disallowed shell escape.”
+- “The PDF/HTML could not be processed.”
+- “The preview process ended; it can be restarted without changing the source files.”
 
-A recuperação deve permitir cancelar a compilação, reiniciar o renderer e apagar artefactos temporários sem tocar nos fontes.
+Recovery should allow compilation to be cancelled, the renderer to be restarted, and temporary artifacts to be deleted without touching source files.
 
-## 13. Lacunas e próximos testes
+## 13. Gaps and next tests
 
-Estes pontos requerem protótipo ou teste local:
+These points require a prototype or local testing:
 
-1. comportamento de `WKWebView` com `loadFileURL`, HTML em memória e esquema app-owned;
-2. acesso a imagens relativas, `..`, symlinks e paths absolutos;
-3. eficácia real de CSP/meta CSP no modo de carregamento escolhido;
-4. pedidos de rede do WebView sem entitlement de cliente;
-5. execução de links e actions PDF em cada versão de macOS suportada;
-6. PDFs com attachments, Launch actions, forms e documentos corrompidos;
-7. herança de sandbox em helper e passagem de bookmarks;
-8. possibilidade de executar MacTeX externo numa app sandboxed;
-9. comportamento de `pdflatex`, `xelatex`, `lualatex`, BibTeX e ferramentas auxiliares sob shell escape desactivado/restrito;
-10. timeout, terminação de árvore de processos e limites de memória/saída;
-11. notarização de todos os executáveis empacotados;
-12. matriz de licenças para qualquer subconjunto TeX redistribuído.
+1. `WKWebView` behavior with `loadFileURL`, in-memory HTML, and an app-owned scheme;
+2. access to relative images, `..`, symlinks, and absolute paths;
+3. actual effectiveness of CSP/meta CSP in the chosen loading mode;
+4. WebView network requests without a client network entitlement;
+5. execution of links and PDF actions on each supported macOS version;
+6. PDFs with attachments, Launch actions, forms, and corrupted documents;
+7. sandbox inheritance in a helper and bookmark passing;
+8. ability to run external MacTeX from a sandboxed app;
+9. behavior of `pdflatex`, `xelatex`, `lualatex`, BibTeX, and helper tools with shell escape disabled/restricted;
+10. timeout, process-tree termination, and memory/output limits;
+11. notarization of all bundled executables;
+12. license matrix for any redistributed TeX subset.
 
-## 14. Ledger de fontes
+## 14. Source ledger
 
-| Fonte | Data/versão verificada | Estado | Razão |
+| Source | Date/version checked | Status | Reason |
 |---|---|---|---|
-| Apple WebKit documentation | Acesso 09-09-2026 | Usada | API primária para WebView, navegação, JavaScript e processos |
-| Apple PDFKit documentation | Acesso 09-09-2026 | Usada | API primária para leitura e actions PDF |
-| Apple Quick Look documentation | Acesso 09-09-2026 | Usada | Alternativa nativa de preview |
-| Apple App Sandbox documentation | Acesso 09-09-2026 | Usada | Entitlements, folders, bookmarks e helpers |
-| Apple Hardened Runtime/notarização | Acesso 09-09-2026 | Usada | Requisitos actuais de distribuição |
-| TeX Live Guide 2026 | Publicado 21-02-2026; release 01-03-2026 | Usada | Shell escape, segurança e plataformas |
-| MacTeX 2026 | Actualização indicada em 24-03-2026 | Usada | Compatibilidade, tamanhos e assinatura/notarização |
-| DOMPurify Security Goals | Versão actual indicada: 3.4.15 em 09-09-2026 | Usada | Limites e advisories do sanitizer |
-| W3C CSP Level 3 | Acesso 09-09-2026 | Usada | Base normativa para CSP |
-| Adobe PDF documentation | Acesso 09-09-2026 | Parcialmente usada | Taxonomia de actions PDF; não usada para afirmar comportamento específico do PDFKit |
-| Apple Developer Forums | Consultada durante descoberta | Rejeitada como evidência principal | Discussões úteis, mas não documentação normativa |
-| MDN same-origin/file URLs | Consultada durante descoberta | Rejeitada para claims macOS | Fonte secundária; não substitui documentação WebKit/App Sandbox |
-| Blogs, snippets, Stack Overflow e rankings | Não usados | Rejeitados | Não cumprem o requisito de fontes primárias atuais |
-| Benchmarks comparativos | Não encontrados/necessários | Não usados | Não havia evidência comparativa aplicável ao fluxo específico do MVP |
+| Apple WebKit documentation | Accessed 2026-09-09 | Used | Primary API source for WebView, navigation, JavaScript, and processes |
+| Apple PDFKit documentation | Accessed 2026-09-09 | Used | Primary API source for PDF reading and actions |
+| Apple Quick Look documentation | Accessed 2026-09-09 | Used | Native preview alternative |
+| Apple App Sandbox documentation | Accessed 2026-09-09 | Used | Entitlements, folders, bookmarks, and helpers |
+| Apple Hardened Runtime/notarization | Accessed 2026-09-09 | Used | Current distribution requirements |
+| TeX Live Guide 2026 | Published 2026-02-21; release 2026-03-01 | Used | Shell escape, security, and platforms |
+| MacTeX 2026 | Update listed on 2026-03-24 | Used | Compatibility, sizes, signing, and notarization |
+| DOMPurify Security Goals | Current version listed as 3.4.15 on 2026-09-09 | Used | Sanitizer limitations and advisories |
+| W3C CSP Level 3 | Accessed 2026-09-09 | Used | Normative basis for CSP |
+| Adobe PDF documentation | Accessed 2026-09-09 | Partially used | PDF action taxonomy; not used to claim specific PDFKit behavior |
+| Apple Developer Forums | Consulted during discovery | Rejected as primary evidence | Useful discussions, but not normative documentation |
+| MDN same-origin/file URLs | Consulted during discovery | Rejected for macOS claims | Secondary source; does not replace WebKit/App Sandbox documentation |
+| Blogs, snippets, Stack Overflow, and rankings | Not used | Rejected | Do not meet the requirement for current primary sources |
+| Comparative benchmarks | Not found/needed | Not used | No comparative evidence applied to the MVP's specific workflow |
 
-## 15. Registo de pesquisa
+## 15. Research log
 
-| Query | Caminho de descoberta | Resultado |
+| Query | Discovery path | Result |
 |---|---|---|
-| Q1 | Documentação local → contextos, brief, vision | Escopo, formato e modelo de ameaça |
-| Q2 | Apple Developer → WebKit/WKWebView | Capacidades de HTML local, JS, navegação e processos |
-| Q3 | Apple Developer → PDFKit/Quick Look | Superfícies e limitações de leitura |
-| Q4 | Apple Developer → App Sandbox | Ficheiros escolhidos, bookmarks e entitlements |
-| Q5 | Apple Developer → XPC/helper tools | Isolamento e limitações de child processes |
-| Q6 | TUG → TeX Live/MacTeX | Shell escape, versões, tamanhos e licenciamento |
-| Q7 | Apple Developer → Hardened Runtime/notarização | Requisitos de distribuição |
-| Q8 | DOMPurify/W3C | Sanitização, CSP, CSS e leaks |
-| Q9 | Adobe PDF documentation | Actions PDF e riscos de links/Launch |
+| Q1 | Local documentation → contexts, brief, vision | Scope, format, and threat model |
+| Q2 | Apple Developer → WebKit/WKWebView | Local HTML, JS, navigation, and process capabilities |
+| Q3 | Apple Developer → PDFKit/Quick Look | Reading surfaces and limitations |
+| Q4 | Apple Developer → App Sandbox | Selected files, bookmarks, and entitlements |
+| Q5 | Apple Developer → XPC/helper tools | Isolation and child-process limitations |
+| Q6 | TUG → TeX Live/MacTeX | Shell escape, versions, sizes, and licensing |
+| Q7 | Apple Developer → Hardened Runtime/notarization | Distribution requirements |
+| Q8 | DOMPurify/W3C | Sanitization, CSP, CSS, and leaks |
+| Q9 | Adobe PDF documentation | PDF actions and link/Launch risks |
 
-## Razão para parar a pesquisa
+## Reason for stopping the research
 
-A pesquisa encontrou evidência primária suficiente para:
+The research found sufficient primary evidence to:
 
-- comparar as principais superfícies de preview;
-- definir uma postura de defesa em profundidade;
-- identificar o conflito material entre sandbox e compilador LaTeX externo;
-- separar riscos aceites, mitigados e adiados;
-- especificar os testes que faltam.
+- compare the main preview surfaces;
+- define a defense-in-depth posture;
+- identify the material conflict between sandboxing and an external LaTeX compiler;
+- separate accepted, mitigated, and deferred risks;
+- specify the remaining tests.
 
-Continuar a pesquisa documental sem escolher a versão mínima de macOS, o modo de distribuição e a estratégia de compilação produziria principalmente mais detalhes sem resolver as incertezas centrais. Essas incertezas exigem testes locais e decisões posteriores do projecto, que este brief explicitamente não deve fechar.
+Continuing documentary research without choosing a minimum macOS version, distribution model, and compilation strategy would mostly add detail without resolving the central uncertainties. Those uncertainties require local testing and later project decisions, which this brief explicitly should not settle.

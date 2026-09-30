@@ -42,4 +42,4 @@ WebView or desktop dependencies may be noted when materially relevant, but refer
 
 Compare the identified approaches and provide a conditional MVP recommendation, requirements that could change it, and a short list of local tests needed to validate the choice.
 
-Use the [shared report format](CONTEXT.md#formato-de-entrega) and do not present a preference as a fact.
+Use the [shared report format](CONTEXT.md#report-format) and do not present a preference as a fact.

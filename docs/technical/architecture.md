@@ -69,7 +69,7 @@ to the UI. The Core's `DocumentDiffEngine` compares in-memory sources and
 returns a result independent of Markdown or JSON. These modules return values
 and events without directly mutating `AppModel`.
 
-O fluxo principal é:
+The main flow is:
 
 ```text
 UI action

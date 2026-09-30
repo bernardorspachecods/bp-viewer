@@ -1,285 +1,285 @@
-# Relatório de investigação: LaTeX → preview
+# Research report: LaTeX → preview
 
-Data de acesso: 2026-09-09.  
-Repositório consultado: [arquivo da pesquisa](../CONTEXT.md), [brief LaTeX](../latex-preview.md) e [estado atual](../../../current-state.md).
+Access date: 2026-09-09.  
+Repository context: [research archive](../CONTEXT.md), [LaTeX brief](../latex-preview.md), and [current state](../../../current-state.md).
 
-Não foram alterados ficheiros. A working tree está limpa.
+No files were changed. The working tree was clean.
 
-## 1. Resumo executivo
+## 1. Executive summary
 
-Para teses LaTeX reais, PDF produzido pelo próprio motor LaTeX é a estratégia com maior probabilidade de preservar fidelidade visual, classes, pacotes, imagens, bibliografia e referências cruzadas.
+For real LaTeX theses, a PDF produced by the LaTeX engine itself is the strategy most likely to preserve visual fidelity, classes, packages, images, bibliography, and cross-references.
 
-A combinação tecnicamente mais abrangente é uma distribuição TeX local — TeX Live/MacTeX ou MiKTeX — com `latexmk`, usando diretórios de saída temporários e compilação serializada. `latexmk` deteta dependências através dos ficheiros gerados e suporta recompilação contínua de fontes, ficheiros incluídos e gráficos. ([CTAN latexmk](https://ctan.org/pkg/latexmk/), [manual latexmk 4.88](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf))
+The most comprehensive technical setup is a local TeX distribution — TeX Live/MacTeX or MiKTeX — with `latexmk`, using temporary output directories and serialized compilation. `latexmk` detects dependencies through generated files and supports continuous recompilation of sources, included files, and graphics. ([CTAN latexmk](https://ctan.org/pkg/latexmk/), [manual latexmk 4.88](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf))
 
-Tectonic reduz significativamente a instalação e encapsula o motor num executável, mas introduz dependência de bundles/cache, usa essencialmente XeTeX, requer atenção especial a `biber` e pode divergir de instalações TeX tradicionais. A versão 0.17.0 corrigiu problemas recentes no macOS, mas o histórico imediato recomenda validação contra a tese concreta. ([Tectonic manual](https://tectonic-typesetting.github.io/book/latest/), [release 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0))
+Tectonic substantially reduces installation effort and packages the engine in one executable, but adds a dependency on bundles/cache, relies primarily on XeTeX, needs special attention to `biber`, and may differ from traditional TeX installations. Version 0.17.0 fixed recent macOS issues, but its recent history makes validation against the actual thesis advisable. ([Tectonic manual](https://tectonic-typesetting.github.io/book/latest/), [release 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0))
 
-HTML é viável, mas não deve ser tratado como equivalente visual automático ao PDF. TeX4ht, lwarp e LaTeXML usam modelos de conversão diferentes e podem exigir bindings, configurações específicas ou substituição de funcionalidades. A pesquisa não encontrou evidência independente suficiente para afirmar que algum deles reproduz geralmente a aparência de uma tese arbitrária.
+HTML is viable, but should not be treated as automatically visually equivalent to PDF. TeX4ht, lwarp, and LaTeXML use different conversion models and may require bindings, specific configuration, or feature replacements. The research found insufficient independent evidence to claim that any of them generally reproduces the appearance of an arbitrary thesis.
 
-## 2. Pergunta e decisão suportada
+## 2. Question and supported decision
 
-Foi investigado como processar e apresentar LaTeX local no macOS, sem assumir PDF, HTML, MacTeX ou qualquer motor específico.
+The research examined how to process and present local LaTeX on macOS without assuming PDF, HTML, MacTeX, or any specific engine.
 
-A pesquisa permite concluir condicionalmente que:
+The research supports these conditional conclusions:
 
-- PDF é a opção de maior fidelidade quando o objetivo é ver o resultado da compilação original.
-- HTML oferece melhor potencial para navegação estrutural, pesquisa, acessibilidade e integração com uma WebView, mas com maior risco de incompatibilidades.
-- Uma instalação TeX tradicional é mais abrangente; Tectonic é operacionalmente mais simples, porém menos neutro face ao ecossistema TeX.
-- A escolha final depende do corpus LaTeX real, do motor usado pela tese e da importância relativa de fidelidade visual, instalação simples, HTML semântico e acessibilidade.
+- PDF is the highest-fidelity option when the goal is to view the original compilation result.
+- HTML offers greater potential for structural navigation, search, accessibility, and WebView integration, but carries a higher risk of incompatibilities.
+- A traditional TeX installation is more comprehensive; Tectonic is operationally simpler but less neutral toward the TeX ecosystem.
+- The final choice depends on the real LaTeX corpus, the thesis engine, and the relative importance of visual fidelity, simple installation, semantic HTML, and accessibility.
 
-Isto não fecha uma decisão de produto.
+This does not settle a product decision.
 
-## 3. Escopo e pressupostos
+## 3. Scope and assumptions
 
-Incluído:
+Included:
 
-- PDF, HTML e abordagens híbridas;
-- TeX Live/MacTeX, BasicTeX, MiKTeX e Tectonic;
-- `latexmk`, `make4ht`, lwarp e LaTeXML;
-- documentos multi-ficheiro;
-- `\\input`, `\\include`, imagens, bibliografia e referências;
-- recompilação após alterações externas;
-- logs, erros, avisos e processos bloqueados;
-- diretórios temporários, shell escape, licenciamento e macOS;
-- acessibilidade, seleção e pesquisa no preview.
+- PDF, HTML, and hybrid approaches;
+- TeX Live/MacTeX, BasicTeX, MiKTeX, and Tectonic;
+- `latexmk`, `make4ht`, lwarp, and LaTeXML;
+- multi-file documents;
+- `\\input`, `\\include`, images, bibliography, and references;
+- recompilation after external changes;
+- logs, errors, warnings, and hung processes;
+- temporary directories, shell escape, licensing, and macOS;
+- accessibility, selection, and search in the preview.
 
-Fora do escopo:
+Out of scope:
 
-- framework desktop;
-- viewer específico;
-- implementação de código;
-- editor LaTeX;
-- decisão sobre funcionalidades de escrita;
-- benchmark exaustivo ou validação com uma tese privada concreta.
+- desktop framework;
+- specific viewer;
+- code implementation;
+- LaTeX editor;
+- decisions about writing features;
+- exhaustive benchmark or validation against a specific private thesis.
 
-## 4. Critérios de avaliação
+## 4. Evaluation criteria
 
-Os critérios relevantes são:
+The relevant criteria are:
 
-- fidelidade visual ao resultado esperado da tese;
-- suporte a classes e pacotes existentes;
-- funcionamento offline;
-- instalação e dependências externas;
-- bibliografia e referências cruzadas;
-- deteção de dependências;
-- previsibilidade e tempo de recompilação;
-- isolamento dos artefactos;
-- diagnóstico de erros;
-- segurança;
-- acessibilidade e pesquisa;
-- manutenção e distribuição no macOS.
+- visual fidelity to the expected thesis output;
+- support for existing classes and packages;
+- offline operation;
+- installation and external dependencies;
+- bibliography and cross-references;
+- dependency detection;
+- predictability and recompilation time;
+- artifact isolation;
+- error diagnostics;
+- security;
+- accessibility and search;
+- maintenance and macOS distribution.
 
-Não foram atribuídos pesos numéricos, porque a documentação do projeto não os define.
+No numeric weights were assigned because the project documentation does not define them.
 
-## 5. Matriz de claims
+## 5. Claim matrix
 
-| Claim | Importância | Estado | Evidência | Limitação |
+| Claim | Importance | Status | Evidence | Limitation |
 |---|---:|---|---|---|
-| C1. PDF produzido pelo motor original é a referência visual mais direta. | Alta | Inferência forte | E1, E2, E3 | Não prova que todos os viewers apresentem o PDF da mesma forma. |
-| C2. TeX Live 2026 está disponível; MacTeX é a distribuição macOS baseada em TeX Live. | Alta | Facto | E4 | MacTeX é grande; BasicTeX é incompleto. |
-| C3. MiKTeX oferece instalação de pacotes em tempo de execução. | Média | Facto | E5 | Pode tornar a primeira compilação dependente da rede e menos previsível. |
-| C4. Tectonic é distribuído como executável único e pode obter ficheiros de suporte através de bundles. | Alta | Facto | E6 | Cache/bundle tem implicações para offline e reprodutibilidade. |
-| C5. Tectonic suporta `--only-cached`, `--untrusted`, `--outdir`, logs e ficheiros de dependências. | Alta | Facto | E7 | Nem todas as funcionalidades correspondem às opções do TeX Live tradicional. |
-| C6. Tectonic possui modo `watch` para reconstruir quando os inputs mudam. | Média | Facto | E8 | Watch não significa composição incremental por página. |
-| C7. `latexmk` acompanha o ficheiro principal, ficheiros incluídos e gráficos. | Alta | Facto | E9 | Continua a depender dos comportamentos do motor e dos auxiliares. |
-| C8. `latexmk` automatiza múltiplas passagens e ferramentas como BibTeX/Biber. | Alta | Facto | E9, E10 | Configurações não convencionais podem exigir `latexmkrc`. |
-| C9. `\\input` e `\\include` permitem documentos multi-ficheiro; o compilador precisa de um root. | Alta | Facto/inferência | E11, E12 | Um capítulo isolado pode não ser compilável. |
-| C10. Bibliografia e referências cruzadas exigem processamento adicional e mais de uma passagem. | Alta | Facto | E9, E10, E13 | O número concreto de passagens depende da cadeia usada. |
-| C11. Biber e BibLaTeX devem ser mantidos em versões compatíveis. | Alta | Facto | E13 | A combinação exata deve ser verificada na instalação usada. |
-| C12. TeX4ht converte através de LaTeX modificado e DVI auxiliar. | Alta | Facto | E14 | O caminho não é equivalente ao PDF final. |
-| C13. make4ht suporta diretórios de saída, build files, BibTeX/Biber e pós-processamento. | Média | Facto | E15 | O próprio build file pode introduzir dependências e comandos externos. |
-| C14. lwarp suporta muitos pacotes e pode gerar HTML com SVG ou MathJax. | Média | Facto | E16 | Requer Perl e utilitários Poppler; declara-se incompatível com Tagged PDF. |
-| C15. LaTeXML produz HTML5, MathML, imagens e referências estruturadas através de bindings. | Média | Facto | E17 | A cobertura depende dos bindings; a versão publicada é mais antiga. |
-| C16. PDFKit no macOS suporta apresentação, seleção, cópia, navegação e pesquisa. | Média | Facto | E18 | A integração concreta pertence ao brief do viewer. |
-| C17. PDF acessível depende de tagging e do suporte dos pacotes usados. | Média | Facto/inferência | E19 | O projeto de tagging continua em desenvolvimento. |
-| C18. Shell escape é uma superfície de risco e deve ser desativado por defeito. | Alta | Facto/recomendação | E20, E7 | Alguns documentos dependem dele, por exemplo para ferramentas externas. |
-| C19. Tectonic teve problemas recentes específicos em macOS ARM64. | Alta | Facto limitado | E21, E22 | O problema foi corrigido em 0.17.0; não prova falha geral atual. |
-| C20. A recomendação final depende do corpus real da tese. | Alta | Inferência | E1–E22 | Só testes locais podem confirmar compatibilidade. |
+| C1. A PDF produced by the original engine is the most direct visual reference. | High | Strong inference | E1, E2, E3 | Does not prove that all viewers display the PDF identically. |
+| C2. TeX Live 2026 is available; MacTeX is the macOS distribution based on TeX Live. | High | Fact | E4 | MacTeX is large; BasicTeX is incomplete. |
+| C3. MiKTeX offers runtime package installation. | Medium | Fact | E5 | This can make the first compilation network-dependent and less predictable. |
+| C4. Tectonic is distributed as a single executable and can obtain support files through bundles. | High | Fact | E6 | Its cache/bundle has offline and reproducibility implications. |
+| C5. Tectonic supports `--only-cached`, `--untrusted`, `--outdir`, logs, and dependency files. | High | Fact | E7 | Not all features correspond to options in traditional TeX Live. |
+| C6. Tectonic has a `watch` mode that rebuilds when inputs change. | Medium | Fact | E8 | Watch does not mean incremental page composition. |
+| C7. `latexmk` tracks the main file, included files, and graphics. | High | Fact | E9 | It still depends on engine and auxiliary-tool behavior. |
+| C8. `latexmk` automates multiple passes and tools such as BibTeX/Biber. | High | Fact | E9, E10 | Unusual configurations may require `latexmkrc`. |
+| C9. `\\input` and `\\include` support multi-file documents; the compiler needs a root file. | High | Fact/inference | E11, E12 | An isolated chapter may not compile. |
+| C10. Bibliography and cross-references require additional processing and more than one pass. | High | Fact | E9, E10, E13 | The exact number of passes depends on the toolchain. |
+| C11. Biber and BibLaTeX must use compatible versions. | High | Fact | E13 | The exact combination must be checked in the installation being used. |
+| C12. TeX4ht converts through modified LaTeX and an auxiliary DVI. | High | Fact | E14 | This path is not equivalent to the final PDF. |
+| C13. make4ht supports output directories, build files, BibTeX/Biber, and post-processing. | Medium | Fact | E15 | The build file itself can introduce dependencies and external commands. |
+| C14. lwarp supports many packages and can generate HTML with SVG or MathJax. | Medium | Fact | E16 | It requires Perl and Poppler utilities; it declares itself incompatible with Tagged PDF. |
+| C15. LaTeXML produces HTML5, MathML, images, and structured references through bindings. | Medium | Fact | E17 | Coverage depends on bindings; the published version is older. |
+| C16. PDFKit on macOS supports display, selection, copying, navigation, and search. | Medium | Fact | E18 | The specific integration belongs in the viewer brief. |
+| C17. Accessible PDF depends on tagging and support in the packages used. | Medium | Fact/inference | E19 | The tagging project is still under development. |
+| C18. Shell escape is a risk surface and should be disabled by default. | High | Fact/recommendation | E20, E7 | Some documents depend on it, for example for external tools. |
+| C19. Tectonic had recent issues specific to macOS ARM64. | High | Limited fact | E21, E22 | The issue was fixed in 0.17.0; it does not prove a general current failure. |
+| C20. The final recommendation depends on the actual thesis corpus. | High | Inference | E1–E22 | Only local tests can confirm compatibility. |
 
-## 6. Alternativas investigadas
+## 6. Alternatives investigated
 
 ### A. TeX Live/MacTeX + `latexmk` + PDF
 
-Fluxo:
+Workflow:
 
-1. escolher o ficheiro root;
-2. executar `pdflatex`, `xelatex` ou `lualatex`;
-3. executar BibTeX/Biber/MakeIndex quando necessário;
-4. repetir até referências e bibliografia estabilizarem;
-5. apresentar o PDF.
+1. choose the root file;
+2. run `pdflatex`, `xelatex`, or `lualatex`;
+3. run BibTeX/Biber/MakeIndex when needed;
+4. repeat until references and bibliography have stabilized;
+5. display the PDF.
 
-É a alternativa mais completa para uma tese já existente. TeX Live inclui os motores e ferramentas; MacTeX adiciona integração específica para macOS. O MacTeX 2026 requer macOS 11 ou superior, suporta Intel e Apple Silicon e o instalador completo tem aproximadamente 6,4 GB. ([MacTeX 2026](https://tug.org/mactex/mactex-download.html), [TeX Live 2026](https://tug.org/texlive/))
+This is the most complete option for an existing thesis. TeX Live includes the engines and tools; MacTeX adds macOS-specific integration. MacTeX 2026 requires macOS 11 or later, supports Intel and Apple Silicon, and the full installer is approximately 6.4 GB. ([MacTeX 2026](https://tug.org/mactex/mactex-download.html), [TeX Live 2026](https://tug.org/texlive/))
 
-Limitações:
+Limitations:
 
-- instalação grande;
-- versões e pacotes dependem da distribuição;
-- `latexmk` pode não estar presente em instalações mínimas;
-- determinados pacotes exigem Perl, Python, Ghostscript, `dvisvgm` ou shell escape;
-- é necessário resolver a descoberta do root.
+- large installation;
+- versions and packages depend on the distribution;
+- `latexmk` may not be present in minimal installations;
+- some packages require Perl, Python, Ghostscript, `dvisvgm`, or shell escape;
+- root-file discovery must be addressed.
 
 ### B. BasicTeX
 
-O BasicTeX inclui os motores principais, mas omite grande parte dos pacotes e ferramentas do MacTeX completo. ([BasicTeX/MacTeX](https://tug.org/mactex/morepackages.html))
+BasicTeX includes the main engines but omits many of the packages and tools in the full MacTeX distribution. ([BasicTeX/MacTeX](https://tug.org/mactex/morepackages.html))
 
-É adequado para testar uma instalação pequena, mas menos previsível para teses reais: um pacote ausente pode exigir instalação posterior e alterar o ambiente durante a utilização.
+It is suitable for testing a small installation, but is less predictable for real theses: a missing package may need to be installed later and change the environment during use.
 
 ### C. MiKTeX + PDF
 
-MiKTeX funciona no macOS e pode instalar pacotes ausentes automaticamente. ([Instalação MiKTeX no macOS](https://miktex.org/howto/install-miktex-mac))
+MiKTeX works on macOS and can install missing packages automatically. ([MiKTeX installation on macOS](https://miktex.org/howto/install-miktex-mac))
 
-Vantagem:
+Advantages:
 
-- menor instalação inicial;
-- comportamento conveniente quando faltam pacotes.
+- smaller initial installation;
+- convenient behavior when packages are missing.
 
-Riscos:
+Risks:
 
-- primeira compilação pode depender da rede;
-- o resultado depende da política de instalação automática;
-- o ambiente pode mudar durante a compilação;
-- distribuição e configuração são diferentes das do TeX Live.
+- the first compilation may depend on the network;
+- the result depends on the automatic installation policy;
+- the environment may change during compilation;
+- the distribution and configuration differ from TeX Live.
 
 ### D. Tectonic + PDF
 
-Tectonic é um motor baseado em XeTeX/TeX Live, distribuído como executável único. Obtém ficheiros de suporte através de bundles e pode manter artefactos fora da pasta de origem. ([Instalação Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/), [compilação](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
+Tectonic is an engine based on XeTeX/TeX Live, distributed as a single executable. It obtains support files through bundles and can keep artifacts outside the source folder. ([Tectonic installation](https://tectonic-typesetting.github.io/book/latest/installation/), [compilation](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
 
-Vantagens:
+Advantages:
 
-- dependência principal simples;
-- suporte nativo a Unicode e fontes modernas através da base XeTeX;
-- opção `--only-cached` para impedir rede;
-- opção `--untrusted` para desativar funcionalidades inseguras;
-- `--outdir`, `--keep-logs`, `--synctex` e regras de dependência.
+- simple primary dependency;
+- native support for Unicode and modern fonts through its XeTeX foundation;
+- `--only-cached` option to prevent network access;
+- `--untrusted` option to disable unsafe features;
+- `--outdir`, `--keep-logs`, `--synctex`, and dependency rules.
 
-Riscos:
+Risks:
 
-- é baseado em XeTeX, não em pdfTeX ou LuaTeX;
-- compatibilidade com documentos dependentes de detalhes específicos de outros motores não é garantida;
-- bibliografias BibLaTeX podem exigir `biber` externo ou `tectonic-biber`, com compatibilidade de versões;
-- bundles/cache precisam de gestão;
-- paths externos e configurações TeX tradicionais podem comportar-se de forma diferente.
+- it is based on XeTeX rather than pdfTeX or LuaTeX;
+- compatibility with documents that depend on details specific to other engines is not guaranteed;
+- BibLaTeX bibliographies may require external `biber` or `tectonic-biber`, with compatible versions;
+- bundles/cache require management;
+- external paths and traditional TeX configurations may behave differently.
 
-A documentação atual indica que Tectonic V2 pode preferir um executável `tectonic-biber` para evitar incompatibilidades entre Biber e o BibLaTeX do bundle. ([Tectonic V2 CLI](https://tectonic-typesetting.github.io/book/latest/ref/v2cli.html))
+Current documentation indicates that Tectonic V2 may prefer a `tectonic-biber` executable to avoid incompatibilities between Biber and the bundle's BibLaTeX. ([Tectonic V2 CLI](https://tectonic-typesetting.github.io/book/latest/ref/v2cli.html))
 
-A versão 0.17.0, publicada em 2026-07-27, corrigiu um `SIGBUS` em chamadas a `\\setmainfont` no macOS e melhorou o tratamento do watch mode. ([Tectonic 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0))
+Version 0.17.0, released on 2026-07-27, fixed a `SIGBUS` in `\\setmainfont` calls on macOS and improved watch-mode handling. ([Tectonic 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0))
 
 ### E. TeX4ht + make4ht + HTML
 
-TeX4ht não faz um parser independente completo: modifica macros LaTeX, produz um DVI auxiliar e transforma esse resultado em HTML/XML, MathML ou outros formatos. ([TeX4ht no CTAN](https://ctan.org/pkg/tex4ht?lang=en), [comandos TeX4ht](https://tug.ctan.org/support/TeX4ht/doc/mn-commands.html))
+TeX4ht is not a fully independent parser: it modifies LaTeX macros, produces an auxiliary DVI, and transforms that output into HTML/XML, MathML, or other formats. ([TeX4ht on CTAN](https://ctan.org/pkg/tex4ht?lang=en), [TeX4ht commands](https://tug.ctan.org/support/TeX4ht/doc/mn-commands.html))
 
-`make4ht` acrescenta:
+`make4ht` adds:
 
-- diretório de output;
-- diretório de build;
+- output directory;
+- build directory;
 - build files Lua;
-- execução de BibTeX/Biber;
-- conversão de imagens;
-- pós-processamento;
-- deteção de erros através do log.
+- running BibTeX/Biber;
+- image conversion;
+- post-processing;
+- error detection through the log.
 
-A versão consultada é 0.4e, de 2026-02-24. ([make4ht no CTAN](https://ctan.org/pkg/make4ht?lang=en), [repositório make4ht](https://github.com/michal-h21/make4ht))
+The version checked is 0.4e, dated 2026-02-24. ([make4ht on CTAN](https://ctan.org/pkg/make4ht?lang=en), [make4ht repository](https://github.com/michal-h21/make4ht))
 
-Vantagens:
+Advantages:
 
-- reutiliza a própria cadeia LaTeX;
-- suporta HTML5, MathML e múltiplos ficheiros;
-- permite customização detalhada.
+- reuses the LaTeX toolchain;
+- supports HTML5, MathML, and multiple files;
+- allows detailed customization.
 
-Limitações:
+Limitations:
 
-- requer configuração quando a tese usa pacotes pouco suportados;
-- o resultado visual depende de CSS e do tratamento de imagens;
-- o caminho DVI/HTML pode divergir da composição PDF;
-- não há modo oficial equivalente ao `latexmk -pvc` para todo o fluxo; o watcher teria de pertencer à aplicação ou à arquitetura envolvente.
+- requires configuration when the thesis uses packages with limited support;
+- visual output depends on CSS and image handling;
+- the DVI/HTML path may differ from PDF composition;
+- there is no official mode equivalent to `latexmk -pvc` for the entire workflow; watching would need to be handled by the application or surrounding architecture.
 
 ### F. lwarp + HTML
 
-lwarp também usa LaTeX para gerar HTML e declara suporte a mais de 500 pacotes/classes, MathJax ou SVG para matemática, compilação com LuaLaTeX/XeLaTeX/PDFLaTeX e integração com `latexmk`. Requer Perl e utilitários Poppler. A versão consultada é 0.922, de 2026-06-16. ([lwarp no CTAN](https://www.ctan.org/pkg/lwarp), [documentação lwarp](https://mirrors.ibiblio.org/pub/mirrors/CTAN/macros/latex/contrib/lwarp/lwarp.pdf))
+lwarp also uses LaTeX to generate HTML and declares support for more than 500 packages/classes, MathJax or SVG for mathematics, compilation with LuaLaTeX/XeLaTeX/PDFLaTeX, and integration with `latexmk`. It requires Perl and Poppler utilities. The version checked is 0.922, dated 2026-06-16. ([lwarp on CTAN](https://www.ctan.org/pkg/lwarp), [lwarp documentation](https://mirrors.ibiblio.org/pub/mirrors/CTAN/macros/latex/contrib/lwarp/lwarp.pdf))
 
-Vantagem:
+Advantages:
 
-- alternativa HTML relativamente próxima do fluxo LaTeX;
-- pode gerar versões de impressão e HTML;
-- cobre um conjunto amplo de pacotes.
+- an HTML alternative relatively close to the LaTeX workflow;
+- can generate print and HTML versions;
+- covers a broad set of packages.
 
-Limitações:
+Limitations:
 
-- a própria ficha do pacote marca “Tagged PDF – incompatible”;
-- requer mais ferramentas externas;
-- suporte declarado não equivale a fidelidade em todos os documentos;
-- MathJax ou SVG podem aumentar a complexidade do preview.
+- the package page itself marks “Tagged PDF – incompatible”;
+- requires more external tools;
+- declared support does not mean fidelity for every document;
+- MathJax or SVG may increase preview complexity.
 
 ### G. LaTeXML + HTML5/MathML
 
-LaTeXML converte LaTeX para uma representação XML e depois faz pós-processamento para HTML5, XHTML, MathML, imagens, bibliografias e referências. Usa bindings específicos para classes e pacotes. ([manual LaTeXML](https://math.nist.gov/~BMiller/LaTeXML/manual/), [conversão](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/), [pós-processamento](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
+LaTeXML converts LaTeX to an XML representation and then post-processes it into HTML5, XHTML, MathML, images, bibliographies, and references. It uses specific bindings for classes and packages. ([LaTeXML manual](https://math.nist.gov/~BMiller/LaTeXML/manual/), [conversion](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/), [post-processing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
 
-Vantagens:
+Advantages:
 
-- melhor orientação para estrutura semântica;
-- MathML e HTML5;
-- divisão por capítulos/secções;
-- tratamento explícito de labels, índice, bibliografia e cross-references.
+- stronger focus on semantic structure;
+- MathML and HTML5;
+- splitting by chapters/sections;
+- explicit handling of labels, index, bibliography, and cross-references.
 
-Limitações:
+Limitations:
 
-- não é o mesmo motor que compõe o PDF;
-- bindings ausentes podem exigir desenvolvimento específico;
-- algumas conversões matemáticas são classificadas como experimentais;
-- a versão estável consultada é 0.8.8, publicada em 2024-02-29. ([release LaTeXML 0.8.8](https://github.com/brucemiller/LaTeXML/releases/tag/v0.8.8))
+- it is not the engine that composes the PDF;
+- missing bindings may require custom development;
+- some mathematical conversions are classified as experimental;
+- the stable version checked is 0.8.8, released on 2024-02-29. ([LaTeXML 0.8.8 release](https://github.com/brucemiller/LaTeXML/releases/tag/v0.8.8))
 
-## 7. Comparação fundamentada
+## 7. Evidence-based comparison
 
-| Estratégia | Fidelidade visual | Instalação | Offline | Multi-ficheiro | Bibliografia | Dependências | Diagnóstico |
+| Strategy | Visual fidelity | Installation | Offline | Multiple files | Bibliography | Dependencies | Diagnostics |
 |---|---|---|---|---|---|---|---|
-| TeX Live/MacTeX + latexmk + PDF | Mais alta, se usar o motor esperado | Grande | Sim, após instalação | Forte | Forte | Muitas possíveis | Forte |
-| MiKTeX + PDF | Alta | Inicialmente menor | Condicional | Forte | Forte | Pode instalar em runtime | Forte |
-| Tectonic + PDF | Alta para documentos compatíveis com XeTeX | Pequena | Sim após cache pré-carregado | Forte, com diferenças de paths | Requer validar Biber | Bundle e possíveis ferramentas externas | Bom |
-| TeX4ht + make4ht | Variável | Média | Sim | Boa | Boa, configurável | TeX + conversores | Bom via logs |
-| lwarp | Variável | Média | Sim | Boa | Via LaTeX/latexmk | TeX + Perl + Poppler | Bom |
-| LaTeXML | Estruturalmente rico, visualmente variável | Mais complexa | Sim após instalação | Boa | Tratada no pós-processamento | Perl/XML/XSLT/bindings | Bom |
-| PDF convertido para imagens | Visualmente fiel | Depende de Poppler | Sim | Não resolve compilação | Igual ao PDF antes da conversão | Conversor de PDF | Fraco para texto/pesquisa |
+| TeX Live/MacTeX + latexmk + PDF | Highest, when using the expected engine | Large | Yes, after installation | Strong | Strong | Many possible | Strong |
+| MiKTeX + PDF | High | Smaller initially | Conditional | Strong | Strong | May install at runtime | Strong |
+| Tectonic + PDF | High for XeTeX-compatible documents | Small | Yes, after preloading the cache | Strong, with path differences | Biber must be validated | Bundle and possible external tools | Good |
+| TeX4ht + make4ht | Variable | Medium | Yes | Good | Good, configurable | TeX + converters | Good through logs |
+| lwarp | Variable | Medium | Yes | Good | Through LaTeX/latexmk | TeX + Perl + Poppler | Good |
+| LaTeXML | Structurally rich, visually variable | More complex | Yes, after installation | Good | Handled in post-processing | Perl/XML/XSLT/bindings | Good |
+| PDF converted to images | Visually faithful | Depends on Poppler | Yes | Does not solve compilation | Same as PDF before conversion | PDF converter | Poor for text/search |
 
-A principal inferência é:
+The main inference is:
 
-- se “preview” significa confirmar se a tese compilou como esperado, PDF é o candidato mais robusto;
-- se “preview” significa explorar estrutura, pesquisar e navegar semanticamente dentro de uma WebView, HTML pode ser melhor, mas exige aceitar uma fronteira de compatibilidade;
-- manter PDF e HTML em paralelo duplicaria a cadeia de compilação e os pontos de falha.
+- if “preview” means confirming that the thesis compiled as expected, PDF is the strongest candidate;
+- if “preview” means exploring structure, searching, and navigating semantically in a WebView, HTML may be better, but requires accepting a compatibility boundary;
+- keeping PDF and HTML in parallel would duplicate the compilation toolchain and failure points.
 
-Não foi encontrada comparação independente suficientemente controlada para estabelecer diferenças gerais de qualidade, velocidade ou compatibilidade entre TeX4ht, lwarp e LaTeXML. Essas comparações devem ser tratadas como hipóteses a testar.
+No sufficiently controlled independent comparison was found to establish general differences in quality, speed, or compatibility among TeX4ht, lwarp, and LaTeXML. These comparisons should be treated as hypotheses to test.
 
-## 8. Dependências e compilação
+## 8. Dependencies and compilation
 
-### Cadeia tradicional
+### Traditional toolchain
 
-Dependências possíveis:
+Possible dependencies:
 
-- `pdflatex`, `xelatex` ou `lualatex`;
+- `pdflatex`, `xelatex`, or `lualatex`;
 - `latexmk`;
-- BibTeX ou Biber;
-- MakeIndex, Xindy ou ferramentas de glossário;
-- conversores de imagem;
-- fontes TeX ou fontes instaladas no macOS;
-- Perl para `latexmk`;
-- Python, Pygments ou outras ferramentas quando usados por pacotes;
-- shell escape apenas quando indispensável.
+- BibTeX or Biber;
+- MakeIndex, Xindy, or glossary tools;
+- image converters;
+- TeX fonts or fonts installed on macOS;
+- Perl for `latexmk`;
+- Python, Pygments, or other tools when required by packages;
+- shell escape only when essential.
 
-Web2c documenta opções como `-interaction`, `-halt-on-error`, `-output-directory` e `-recorder`. O recorder escreve um `.fls` com os ficheiros abertos pelo processo. ([Web2c 2026](https://www.tug.org/texinfohtml/web2c.html))
+Web2c documents options such as `-interaction`, `-halt-on-error`, `-output-directory`, and `-recorder`. The recorder writes an `.fls` file listing the files opened by the process. ([Web2c 2026](https://www.tug.org/texinfohtml/web2c.html))
 
-Para um processo controlado pela aplicação, os princípios técnicos são:
+For a process controlled by the application, the technical principles are:
 
-- `nonstopmode` ou `batchmode` para impedir prompts interativos;
-- `halt-on-error` para terminar cedo em erros fatais;
-- `file-line-error` para melhorar a associação entre erro e linha;
-- `recorder` para obter dependências;
-- captura separada de stdout, stderr e `.log`;
-- timeout externo;
-- cancelamento do processo anterior antes de iniciar outro para o mesmo root.
+- `nonstopmode` or `batchmode` to prevent interactive prompts;
+- `halt-on-error` to stop early on fatal errors;
+- `file-line-error` to associate errors with source lines;
+- `recorder` to obtain dependencies;
+- separate capture of stdout, stderr, and `.log`;
+- an external timeout;
+- cancel the previous process before starting another for the same root.
 
-`nonstopmode` não significa sucesso; warnings e erros recuperáveis têm de ser diferenciados do resultado final.
+`nonstopmode` does not imply success; warnings and recoverable errors must be distinguished from the final result.
 
 ### Tectonic
 
-O comando standalone suporta:
+The standalone command supports:
 
 - `--outdir`;
 - `--keep-logs`;
@@ -288,28 +288,28 @@ O comando standalone suporta:
 - `--untrusted`;
 - `--synctex`;
 - `--makefile-rules`;
-- número explícito de reruns.
+- an explicit number of reruns.
 
-No modo V2, os artefactos são colocados por defeito numa pasta `build`; os intermediários e logs podem ficar apenas em memória se não forem pedidos. ([Tectonic build](https://tectonic-typesetting.github.io/book/latest/v2cli/build.html), [Tectonic compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
+In V2 mode, artifacts are placed in a `build` folder by default; intermediates and logs may remain in memory unless requested. ([Tectonic build](https://tectonic-typesetting.github.io/book/latest/v2cli/build.html), [Tectonic compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
 
-A opção `--only-cached` é importante para o requisito sem cloud: impede ligações de rede, mas só funciona se todos os ficheiros necessários já estiverem disponíveis localmente.
+The `--only-cached` option matters for the no-cloud requirement: it prevents network connections, but works only when all required files are already available locally.
 
 ### HTML
 
-TeX4ht/make4ht e lwarp ainda executam LaTeX e, portanto, herdam:
+TeX4ht/make4ht and lwarp still run LaTeX and therefore inherit:
 
-- múltiplas passagens;
-- bibliografia;
-- geração de imagens;
-- ferramentas externas;
-- riscos de shell escape;
-- necessidade de um root.
+- multiple passes;
+- bibliography;
+- image generation;
+- external tools;
+- shell escape risks;
+- the need for a root file.
 
-LaTeXML acrescenta uma segunda fase de pós-processamento. O manual descreve scanning, índice, bibliografia, cross-references, matemática, gráficos e XSLT como operações distintas. ([LaTeXML postprocessing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
+LaTeXML adds a second post-processing phase. Its manual describes scanning, indexing, bibliography, cross-references, mathematics, graphics, and XSLT as distinct operations. ([LaTeXML post-processing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
 
-## 9. Documentos multi-ficheiro
+## 9. Multi-file documents
 
-Um documento de tese típico pode ser:
+A typical thesis document may look like this:
 
 ```text
 main.tex
@@ -322,305 +322,305 @@ figures/
 references.bib
 ```
 
-A aplicação não pode assumir que o `.tex` selecionado é o root. Um capítulo incluído por `\\input` ou `\\include` normalmente não contém preâmbulo e não compila sozinho.
+The application cannot assume that the selected `.tex` file is the root. A chapter included through `\\input` or `\\include` usually has no preamble and cannot compile on its own.
 
-Implicações:
+Implications:
 
-- descoberta automática do root é uma questão de produto/arquitetura ainda aberta;
-- `\\include` pode gerar ficheiros auxiliares em subdiretórios;
-- paths relativos devem ser preservados relativamente ao root;
-- imagens e bibliografias partilhadas devem entrar no grafo de dependências;
-- symlinks, paths absolutos e ficheiros fora da pasta aberta exigem política explícita.
+- automatic root-file discovery remains an open product/architecture question;
+- `\\include` may generate auxiliary files in subdirectories;
+- relative paths should remain relative to the root file;
+- shared images and bibliographies should be included in the dependency graph;
+- symlinks, absolute paths, and files outside the opened folder require an explicit policy.
 
-LaTeXML documenta que `\\input` procura ficheiros `.tex` e `.sty`, enquanto `\\include` procura `.tex`; LaTeX tradicional e ferramentas de build têm regras próprias. ([LaTeXML conversion](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/))
+LaTeXML documents that `\\input` searches for `.tex` and `.sty` files, while `\\include` searches for `.tex`; traditional LaTeX and build tools have their own rules. ([LaTeXML conversion](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/))
 
-## 10. Bibliografia e referências
+## 10. Bibliography and references
 
-`latexmk` é particularmente adequado para o cenário porque automatiza as passagens necessárias e deteta quando BibTeX/Biber precisa de voltar a correr. ([README latexmk](https://ctan.org/tex-archive/support/latexmk?lang=en))
+`latexmk` is particularly suitable for this scenario because it automates the required passes and detects when BibTeX/Biber needs to run again. ([latexmk README](https://ctan.org/tex-archive/support/latexmk?lang=en))
 
-BibLaTeX 3.22 e Biber 2.22 foram publicados em 2026-08-13. BibLaTeX declara Biber como backend próprio e Biber declara suporte a Unicode e processamento configurável. ([BibLaTeX 3.22](https://ctan.org/pkg/biblatex?lang=en), [Biber 2.22](https://ctan.org/pkg/biber/?lang=en))
+BibLaTeX 3.22 and Biber 2.22 were released on 2026-08-13. BibLaTeX identifies Biber as its backend, and Biber documents Unicode support and configurable processing. ([BibLaTeX 3.22](https://ctan.org/pkg/biblatex?lang=en), [Biber 2.22](https://ctan.org/pkg/biber/?lang=en))
 
-Para o MVP, o teste deve cobrir pelo menos:
+For the MVP, testing should cover at least:
 
-- BibTeX clássico;
+- classic BibTeX;
 - BibLaTeX + Biber;
-- bibliografia global;
-- bibliografias por capítulo;
-- citações não resolvidas;
-- atualização do `.bib`;
-- incompatibilidade deliberada entre versões.
+- global bibliography;
+- chapter-level bibliographies;
+- unresolved citations;
+- updates to the `.bib` file;
+- a deliberately incompatible version combination.
 
-No caso Tectonic, a dependência Biber deve ser verificada separadamente, porque o bundle do Tectonic e o Biber instalado no sistema podem não corresponder.
+With Tectonic, the Biber dependency must be checked separately because the Tectonic bundle and the system-installed Biber may not be compatible.
 
-## 11. Artefactos temporários
+## 11. Temporary artifacts
 
-A compilação deve usar uma área fora da pasta da tese.
+Compilation should use a location outside the thesis folder.
 
-TeX tradicional suporta `-output-directory`; `latexmk` suporta `-outdir` e `-auxdir`, cria diretórios ausentes e documenta problemas possíveis com BibTeX/MakeIndex quando os diretórios são externos ou absolutos. ([manual latexmk, diretórios](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf))
+Traditional TeX supports `-output-directory`; `latexmk` supports `-outdir` and `-auxdir`, creates missing directories, and documents possible BibTeX/MakeIndex issues when directories are external or absolute. ([latexmk manual, directories](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf))
 
-Tectonic também suporta `--outdir`; no V2 usa uma pasta `build` por defeito. ([Tectonic compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
+Tectonic also supports `--outdir`; in V2 it uses a `build` folder by default. ([Tectonic compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
 
-Recomendação técnica condicional:
+Conditional technical recommendation:
 
-- colocar PDF, `.aux`, `.log`, `.fls`, `.synctex`, imagens derivadas e ficheiros de bibliografia numa pasta de cache temporária por projeto/root;
-- nunca escrever artefactos automaticamente na pasta raw;
-- associar o resultado ao caminho absoluto do root e à versão da cadeia de compilação;
-- limpar caches apenas através de uma operação controlada.
+- put the PDF, `.aux`, `.log`, `.fls`, `.synctex`, derived images, and bibliography files in a temporary cache folder for each project/root;
+- never write artifacts automatically into the source folder;
+- associate the result with the root file's absolute path and the compilation toolchain version;
+- clear caches only through a controlled operation.
 
-## 12. Atualização e concorrência
+## 12. Updates and concurrency
 
-`latexmk` possui modo de preview contínuo e acompanha fontes, includes e gráficos. ([latexmk no CTAN](https://ctan.org/pkg/latexmk/))
+`latexmk` has a continuous preview mode and tracks source files, includes, and graphics. ([latexmk on CTAN](https://ctan.org/pkg/latexmk/))
 
-Tectonic possui `tectonic -X watch`, que observa inputs e reconstrói o documento. ([Tectonic watch](https://tectonic-typesetting.github.io/book/latest/v2cli/watch.html))
+Tectonic has `tectonic -X watch`, which watches inputs and rebuilds the document. ([Tectonic watch](https://tectonic-typesetting.github.io/book/latest/v2cli/watch.html))
 
-Para o `bp-viewer`, isto não elimina a necessidade da arquitetura de filesystem:
+For `bp-viewer`, this does not eliminate the need for a filesystem architecture:
 
-- a app ainda precisa de saber qual root reconstruir;
-- vários eventos próximos devem ser agrupados;
-- uma compilação antiga não deve substituir o resultado de uma alteração mais recente;
-- duas compilações do mesmo root não devem escrever simultaneamente nos mesmos artefactos;
-- uma compilação bloqueada precisa de timeout e cancelamento;
-- alterações em imagens, `.bib`, `.sty`, `.cls` e ficheiros incluídos devem invalidar o preview.
+- the application still needs to know which root file to rebuild;
+- nearby events should be grouped;
+- an older compilation must not replace the result of a newer change;
+- two compilations of the same root must not write to the same artifacts simultaneously;
+- a hung compilation needs a timeout and cancellation;
+- changes to images, `.bib`, `.sty`, `.cls`, and included files should invalidate the preview.
 
-A existência de `watch` não demonstra composição incremental por capítulo ou por página. A documentação descreve reconstrução do documento atual, não uma compilação parcial.
+The existence of `watch` does not demonstrate incremental composition by chapter or page. The documentation describes rebuilding the current document, not partial compilation.
 
-## 13. Erros, avisos e bloqueios
+## 13. Errors, warnings, and hangs
 
-O resultado deve distinguir:
+The result should distinguish:
 
-- compilação concluída com sucesso;
-- PDF parcial gerado, mas com warnings;
-- erro fatal sem PDF válido;
-- erro fatal com PDF antigo disponível;
-- processo terminado por timeout;
-- processo cancelado por alteração posterior;
-- dependência ausente;
-- ferramenta externa ausente;
-- shell escape bloqueado;
-- processo aguardando input.
+- successful compilation;
+- a partial PDF generated with warnings;
+- a fatal error with no valid PDF;
+- a fatal error while an older PDF remains available;
+- a process terminated by timeout;
+- a process cancelled because of a later change;
+- a missing dependency;
+- a missing external tool;
+- blocked shell escape;
+- a process waiting for input.
 
-A informação útil inclui:
+Useful information includes:
 
-- mensagem;
-- severidade;
-- ficheiro;
-- número da linha;
+- message;
+- severity;
+- file;
+- line number;
 - engine;
-- comando executado;
-- duração;
-- versão da distribuição;
-- existência de artefacto anterior.
+- command executed;
+- duration;
+- distribution version;
+- whether an earlier artifact exists.
 
-A documentação de make4ht confirma que o código de saída do TeX não distingue todos os erros e que o log precisa de ser analisado. ([make4ht, tratamento de logs](https://github.com/michal-h21/make4ht))
+make4ht documentation confirms that TeX exit codes do not distinguish every error and that the log must be analyzed. ([make4ht, log handling](https://github.com/michal-h21/make4ht))
 
-## 14. Segurança, permissões e distribuição
+## 14. Security, permissions, and distribution
 
-TeX Live recomenda cautela ao processar documentos desconhecidos, porque TeX e ferramentas auxiliares podem escrever ficheiros e executar comandos. ([TeX Live Guide 2026](https://tug.org/texlive/doc/texlive-en/texlive-en.html))
+TeX Live recommends caution when processing unknown documents because TeX and auxiliary tools can write files and execute commands. ([TeX Live Guide 2026](https://tug.org/texlive/doc/texlive-en/texlive-en.html))
 
-Shell escape deve ficar desativado por defeito. Tectonic também documenta shell escape como inseguro e oferece `--untrusted`. ([Tectonic security](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
+Shell escape should be disabled by default. Tectonic also documents shell escape as unsafe and provides `--untrusted`. ([Tectonic security](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html))
 
-Princípios condicionais:
+Conditional principles:
 
-- executar num diretório temporário dedicado;
-- limitar paths de leitura/escrita;
-- não ativar `--shell-escape` globalmente;
-- definir allowlist por pacote/ferramenta quando for inevitável;
-- impor timeout e limite de processos;
-- não executar diretamente comandos derivados do conteúdo do documento;
-- preservar as permissões da pasta escolhida pelo utilizador;
-- tratar ficheiros fora da pasta aberta como caso explícito.
+- run in a dedicated temporary directory;
+- limit read/write paths;
+- do not enable `--shell-escape` globally;
+- define a per-package/tool allowlist when unavoidable;
+- enforce a timeout and process limit;
+- do not directly execute commands derived from document content;
+- preserve permissions for the folder selected by the user;
+- handle files outside the opened folder as an explicit case.
 
-Licenciamento:
+Licensing:
 
-- TeX Live/MacTeX agregam componentes com licenças individuais; distribuição dentro de uma app exige inventário;
-- `latexmk` é GPL;
-- TeX4ht, make4ht e lwarp usam LPPL;
-- Tectonic usa MIT, mas declara componentes derivados com várias licenças;
-- Biber usa Perl Artistic License 2.
+- TeX Live/MacTeX bundle components with individual licenses; distribution within an app requires an inventory;
+- `latexmk` uses GPL;
+- TeX4ht, make4ht, and lwarp use LPPL;
+- Tectonic uses MIT but lists derived components under several licenses;
+- Biber uses Perl Artistic License 2.
 
-Fontes: [MacTeX licensing](https://tug.org/mactex/aboutmactex.html), [latexmk](https://ctan.org/pkg/latexmk/), [TeX4ht](https://ctan.org/pkg/tex4ht?lang=en), [make4ht](https://ctan.org/pkg/make4ht?lang=en), [lwarp](https://www.ctan.org/pkg/lwarp), [Tectonic LICENSE](https://github.com/tectonic-typesetting/tectonic/blob/master/LICENSE), [Biber](https://ctan.org/pkg/biber/?lang=en).
+Sources: [MacTeX licensing](https://tug.org/mactex/aboutmactex.html), [latexmk](https://ctan.org/pkg/latexmk/), [TeX4ht](https://ctan.org/pkg/tex4ht?lang=en), [make4ht](https://ctan.org/pkg/make4ht?lang=en), [lwarp](https://www.ctan.org/pkg/lwarp), [Tectonic LICENSE](https://github.com/tectonic-typesetting/tectonic/blob/master/LICENSE), [Biber](https://ctan.org/pkg/biber/?lang=en).
 
-## 15. Fidelidade, acessibilidade e pesquisa
+## 15. Fidelity, accessibility, and search
 
-PDFKit no macOS fornece apresentação, seleção, cópia, navegação e pesquisa de documentos PDF. ([PDFKit](https://developer.apple.com/documentation/pdfkit), [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview))
+PDFKit on macOS provides display, selection, copying, navigation, and search for PDF documents. ([PDFKit](https://developer.apple.com/documentation/pdfkit), [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview))
 
-Isto favorece PDF para:
+This makes PDF a good fit for:
 
-- preservar layout da tese;
-- copiar texto;
-- pesquisar;
-- navegar por páginas;
-- lidar com tabelas, figuras e notas da forma produzida pelo motor original.
+- preserve the thesis layout;
+- copy text;
+- search;
+- navigate by page;
+- handle tables, figures, and notes as produced by the original engine.
 
-Acessibilidade não é automática. O LaTeX Tagging Project documenta que o núcleo atual consegue gerar PDF acessível/PDF-UA-2 em cenários suportados, mas o suporte dos pacotes contribuídos ainda está em evolução. LuaLaTeX tem suporte particularmente relevante para MathML associado. ([LaTeX Tagging Project](https://latex3.github.io/tagging-project/documentation/), [uso de PDF acessível](https://latex3.github.io/tagging-project/documentation/usage-instructions))
+Accessibility is not automatic. The LaTeX Tagging Project documents that the current core can generate accessible PDF/PDF-UA-2 in supported scenarios, but support in contributed packages is still evolving. LuaLaTeX has particularly relevant support for associated MathML. ([LaTeX Tagging Project](https://latex3.github.io/tagging-project/documentation/), [using accessible PDF](https://latex3.github.io/tagging-project/documentation/usage-instructions))
 
-HTML pode oferecer:
+HTML can offer:
 
-- estrutura de headings;
-- links internos;
+- heading structure;
+- internal links;
 - MathML;
-- pesquisa textual mais direta;
-- navegação por secções.
+- more direct text search;
+- navigation by section.
 
-Mas depende de CSS, JavaScript, MathML/MathJax e da política do viewer. LaTeXML documenta explicitamente que pode ser necessário MathJax para plataformas sem suporte adequado a MathML. ([LaTeXML postprocessing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
+However, it depends on CSS, JavaScript, MathML/MathJax, and the viewer's policy. LaTeXML explicitly documents that MathJax may be needed on platforms without adequate MathML support. ([LaTeXML postprocessing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/))
 
-## 16. Recomendação condicional
+## 16. Conditional recommendation
 
-Recomendação técnica, não decisão de produto:
+Technical recommendation, not a product decision:
 
-1. Validar primeiro uma cadeia PDF com o mesmo motor usado pela tese, preferencialmente através de TeX Live/MacTeX ou MiKTeX + `latexmk`.
-2. Avaliar Tectonic como alternativa de menor custo operacional apenas se o corpus compilar corretamente com XeTeX/Tectonic, incluindo bibliografia, fontes, paths e pacotes externos.
-3. Avaliar HTML como adapter separado, não como substituto implicitamente equivalente ao PDF.
-4. Para HTML, começar por comparar TeX4ht/make4ht e lwarp com a tese real; considerar LaTeXML quando estrutura semântica/MathML for requisito importante.
-5. Não ativar shell escape por defeito e não assumir que a instalação do utilizador contém todas as ferramentas.
+1. First validate a PDF toolchain using the same engine as the thesis, preferably through TeX Live/MacTeX or MiKTeX + `latexmk`.
+2. Evaluate Tectonic as a lower-overhead alternative only if the corpus compiles correctly with XeTeX/Tectonic, including bibliography, fonts, paths, and external packages.
+3. Evaluate HTML as a separate adapter, not as an implicitly equivalent replacement for PDF.
+4. For HTML, first compare TeX4ht/make4ht and lwarp using the real thesis; consider LaTeXML when semantic structure/MathML is an important requirement.
+5. Do not enable shell escape by default, and do not assume the user's installation contains every tool.
 
-Confiança:
+Confidence:
 
-- PDF tradicional: alta para fidelidade, média-alta para operação;
-- Tectonic: média;
-- TeX4ht/make4ht: média-baixa sem teste específico;
-- lwarp: média-baixa;
-- LaTeXML: média para estrutura, baixa-média para equivalência visual.
+- traditional PDF: high for fidelity, medium-high for operation;
+- Tectonic: medium;
+- TeX4ht/make4ht: medium-low without specific testing;
+- lwarp: medium-low;
+- LaTeXML: medium for structure, low-medium for visual equivalence.
 
-## 17. Implicações para o MVP
+## 17. MVP implications
 
-Sem fechar decisões:
+Without settling decisions:
 
-- é necessário representar a relação entre ficheiro selecionado e root LaTeX;
-- o adapter precisa de uma fase de descoberta ou configuração do root;
-- a compilação deve ser isolada numa área temporária;
-- dependências devem incluir `.tex`, `.bib`, `.sty`, `.cls`, imagens, fontes e outputs intermediários relevantes;
-- os processos devem ser serializados por documento;
-- o preview deve manter o resultado anterior quando uma recompilação falha, se essa for a decisão de UX;
-- logs e erros devem ser tratados como dados estruturados;
-- o ambiente local deve expor versões das ferramentas;
-- “funciona offline” precisa de distinguir distribuição já instalada, cache de pacotes e ferramentas externas.
+- the relationship between the selected file and the LaTeX root must be represented;
+- the adapter needs a root discovery or configuration phase;
+- compilation should be isolated in a temporary location;
+- dependencies should include relevant `.tex`, `.bib`, `.sty`, `.cls`, image, font, and intermediate output files;
+- processes should be serialized per document;
+- the preview should retain the previous result when recompilation fails, if that is the UX decision;
+- logs and errors should be handled as structured data;
+- the local environment should expose tool versions;
+- “works offline” must distinguish an installed distribution, package cache, and external tools.
 
-Estas são implicações técnicas; não constituem novas funcionalidades aprovadas.
+These are technical implications; they do not constitute approval of new features.
 
-## 18. Lacunas e próximos testes locais
+## 18. Gaps and next local tests
 
-Os testes devem usar uma área temporária fora do projeto, por exemplo:
+Testing should use a temporary location outside the project, for example:
 
 ```text
 /tmp/bp-viewer-latex-fixtures/
 ```
 
-### Matriz mínima
+### Minimum matrix
 
-1. Documento mínimo com `main.tex`.
-2. `main.tex` com três capítulos via `\\input`.
-3. Capítulos via `\\include`, incluindo subdiretórios.
-4. Referências cruzadas entre capítulos.
-5. Bibliografia BibTeX.
-6. Bibliografia BibLaTeX + Biber.
-7. Imagens PNG, JPEG, PDF e SVG/EPS quando aplicável.
+1. Minimal document with `main.tex`.
+2. `main.tex` with three chapters included through `\\input`.
+3. Chapters included through `\\include`, including subdirectories.
+4. Cross-references between chapters.
+5. BibTeX bibliography.
+6. BibLaTeX + Biber bibliography.
+7. PNG, JPEG, PDF, and SVG/EPS images where applicable.
 8. TikZ/PGFPlots.
-9. Fonte do sistema via `fontspec`.
-10. Pacote deliberadamente ausente.
-11. Imagem deliberadamente ausente.
-12. Erro de sintaxe.
-13. Documento que solicita input interativo.
-14. Processo externo que excede o timeout.
-15. Alteração sucessiva de `main.tex`, capítulo, imagem e `.bib`.
-16. Dois eventos de alteração enquanto a compilação está em curso.
-17. Paths com espaços, Unicode, symlinks e ficheiros externos.
-18. Modo offline com Tectonic e cache incompleto.
-19. Pesquisa e cópia de texto no PDF.
-20. Verificação de headings, links e MathML no HTML.
+9. System font through `fontspec`.
+10. Deliberately missing package.
+11. Deliberately missing image.
+12. Syntax error.
+13. Document that requests interactive input.
+14. External process that exceeds the timeout.
+15. Sequential changes to `main.tex`, a chapter, an image, and `.bib`.
+16. Two change events while compilation is in progress.
+17. Paths with spaces, Unicode, symlinks, and external files.
+18. Offline mode with Tectonic and an incomplete cache.
+19. Search and copy text in the PDF.
+20. Check headings, links, and MathML in HTML.
 
-### Estratégias a comparar
+### Strategies to compare
 
-Para cada fixture, registar:
+For each fixture, record:
 
-- engine e versão;
-- distribuição e versão;
-- comando;
-- primeira compilação;
-- recompilação após alteração;
-- duração;
-- número de passagens;
-- artefactos produzidos;
-- resultado visual;
+- engine and version;
+- distribution and version;
+- command;
+- first compilation;
+- recompilation after a change;
+- duration;
+- number of passes;
+- artifacts produced;
+- visual result;
 - warnings;
-- erros;
-- comportamento offline;
-- necessidade de configuração específica.
+- errors;
+- offline behavior;
+- need for specific configuration.
 
-O objetivo não deve ser apenas “gera um ficheiro”, mas verificar se o resultado corresponde ao documento real e se a cadeia permanece controlável após alterações externas.
+The goal should be more than “it generates a file”: verify that the result matches the real document and that the toolchain remains controllable after external changes.
 
-## 19. Evidência
+## 19. Evidence
 
-### E1 — TeX Live 2026 e macOS
+### E1 — TeX Live 2026 and macOS
 
-TeX Live 2026 foi publicado em 2026-03-01; MacTeX é a distribuição macOS baseada em TeX Live.  
-Fonte: [TeX Live](https://tug.org/texlive/), [MacTeX download](https://tug.org/mactex/mactex-download.html).
+TeX Live 2026 was released on 2026-03-01; MacTeX is the macOS distribution based on TeX Live.  
+Sources: [TeX Live](https://tug.org/texlive/), [MacTeX download](https://tug.org/mactex/mactex-download.html).
 
-Estabelece: disponibilidade, versões e compatibilidade geral.  
-Não estabelece: que MacTeX seja obrigatório para o projeto.
+Establishes: availability, versions, and general compatibility.  
+Does not establish: that MacTeX is required for the project.
 
-### E2 — Motores PDF
+### E2 — PDF engines
 
-pdfTeX produz PDF diretamente; XeTeX suporta Unicode e fontes modernas; LuaTeX suporta Unicode, fontes OpenType/TrueType e Lua.  
-Fontes: [pdfTeX](https://ctan.org/pkg/pdftex?lang=en), [XeTeX](https://ctan.org/pkg/xetex?lang=en), [LuaTeX](https://ctan.org/pkg/luatex?omit-dependencies=true).
+pdfTeX produces PDF directly; XeTeX supports Unicode and modern fonts; LuaTeX supports Unicode, OpenType/TrueType fonts, and Lua.  
+Sources: [pdfTeX](https://ctan.org/pkg/pdftex?lang=en), [XeTeX](https://ctan.org/pkg/xetex?lang=en), [LuaTeX](https://ctan.org/pkg/luatex?omit-dependencies=true).
 
-Estabelece: diferenças documentadas entre engines.  
-Não estabelece: qual engine é usado por uma tese específica.
+Establishes: documented differences between engines.  
+Does not establish: which engine a specific thesis uses.
 
 ### E3 — Web2c
 
-Web2c documenta `-output-directory`, `-recorder`, `-halt-on-error` e modos de interação.  
-Fonte: [Web2c manual 2026](https://www.tug.org/texinfohtml/web2c.html).
+Web2c documents `-output-directory`, `-recorder`, `-halt-on-error`, and interaction modes.  
+Source: [Web2c manual 2026](https://www.tug.org/texinfohtml/web2c.html).
 
 ### E4 — `latexmk`
 
-A versão consultada é 4.88, de 2026-03-09. O projeto documenta recompilação contínua, dependências, bibliografia, diretórios de saída e múltiplas passagens.  
-Fontes: [CTAN latexmk](https://ctan.org/pkg/latexmk/), [README](https://ctan.org/tex-archive/support/latexmk?lang=en), [manual 4.88](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf).
+The version checked is 4.88, dated 2026-03-09. The project documents continuous recompilation, dependencies, bibliography, output directories, and multiple passes.  
+Sources: [CTAN latexmk](https://ctan.org/pkg/latexmk/), [README](https://ctan.org/tex-archive/support/latexmk?lang=en), [manual 4.88](https://www.cantab.net/users/johncollins/latexmk/latexmk-488.pdf).
 
 ### E5 — Tectonic
 
-Tectonic oferece executável único, bundles, `--only-cached`, `--untrusted`, `--outdir`, logs e watch mode.  
-Fontes: [instalação](https://tectonic-typesetting.github.io/book/latest/installation/), [compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html), [build](https://tectonic-typesetting.github.io/book/latest/v2cli/build.html), [watch](https://tectonic-typesetting.github.io/book/latest/v2cli/watch.html).
+Tectonic provides a single executable, bundles, `--only-cached`, `--untrusted`, `--outdir`, logs, and watch mode.  
+Sources: [installation](https://tectonic-typesetting.github.io/book/latest/installation/), [compile](https://tectonic-typesetting.github.io/book/latest/v2cli/compile.html), [build](https://tectonic-typesetting.github.io/book/latest/v2cli/build.html), [watch](https://tectonic-typesetting.github.io/book/latest/v2cli/watch.html).
 
-### E6 — Tectonic 0.17.0 e macOS
+### E6 — Tectonic 0.17.0 and macOS
 
-A release 0.17.0, de 2026-07-27, regista correções de `SIGBUS` no macOS e melhorias no watch mode.  
-Fonte: [Tectonic 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0).
+Release 0.17.0, dated 2026-07-27, records `SIGBUS` fixes on macOS and improvements to watch mode.  
+Source: [Tectonic 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0).
 
-### E7 — Limitação recente do Tectonic
+### E7 — Recent Tectonic limitation
 
-A issue #1345 reportou crashes em Tectonic 0.16.x no macOS ARM64 com `\\setmainfont`; a release posterior declara a correção.  
-Fontes: [issue #1345](https://github.com/tectonic-typesetting/tectonic/issues/1345), [release 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0).
+Issue #1345 reported crashes in Tectonic 0.16.x on macOS ARM64 with `\\setmainfont`; a later release reports the fix.  
+Sources: [issue #1345](https://github.com/tectonic-typesetting/tectonic/issues/1345), [release 0.17.0](https://github.com/tectonic-typesetting/tectonic/releases/tag/tectonic@0.17.0).
 
-Estabelece: necessidade de testar versões concretas.  
-Não estabelece: uma incompatibilidade geral atual.
+Establishes: the need to test specific versions.  
+Does not establish: a general current incompatibility.
 
 ### E8 — TeX4ht/make4ht
 
-TeX4ht usa LaTeX modificado e DVI auxiliar; make4ht acrescenta build files, output directories, ferramentas de bibliografia e parsing de logs.  
-Fontes: [TeX4ht](https://ctan.org/pkg/tex4ht?lang=en), [comandos](https://tug.ctan.org/support/TeX4ht/doc/mn-commands.html), [make4ht](https://github.com/michal-h21/make4ht).
+TeX4ht uses modified LaTeX and auxiliary DVI; make4ht adds build files, output directories, bibliography tools, and log parsing.  
+Sources: [TeX4ht](https://ctan.org/pkg/tex4ht?lang=en), [commands](https://tug.ctan.org/support/TeX4ht/doc/mn-commands.html), [make4ht](https://github.com/michal-h21/make4ht).
 
 ### E9 — lwarp
 
-lwarp 0.922, de 2026-06-16, suporta muitos pacotes, MathJax/SVG, latexmk, Perl e Poppler.  
-Fonte: [lwarp no CTAN](https://www.ctan.org/pkg/lwarp).
+lwarp 0.922, dated 2026-06-16, supports many packages, MathJax/SVG, latexmk, Perl, and Poppler.  
+Source: [lwarp on CTAN](https://www.ctan.org/pkg/lwarp).
 
 ### E10 — LaTeXML
 
-LaTeXML 0.8.8 é de 2024-02-29 e documenta bindings, HTML5, MathML, bibliografia, cross-references e splitting.  
-Fontes: [release](https://github.com/brucemiller/LaTeXML/releases/tag/v0.8.8), [manual](https://math.nist.gov/~BMiller/LaTeXML/manual/), [conversion](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/), [postprocessing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/).
+LaTeXML 0.8.8 is dated 2024-02-29 and documents bindings, HTML5, MathML, bibliography, cross-references, and splitting.  
+Sources: [release](https://github.com/brucemiller/LaTeXML/releases/tag/v0.8.8), [manual](https://math.nist.gov/~BMiller/LaTeXML/manual/), [conversion](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/conversion/), [post-processing](https://math.nist.gov/~BMiller/LaTeXML/manual/usage/post/).
 
-### E11 — Bibliografia
+### E11 — Bibliography
 
-BibLaTeX 3.22 e Biber 2.22 foram publicados em 2026-08-13; BibLaTeX declara Biber como backend.  
-Fontes: [BibLaTeX](https://ctan.org/pkg/biblatex?lang=en), [Biber](https://ctan.org/pkg/biber/?lang=en), [Tectonic V2 external tools](https://tectonic-typesetting.github.io/book/latest/ref/v2cli.html).
+BibLaTeX 3.22 and Biber 2.22 were released on 2026-08-13; BibLaTeX identifies Biber as its backend.  
+Sources: [BibLaTeX](https://ctan.org/pkg/biblatex?lang=en), [Biber](https://ctan.org/pkg/biber/?lang=en), [Tectonic V2 external tools](https://tectonic-typesetting.github.io/book/latest/ref/v2cli.html).
 
-### E12 — Viewer e acessibilidade
+### E12 — Viewer and accessibility
 
-PDFKit documenta seleção, cópia, pesquisa e navegação. O LaTeX Tagging Project documenta o estado atual do PDF acessível e as limitações do suporte dos pacotes.  
-Fontes: [PDFKit](https://developer.apple.com/documentation/pdfkit), [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview), [Tagging Project](https://latex3.github.io/tagging-project/documentation/).
+PDFKit documents selection, copying, search, and navigation. The LaTeX Tagging Project documents the current state of accessible PDF and the limitations of package support.  
+Sources: [PDFKit](https://developer.apple.com/documentation/pdfkit), [PDFView](https://developer.apple.com/documentation/pdfkit/pdfview), [Tagging Project](https://latex3.github.io/tagging-project/documentation/).
 
-### E13 — Verificação local
+### E13 — Local inspection
 
 No ambiente consultado em 2026-09-09:
 
@@ -629,59 +629,59 @@ No ambiente consultado em 2026-09-09:
 - `make4ht`;
 - `lwarpmk`;
 - Tectonic 0.16.9;
-- sem `latexmk`;
-- sem `biber`;
-- sem LaTeXML;
-- sem `dvisvgm`.
+- no `latexmk`;
+- no `biber`;
+- no LaTeXML;
+- no `dvisvgm`.
 
-Isto é apenas um snapshot local, não uma exigência do projeto.
+This is only a local snapshot, not a project requirement.
 
-## 20. Conflitos e refutações
+## 20. Conflicts and counterarguments
 
-- A simplicidade de instalação do Tectonic não implica compatibilidade equivalente à de TeX Live completo.
-- “Suporta centenas de pacotes” em lwarp ou uma lista extensa de bindings em LaTeXML não prova fidelidade para a combinação específica de classe, macros e pacotes da tese.
-- HTML com MathML pode ser estruturalmente melhor, mas requer suporte adequado do viewer e pode precisar de MathJax.
-- PDF pode ser pesquisável e selecionável, mas não é automaticamente acessível.
-- `watch` em `latexmk` ou Tectonic não resolve descoberta do root, agrupamento de eventos nem cancelamento seguro.
-- Instalar pacotes automaticamente reduz o esforço inicial, mas diminui previsibilidade offline.
-- Um benchmark externo encontrado durante a pesquisa foi rejeitado: não tinha condições suficientemente verificáveis para generalizar para uma tese privada, engines e corpus do `bp-viewer`.
+- Tectonic's simple installation does not imply compatibility equivalent to full TeX Live.
+- “Supports hundreds of packages” in lwarp or an extensive list of LaTeXML bindings does not prove fidelity for the thesis's specific combination of class, macros, and packages.
+- HTML with MathML may be structurally better, but requires adequate viewer support and may need MathJax.
+- PDF may be searchable and selectable, but is not automatically accessible.
+- `watch` in `latexmk` or Tectonic does not solve root discovery, event grouping, or safe cancellation.
+- Automatically installing packages reduces initial effort but makes offline behavior less predictable.
+- An external benchmark found during research was rejected: its conditions were not verifiable enough to generalize to a private thesis, engines, and the `bp-viewer` corpus.
 
-## 21. Ledger de fontes
+## 21. Source ledger
 
-### Usadas
+### Used
 
-- Documentação local do projeto — fonte primária de escopo e restrições.
-- TUG/TeX Live/MacTeX — distribuição, versões e macOS.
-- Web2c — opções de execução e recorder.
-- CTAN e manual do autor — latexmk, TeX4ht, make4ht, lwarp, BibLaTeX e Biber.
-- Documentação e repositório oficial Tectonic — engine, bundles, watch, segurança e releases.
-- Manual e repositório oficial LaTeXML — conversão, bindings e pós-processamento.
+- Local project documentation — primary source for scope and constraints.
+- TUG/TeX Live/MacTeX — distribution, versions, and macOS.
+- Web2c — execution options and recorder.
+- CTAN and author manuals — latexmk, TeX4ht, make4ht, lwarp, BibLaTeX, and Biber.
+- Official Tectonic documentation and repository — engine, bundles, watch, security, and releases.
+- Official LaTeXML manual and repository — conversion, bindings, and post-processing.
 - Apple Developer Documentation — PDFKit.
-- LaTeX Project Tagging Project — acessibilidade e tagging.
+- LaTeX Project Tagging Project — accessibility and tagging.
 
-### Rejeitadas como evidência principal
+### Rejected as primary evidence
 
-- Wikipedia — fonte secundária e desnecessária quando havia documentação oficial.
-- Reddit e comentários comunitários — úteis para descoberta de problemas, mas não usados para claims materiais.
-- Snippets de pesquisa — não tratados como evidência.
-- Benchmarks independentes sem corpus/condições equivalentes — não generalizáveis para o caso.
-- Comunicações sobre popularidade ou preferência de engine — não demonstram adequação técnica.
+- Wikipedia — a secondary source and unnecessary when official documentation was available.
+- Reddit and community comments — useful for discovering issues, but not used for material claims.
+- Search snippets — not treated as evidence.
+- Independent benchmarks without an equivalent corpus/conditions — not generalizable to this case.
+- Statements about engine popularity or preference — do not demonstrate technical suitability.
 
-## 22. Registo de pesquisas
+## 22. Search log
 
-- Q1 — versões atuais de TeX Live, MacTeX, BasicTeX e MiKTeX.
-- Q2 — `latexmk`, dependências, continuous mode, output/aux directories e logs.
-- Q3 — Tectonic, bundles, cache, segurança, watch mode e releases macOS.
-- Q4 — TeX4ht e make4ht, HTML, MathML, imagens e build files.
-- Q5 — lwarp, cobertura, engines, MathJax/SVG e dependências.
-- Q6 — LaTeXML, bindings, bibliografia, MathML, splitting e versão.
-- Q7 — pdfTeX, XeTeX, LuaTeX e input multi-ficheiro.
-- Q8 — BibLaTeX, Biber e compatibilidade de versões.
-- Q9 — PDFKit, pesquisa, seleção e navegação.
-- Q10 — inventário local de ferramentas e versões.
+- Q1 — current versions of TeX Live, MacTeX, BasicTeX, and MiKTeX.
+- Q2 — `latexmk`, dependencies, continuous mode, output/aux directories, and logs.
+- Q3 — Tectonic, bundles, cache, security, watch mode, and macOS releases.
+- Q4 — TeX4ht and make4ht, HTML, MathML, images, and build files.
+- Q5 — lwarp, coverage, engines, MathJax/SVG, and dependencies.
+- Q6 — LaTeXML, bindings, bibliography, MathML, splitting, and version.
+- Q7 — pdfTeX, XeTeX, LuaTeX, and multi-file input.
+- Q8 — BibLaTeX, Biber, and version compatibility.
+- Q9 — PDFKit, search, selection, and navigation.
+- Q10 — local inventory of tools and versions.
 
-## 23. Razão para parar
+## 23. Reason for stopping
 
-A pesquisa cobriu as estratégias, engines, distribuições, wrappers, multi-ficheiro, bibliografia, imagens, recompilação, artefactos, erros, segurança, licenciamento, acessibilidade e limitações exigidas pelo brief.
+The research covered the strategies, engines, distributions, wrappers, multi-file documents, bibliography, images, recompilation, artifacts, errors, security, licensing, accessibility, and limitations required by the brief.
 
-O que permanece incerto é empiricamente específico: qual cadeia compila a tese real com fidelidade suficiente, quais pacotes exigem configuração e quais tempos de recompilação são aceitáveis. Isso não pode ser resolvido por documentação genérica; requer os testes locais descritos acima.
+What remains uncertain is specific to empirical testing: which toolchain compiles the real thesis with sufficient fidelity, which packages need configuration, and what recompilation times are acceptable. Generic documentation cannot resolve this; the local tests described above are required.

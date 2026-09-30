@@ -43,4 +43,4 @@ Distinguish theoretical risks, plausible risks in the MVP workflow, and requirem
 
 Compare preview options and isolation measures, and provide a conditional recommendation for the personal MVP, distribution requirements, and a list of risks to explicitly accept, mitigate, or defer.
 
-Use the [shared report format](CONTEXT.md#formato-de-entrega). Do not call an option “secure” without defining the threat model and evidence supporting the claim.
+Use the [shared report format](CONTEXT.md#report-format). Do not call an option “secure” without defining the threat model and evidence supporting the claim.

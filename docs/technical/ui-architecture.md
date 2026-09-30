@@ -39,12 +39,21 @@ return events or values that `AppModel` applies.
 
 `CodexReplyCaptureController` registers `⇧⌘E` as a global shortcut, sends
 `Ctrl+O` to the Codex CLI in the active terminal window, confirms a clipboard
-change, and opens a new in-memory Markdown tab with the response. Sending
-keystrokes requires macOS Accessibility permission, as does Terminal
-automation in Prompt Wiz. macOS presents the permission prompt at most once per
-session if permission is not already active. `scripts/build-app.sh` uses the
-existing Apple Development identity in the Keychain to preserve the signing
-identity across rebuilds; it does not create certificates.
+change, saves the response as a Markdown file in `~/Downloads/Codex Responses`,
+creating the folder if needed, then opens that saved document in a tab.
+Filenames start at `Codex Reply.md` and gain a numeric suffix to avoid
+overwriting earlier captures. Sending keystrokes requires macOS
+Accessibility permission, as does Terminal automation in Prompt Wiz. macOS
+uses the last focused Viewer window when it is open. If that window is minimized,
+the capture opens in a standalone Viewer window while the workspace stays
+minimized, with the sidebar hidden in the capture window. That window does not
+change the saved sidebar preference for regular workspaces. Closing the last
+window leaves the app running so the global shortcut remains registered;
+quitting the app ends shortcut handling. macOS presents the permission prompt at
+most once per session if permission is not already active.
+`scripts/build-app.sh` uses the existing Apple Development
+identity in the Keychain to preserve the signing identity across rebuilds; it
+does not create certificates.
 
 The main models are:
 

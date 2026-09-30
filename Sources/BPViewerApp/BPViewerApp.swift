@@ -119,6 +119,10 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
         return .terminateNow
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let captureController = CodexReplyCaptureController()
         codexReplyCapture = captureController

@@ -213,25 +213,56 @@ final class CodexReplyCaptureController {
     }
 
     private func openResponseInViewer(_ response: String) {
-        NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.isVisible }) {
-            if window.isMiniaturized {
-                window.deminiaturize(nil)
-            }
-            window.makeKeyAndOrderFront(nil)
-        }
-
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(200))
             guard let self else { return }
-            guard let model = WorkspaceWindowManager.shared.modelForActiveWindow() else {
+            guard let model = WorkspaceWindowManager.shared.presentForCapturedReply() else {
                 showAlert(
                     title: "BP Viewer Has No Active Workspace",
-                    message: "Open BP Viewer and try the shortcut again."
+                    message: "BP Viewer could not restore its window. Open the app and try the shortcut again."
                 )
                 return
             }
-            model.createNewMarkdownDocument(source: response)
+            do {
+                let destinationURL = try nextSavedReplyURL()
+                guard await model.createSavedMarkdownDocument(source: response, at: destinationURL) else {
+                    showAlert(
+                        title: "Couldn’t Save the Codex Reply",
+                        message: "The response remains open in an unsaved tab. Check that BP Viewer can write to Downloads/Codex Responses."
+                    )
+                    return
+                }
+            } catch {
+                showAlert(
+                    title: "Couldn’t Save the Codex Reply",
+                    message: "BP Viewer couldn’t find your Downloads folder. The response remains open in an unsaved tab."
+                )
+            }
+        }
+    }
+
+    private func nextSavedReplyURL() throws -> URL {
+        guard let downloadsURL = FileManager.default.urls(
+            for: .downloadsDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let responsesURL = downloadsURL.appendingPathComponent("Codex Responses", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: responsesURL,
+            withIntermediateDirectories: true
+        )
+
+        var index = 1
+        while true {
+            let name = index == 1 ? "Codex Reply.md" : "Codex Reply \(index).md"
+            let candidateURL = responsesURL.appendingPathComponent(name)
+            guard !FileManager.default.fileExists(atPath: candidateURL.path) else {
+                index += 1
+                continue
+            }
+            return candidateURL
         }
     }
 

@@ -44,4 +44,4 @@ Clearly identify which parts depend on the viewer and surrounding architecture, 
 
 Compare the identified strategies and provide a conditional MVP recommendation, local prerequisites, key risks, and a test plan using representative LaTeX documents.
 
-Use the [shared report format](CONTEXT.md#formato-de-entrega) and distinguish documented capabilities from suitability inferred for `bp-viewer`.
+Use the [shared report format](CONTEXT.md#report-format) and distinguish documented capabilities from suitability inferred for `bp-viewer`.

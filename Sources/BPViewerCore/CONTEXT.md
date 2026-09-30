@@ -7,8 +7,8 @@ operations, pure state, and processes separate from SwiftUI/AppKit.
 Main areas:
 
 - `FileSystemFoundation.swift` — document types, including images, and a lazy, recursive scanner.
-- `SessionModels.swift` — modelos puros de tabs, preview, edição, posições de
-  leitura e estado persistido.
+- `SessionModels.swift` — pure models for tabs, previews, editing, reading
+  positions, and persisted state.
 - `DocumentDiff.swift` — comparison modes and baselines, disk/Git providers, and
   a pure diff engine reusable by Markdown, JSON, and future editors.
 - `DocumentTabSession.swift` — invariants for opening, selecting, closing, and
@@ -25,7 +25,7 @@ Main areas:
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,
   `MarkdownPreviewLink.swift`, and `MathMLRenderer.swift` — rendering,
   editing/merge, and Markdown link resolution.
-- `LatexAdapter.swift`, `LatexRootDiscovery.swift`, `LatexRenderCache.swift` e
+- `LatexAdapter.swift`, `LatexRootDiscovery.swift`, `LatexRenderCache.swift`, and
   `LatexTabContextPersistence.swift` — root discovery, execution/cache,
   context persistence, and LaTeX/PDF previews.
 

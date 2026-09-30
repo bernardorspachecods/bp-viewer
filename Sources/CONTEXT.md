@@ -11,5 +11,5 @@ This directory contains the Swift targets defined in [Package.swift](../Package.
 The runners and prototypes should not create a second implementation of the app:
 extract or exercise core seams where possible. The current state and
 architecture are documented in [`docs/current-state.md`](../docs/current-state.md),
-[`docs/technical/architecture.md`](../docs/technical/architecture.md) e
+[`docs/technical/architecture.md`](../docs/technical/architecture.md) and
 [`docs/technical/ui-architecture.md`](../docs/technical/ui-architecture.md).

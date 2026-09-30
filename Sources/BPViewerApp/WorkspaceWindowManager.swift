@@ -11,12 +11,17 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
     static let shared = WorkspaceWindowManager()
 
     static let tabbingIdentifier = "com.bernardopacheco.bp-viewer.workspace"
+    private static let captureWindowIdentifier = NSUserInterfaceItemIdentifier(
+        "com.bernardopacheco.bp-viewer.codex-capture"
+    )
 
     let session: WorkspaceSessionCoordinator
     @Published private(set) var activeModel: AppModel?
 
     private var models: [ObjectIdentifier: AppModel] = [:]
     private var windows: [ObjectIdentifier: NSWindow] = [:]
+    private var lastKnownModel: AppModel?
+    private var lastKnownWindow: NSWindow?
     private var didRestoreWorkspaces = false
     private var keyWindowObserver: NSObjectProtocol?
     private var isTerminating = false
@@ -54,9 +59,15 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         let id = ObjectIdentifier(window)
         models[id] = model
         windows[id] = window
+        lastKnownModel = model
+        lastKnownWindow = window
 
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = Self.tabbingIdentifier
+        if window.identifier == Self.captureWindowIdentifier {
+            window.tabbingMode = .disallowed
+        } else {
+            window.tabbingMode = .preferred
+            window.tabbingIdentifier = Self.tabbingIdentifier
+        }
         updateWindowTitle(window, for: model)
         model.attach(to: window)
 
@@ -180,6 +191,45 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         keyWindowModel() ?? activeModel ?? fallback
     }
 
+    /// Uses the last focused Viewer window, unless it is minimized. In that
+    /// case, a standalone capture window keeps the minimized workspace intact.
+    func presentForCapturedReply() -> AppModel? {
+        // The shortcut arrives while Terminal is frontmost. `activeModel` is
+        // the Viewer window that was focused before the app switch; AppKit's
+        // keyWindow may still point at another transient or stale window.
+        let model = activeModel ?? lastKnownModel
+        guard let model else { return nil }
+
+        let existingWindow = window(for: model)
+            ?? (lastKnownModel === model ? lastKnownWindow : nil)
+
+        if let existingWindow, existingWindow.isMiniaturized {
+            let captureModel = AppModel(
+                workspaceSession: session,
+                restoresLastWorkspace: false,
+                persistsSharedConfiguration: false
+            )
+            captureModel.sidebarVisible = false
+            let captureWindow = makeWindow(for: captureModel, isCaptureWindow: true)
+            register(model: captureModel, window: captureWindow)
+            bringForward(captureWindow, model: captureModel)
+            return captureModel
+        }
+
+        if let existingWindow {
+            if windows[ObjectIdentifier(existingWindow)] == nil {
+                register(model: model, window: existingWindow)
+            }
+            bringForward(existingWindow, model: model)
+            return model
+        }
+
+        let restoredWindow = makeWindow(for: model)
+        register(model: model, window: restoredWindow)
+        bringForward(restoredWindow, model: model)
+        return model
+    }
+
     func synchronizeGlobalPreferences(from source: AppModel) {
         for model in models.values where model !== source {
             model.applySharedPreferences(from: source)
@@ -209,7 +259,7 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         persistWorkspaceLayout()
     }
 
-    private func makeWindow(for model: AppModel) -> NSWindow {
+    private func makeWindow(for model: AppModel, isCaptureWindow: Bool = false) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 780),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -217,11 +267,24 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
             defer: false
         )
         window.isReleasedWhenClosed = false
+        if isCaptureWindow {
+            window.identifier = Self.captureWindowIdentifier
+            window.tabbingMode = .disallowed
+        }
         window.contentView = NSHostingView(
             rootView: RootView().environmentObject(model)
         )
         window.center()
         return window
+    }
+
+    private func bringForward(_ window: NSWindow, model: AppModel) {
+        NSApp.activate(ignoringOtherApps: true)
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+        activeModel = model
     }
 
     private func window(for rootURL: URL) -> NSWindow? {
@@ -235,7 +298,10 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
     }
 
     private func window(for model: AppModel) -> NSWindow? {
-        windows.first { $0.value === model }?.value
+        guard let windowID = models.first(where: { $0.value === model })?.key else {
+            return nil
+        }
+        return windows[windowID]
     }
 
     private func anchorWindow(

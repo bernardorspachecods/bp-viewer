@@ -7,7 +7,7 @@ Markdown/JSON/PDF/DOCX/image previews, settings, and snapshots.
 
 - `AppModel.swift` and `Models.swift` — published state, intents, and UI-specific extensions; session and persistence logic lives in `BPViewerCore`.
 - `ActiveDocumentWatcher.swift` — AppKit/Darwin adapter for changes to active files and dependencies.
-- `CodexReplyCaptureController.swift` — global shortcut to capture a completed Codex CLI response, save it in Documents, and open a Markdown preview.
+- `CodexReplyCaptureController.swift` — global shortcut to capture a completed Codex CLI response, save it in `Downloads/Codex Responses` (creating the folder when needed), and open a Markdown preview.
 - `WorkspaceTreeSession.swift`, `DocumentRenderCoordinator.swift`,
   `DocumentEditCoordinator.swift`, and `DocumentDiffCoordinator.swift` —
   filesystem, rendering, editing, baseline, and saving seams used by the
@@ -29,6 +29,6 @@ Markdown/JSON/PDF/DOCX/image previews, settings, and snapshots.
   tokens and controls, preferences, and floating snapshots.
 
 Logic that does not need UI frameworks should remain in
-[`BPViewerCore`](../BPViewerCore/CONTEXT.md). O comportamento atual está em
+[`BPViewerCore`](../BPViewerCore/CONTEXT.md). Current behavior is documented in
 [`docs/current-state.md`](../../docs/current-state.md); UI boundaries are
 documented in [`docs/technical/ui-architecture.md`](../../docs/technical/ui-architecture.md).
