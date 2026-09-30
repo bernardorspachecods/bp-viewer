@@ -7,6 +7,8 @@ import Foundation
 /// persisted.
 @MainActor
 final class WorkspaceTreeSession {
+    private static let periodicRefreshInterval: Duration = .seconds(30)
+
     struct State: Equatable {
         var nodes: [FileNode] = []
         var expandedPaths: Set<String> = []
@@ -26,6 +28,7 @@ final class WorkspaceTreeSession {
     private var treeFilterGeneration = 0
     private var treeFilterTask: Task<Void, Never>?
     private var treeScrollPersistenceTask: Task<Void, Never>?
+    private var periodicRefreshTask: Task<Void, Never>?
     private var automaticSingleChildExpansionPending = false
     private var automaticSingleChildExpansionBasePath: String?
     private var childLoadGenerations: [String: Int] = [:]
@@ -62,6 +65,7 @@ final class WorkspaceTreeSession {
 
         if let rootURL = self.rootURL {
             startWatchingDirectories(rootURL: rootURL, nodes: [])
+            startPeriodicRefresh()
         }
     }
 
@@ -95,22 +99,45 @@ final class WorkspaceTreeSession {
         treeScanGeneration += 1
         let generation = treeScanGeneration
         let scanner = scanner
+        let expandedPaths = state.expandedPaths.sorted {
+            $0.split(separator: "/").count < $1.split(separator: "/").count
+        }
         childLoadGenerations.removeAll()
         state.isScanning = true
         emitState()
 
         Task { [weak self] in
-            let scannedNodes = await Task.detached(priority: .userInitiated) {
-                scanner.scanTopLevel(root: rootURL)
+            let scanResult = await Task.detached(priority: .userInitiated) {
+                let topLevel = scanner.scanTopLevel(root: rootURL)
+                let expandedDirectories = expandedPaths.reduce(into: [String: [FileNode]]()) { result, path in
+                    let directoryURL = rootURL.appendingPathComponent(path).standardizedFileURL
+                    result[path] = scanner.scanChildren(of: directoryURL, root: rootURL)
+                }
+                return (topLevel, expandedDirectories)
             }.value
 
             guard let self,
                   self.treeScanGeneration == generation,
                   self.rootURL?.standardizedFileURL == rootURL.standardizedFileURL else { return }
 
-            self.completeNodes = scannedNodes
+            var refreshedNodes = self.mergeScannedChildren(
+                scanResult.0,
+                preserving: self.completeNodes
+            )
+            for path in expandedPaths {
+                guard let scannedChildren = scanResult.1[path] else { continue }
+                self.updateNode(in: &refreshedNodes, id: path) { node in
+                    node.children = self.mergeScannedChildren(
+                        scannedChildren,
+                        preserving: node.children
+                    )
+                    node.childrenLoaded = true
+                }
+            }
+
+            self.completeNodes = refreshedNodes
             self.state.isScanning = false
-            self.startWatchingDirectories(rootURL: rootURL, nodes: scannedNodes)
+            self.startWatchingDirectories(rootURL: rootURL, nodes: refreshedNodes)
             self.applyTreeFilter()
             self.expandAutomaticSingleChildChainIfNeeded()
             self.loadExpandedChildrenIfNeeded()
@@ -293,6 +320,8 @@ final class WorkspaceTreeSession {
     }
 
     func stop() {
+        periodicRefreshTask?.cancel()
+        periodicRefreshTask = nil
         treeFilterTask?.cancel()
         treeFilterTask = nil
         treeScrollPersistenceTask?.cancel()
@@ -301,6 +330,26 @@ final class WorkspaceTreeSession {
         watcherRefreshSuppressedUntil = nil
         treeScanGeneration += 1
         childLoadGenerations.removeAll()
+    }
+
+    private func startPeriodicRefresh() {
+        periodicRefreshTask?.cancel()
+        periodicRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: Self.periodicRefreshInterval)
+                } catch {
+                    return
+                }
+
+                guard let self else { return }
+                guard self.rootURL != nil,
+                      !self.state.isScanning,
+                      !self.state.isFiltering else { continue }
+
+                self.reload()
+            }
+        }
     }
 
     private func emitState() {

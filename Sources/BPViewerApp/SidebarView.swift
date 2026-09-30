@@ -87,6 +87,19 @@ struct SidebarView: View {
 
                 Spacer(minLength: 0)
 
+                Button {
+                    model.reloadTree()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 22, height: 22)
+                        .iconButtonHitArea()
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .disabled(model.rootURL == nil || model.isScanningTree)
+                .help("Refresh files")
+                .accessibilityLabel("Refresh files")
+
                 CollapseFoldersButton(
                     helpText: "Close all folders",
                     action: model.collapseAllFolders
@@ -94,16 +107,10 @@ struct SidebarView: View {
                 .opacity(model.expandedPaths.isEmpty ? 0 : 1)
                 .allowsHitTesting(!model.expandedPaths.isEmpty)
                 .accessibilityHidden(model.expandedPaths.isEmpty)
-                if model.isScanningTree || model.isFilteringTree || model.isPerformingFileOperation {
+                if model.isPerformingFileOperation {
                     ProgressView()
                         .controlSize(.small)
-                        .help(
-                            model.isPerformingFileOperation
-                                ? "Copying file…"
-                                : model.isScanningTree
-                                    ? "Indexing folder…"
-                                : "Searching files…"
-                        )
+                        .help("Copying file…")
                 }
             }
             .padding(.horizontal, BPTokens.Spacing.md)
