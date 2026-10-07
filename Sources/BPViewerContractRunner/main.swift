@@ -295,22 +295,29 @@ struct BPViewerContractRunner {
             print("SKIP manual LaTeX fixture not found")
         }
 
-        let realCorpusProject = URL(fileURLWithPath: "/Users/bernardopacheco/developer-cv")
-        let realCorpusRoot = realCorpusProject.appendingPathComponent("main.tex")
-        if FileManager.default.fileExists(atPath: realCorpusRoot.path) {
+        if let corpusPath = ProcessInfo.processInfo.environment["BP_VIEWER_LATEX_CORPUS"] {
+            let realCorpusProject = URL(fileURLWithPath: corpusPath, isDirectory: true)
+            let realCorpusRoot = realCorpusProject.appendingPathComponent("main.tex")
+            guard FileManager.default.fileExists(atPath: realCorpusRoot.path) else {
+                throw NSError(
+                    domain: "BPViewerContractRunner",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "BP_VIEWER_LATEX_CORPUS must point to a project containing main.tex"
+                    ]
+                )
+            }
             let realCorpusResult = try LocalLatexAdapter(timeout: 60).render(
                 rootURL: realCorpusRoot,
                 projectRoot: realCorpusProject
             )
             expect(
-                realCorpusResult.pdfData.starts(with: Data("%PDF".utf8))
-                    && realCorpusResult.dependencies.contains {
-                        $0.lastPathComponent == "developercv.cls"
-                    },
-                "developer-cv corpus compiles in isolated workspace"
+                realCorpusResult.pdfData.starts(with: Data("%PDF".utf8)),
+                "optional LaTeX corpus compiles in isolated workspace"
             )
         } else {
-            print("SKIP real developer-cv corpus not found")
+            print("SKIP optional LaTeX corpus; set BP_VIEWER_LATEX_CORPUS to include one")
         }
 
         let secondLatexRoot = fixtureRoot.appendingPathComponent("appendix.tex")
