@@ -2,7 +2,7 @@
   <title id="title">Viewer</title>
   <desc id="desc">Two open pages.</desc>
 
-  <rect width="256" height="256" fill="#19324D"/>
+  <rect width="256" height="256" rx="58" fill="#19324D"/>
 
   <path
     d="M50 72c24-13 49-11 75 6v112c-26-17-51-19-75-6V72Z"
