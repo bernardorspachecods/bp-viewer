@@ -8,10 +8,6 @@
   A distraction-free place to read and edit your project files.
 </p>
 
-<p align="center">
-  Move between workspaces and documents without losing your place.
-</p>
-
 <br>
 
 ## Stay with the work
