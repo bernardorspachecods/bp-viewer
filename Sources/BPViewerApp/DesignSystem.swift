@@ -125,6 +125,7 @@ struct CopyTextButton: View {
                 .iconButtonHitArea()
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .contentShape(Rectangle())
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)

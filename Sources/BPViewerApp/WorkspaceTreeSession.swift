@@ -14,6 +14,7 @@ final class WorkspaceTreeSession {
         var expandedPaths: Set<String> = []
         var treeScrollOffset = 0.0
         var compatibleOnly = true
+        var showHiddenFiles = false
         var isScanning = false
         var isFiltering = false
     }
@@ -73,11 +74,13 @@ final class WorkspaceTreeSession {
         expandedPaths: Set<String>,
         treeScrollOffset: Double,
         compatibleOnly: Bool,
+        showHiddenFiles: Bool,
         automaticSingleChildExpansion: Bool
     ) {
         state.expandedPaths = expandedPaths
         state.treeScrollOffset = max(treeScrollOffset, 0)
         state.compatibleOnly = compatibleOnly
+        state.showHiddenFiles = showHiddenFiles
         automaticSingleChildExpansionPending = automaticSingleChildExpansion
         automaticSingleChildExpansionBasePath = nil
         emitState()
@@ -99,6 +102,7 @@ final class WorkspaceTreeSession {
         treeScanGeneration += 1
         let generation = treeScanGeneration
         let scanner = scanner
+        let showHiddenFiles = state.showHiddenFiles
         let expandedPaths = state.expandedPaths.sorted {
             $0.split(separator: "/").count < $1.split(separator: "/").count
         }
@@ -108,10 +112,14 @@ final class WorkspaceTreeSession {
 
         Task { [weak self] in
             let scanResult = await Task.detached(priority: .userInitiated) {
-                let topLevel = scanner.scanTopLevel(root: rootURL)
+                let topLevel = scanner.scanTopLevel(root: rootURL, showHiddenFiles: showHiddenFiles)
                 let expandedDirectories = expandedPaths.reduce(into: [String: [FileNode]]()) { result, path in
                     let directoryURL = rootURL.appendingPathComponent(path).standardizedFileURL
-                    result[path] = scanner.scanChildren(of: directoryURL, root: rootURL)
+                    result[path] = scanner.scanChildren(
+                        of: directoryURL,
+                        root: rootURL,
+                        showHiddenFiles: showHiddenFiles
+                    )
                 }
                 return (topLevel, expandedDirectories)
             }.value
@@ -158,6 +166,7 @@ final class WorkspaceTreeSession {
         treeScanGeneration += 1
         let generation = treeScanGeneration
         let scanner = scanner
+        let showHiddenFiles = state.showHiddenFiles
         treeFilterGeneration += 1
         treeFilterTask?.cancel()
         treeFilterTask = nil
@@ -172,7 +181,11 @@ final class WorkspaceTreeSession {
         Task { [weak self] in
             let scannedDirectories = await Task.detached(priority: .userInitiated) {
                 directories.reduce(into: [URL: [FileNode]]()) { result, directory in
-                    result[directory] = scanner.scanChildren(of: directory, root: rootURL)
+                    result[directory] = scanner.scanChildren(
+                        of: directory,
+                        root: rootURL,
+                        showHiddenFiles: showHiddenFiles
+                    )
                 }
             }.value
 
@@ -227,6 +240,15 @@ final class WorkspaceTreeSession {
         state.compatibleOnly = value
         emitState()
         applyTreeFilter()
+    }
+
+    func setShowHiddenFiles(_ value: Bool) {
+        guard state.showHiddenFiles != value else { return }
+        state.showHiddenFiles = value
+        completeNodes = []
+        state.nodes = []
+        emitState()
+        reload()
     }
 
     func toggleExpanded(_ path: String) {
@@ -391,10 +413,15 @@ final class WorkspaceTreeSession {
         childLoadGenerations[path] = generation
         let scanner = scanner
         let directoryURL = directory.url
+        let showHiddenFiles = state.showHiddenFiles
 
         Task { [weak self] in
             let children = await Task.detached(priority: .userInitiated) {
-                scanner.scanChildren(of: directoryURL, root: rootURL)
+                scanner.scanChildren(
+                    of: directoryURL,
+                    root: rootURL,
+                    showHiddenFiles: showHiddenFiles
+                )
             }.value
 
             guard let self,
@@ -614,6 +641,7 @@ final class WorkspaceTreeSession {
         let rootURL = rootURL
         let knownStructure = childStructureSignature(in: directoryURL, rootURL: rootURL)
         let scanner = scanner
+        let showHiddenFiles = state.showHiddenFiles
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(180))
             guard let self,
@@ -622,7 +650,11 @@ final class WorkspaceTreeSession {
 
             let currentStructure = await Task.detached(priority: .userInitiated) {
                 Set(
-                    scanner.scanChildren(of: directoryURL, root: rootURL)
+                    scanner.scanChildren(
+                        of: directoryURL,
+                        root: rootURL,
+                        showHiddenFiles: showHiddenFiles
+                    )
                         .map { "\($0.id)|\($0.isDirectory ? "directory" : "file")" }
                 )
             }.value

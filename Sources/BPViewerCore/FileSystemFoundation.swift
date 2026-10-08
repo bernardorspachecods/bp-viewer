@@ -76,16 +76,16 @@ public struct FileNode: Identifiable, Hashable, Sendable {
 public struct FileSystemScanner: Sendable {
     public init() {}
 
-    public func scan(root: URL) -> [FileNode] {
-        makeChildren(of: root, root: root, recursive: true)
+    public func scan(root: URL, showHiddenFiles: Bool = false) -> [FileNode] {
+        makeChildren(of: root, root: root, recursive: true, showHiddenFiles: showHiddenFiles)
     }
 
-    public func scanTopLevel(root: URL) -> [FileNode] {
-        makeChildren(of: root, root: root, recursive: false)
+    public func scanTopLevel(root: URL, showHiddenFiles: Bool = false) -> [FileNode] {
+        makeChildren(of: root, root: root, recursive: false, showHiddenFiles: showHiddenFiles)
     }
 
-    public func scanChildren(of directory: URL, root: URL) -> [FileNode] {
-        makeChildren(of: directory, root: root, recursive: false)
+    public func scanChildren(of directory: URL, root: URL, showHiddenFiles: Bool = false) -> [FileNode] {
+        makeChildren(of: directory, root: root, recursive: false, showHiddenFiles: showHiddenFiles)
     }
 
     public func filter(_ nodes: [FileNode], compatibleOnly: Bool, query: String) -> [FileNode] {
@@ -126,7 +126,8 @@ public struct FileSystemScanner: Sendable {
     private func makeChildren(
         of directory: URL,
         root: URL,
-        recursive: Bool
+        recursive: Bool,
+        showHiddenFiles: Bool
     ) -> [FileNode] {
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -135,8 +136,10 @@ public struct FileSystemScanner: Sendable {
         )) ?? []
 
         return urls
-            .filter { !$0.lastPathComponent.hasPrefix(".") }
-            .compactMap { makeNode(at: $0, root: root, recursive: recursive) }
+            .filter { showHiddenFiles || !$0.lastPathComponent.hasPrefix(".") }
+            .compactMap {
+                makeNode(at: $0, root: root, recursive: recursive, showHiddenFiles: showHiddenFiles)
+            }
             .sorted { lhs, rhs in
                 if lhs.isDirectory != rhs.isDirectory {
                     return lhs.isDirectory && !rhs.isDirectory
@@ -148,7 +151,8 @@ public struct FileSystemScanner: Sendable {
     private func makeNode(
         at url: URL,
         root: URL,
-        recursive: Bool
+        recursive: Bool,
+        showHiddenFiles: Bool
     ) -> FileNode? {
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
         let isDirectory = values?.isDirectory == true
@@ -156,7 +160,9 @@ public struct FileSystemScanner: Sendable {
         let kind = DocumentKind(url: url)
 
         if isDirectory {
-            let children = recursive ? makeChildren(of: url, root: root, recursive: true) : []
+            let children = recursive
+                ? makeChildren(of: url, root: root, recursive: true, showHiddenFiles: showHiddenFiles)
+                : []
             return FileNode(
                 id: relativePath,
                 url: url,

@@ -148,6 +148,7 @@ public final class WorkspaceSessionCoordinator {
         expandedPaths: Set<String>,
         treeScrollOffset: Double,
         compatibleOnly: Bool,
+        showHiddenFiles: Bool,
         configuration: WorkspaceSessionConfiguration
     ) {
         state.global.theme = configuration.theme
@@ -170,6 +171,7 @@ public final class WorkspaceSessionCoordinator {
         workspace.expandedPaths = expandedPaths.sorted()
         workspace.treeScrollOffset = treeScrollOffset
         workspace.compatibleOnly = compatibleOnly
+        workspace.showHiddenFiles = showHiddenFiles
         workspace.tabContexts = persistedTabs.reduce(into: [String: String]()) { result, tab in
             guard tab.kind == .latex, let contextURL = tab.contextURL else { return }
             LatexTabContextPersistence.store(contextURL: contextURL, forTabID: tab.id, in: &result)

@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published var activeTabID: String?
     @Published var treeQuery = ""
     @Published var compatibleOnly = true
+    @Published var showHiddenFiles = false
     @Published var expandedPaths: Set<String> = []
     @Published private(set) var treeRevealTargetID: String?
     @Published var treeScrollOffset: Double = 0
@@ -335,6 +336,7 @@ final class AppModel: ObservableObject {
         expandedPaths = state.expandedPaths
         treeScrollOffset = state.treeScrollOffset
         compatibleOnly = state.compatibleOnly
+        showHiddenFiles = state.showHiddenFiles
         isScanningTree = state.isScanning
         isFilteringTree = state.isFiltering
     }
@@ -432,6 +434,11 @@ final class AppModel: ObservableObject {
 
     func updateCompatibleOnly(_ value: Bool) {
         workspaceTreeSession.setCompatibleOnly(value)
+        persistState()
+    }
+
+    func updateShowHiddenFiles(_ value: Bool) {
+        workspaceTreeSession.setShowHiddenFiles(value)
         persistState()
     }
 
@@ -3104,6 +3111,7 @@ final class AppModel: ObservableObject {
             expandedPaths: expandedPaths,
             treeScrollOffset: treeScrollOffset,
             compatibleOnly: compatibleOnly,
+            showHiddenFiles: showHiddenFiles,
             configuration: configuration
         )
     }
@@ -3121,6 +3129,7 @@ final class AppModel: ObservableObject {
             expandedPaths: Set(savedWorkspace.expandedPaths),
             treeScrollOffset: savedWorkspace.treeScrollOffset,
             compatibleOnly: savedWorkspace.compatibleOnly,
+            showHiddenFiles: savedWorkspace.showHiddenFiles,
             automaticSingleChildExpansion: !workspaceSession.hasWorkspaceState(for: rootURL)
         )
         let available = savedWorkspace.tabPaths

@@ -49,7 +49,14 @@ public struct SwiftMarkdownAdapter: MarkdownAdapter {
             ? baseURL
             : baseURL.appendingPathComponent("", isDirectory: true)
         let blockDocument = MarkdownBlockDocument(source: source)
-        let parsingSource = maskedFrontMatterSource(source, region: blockDocument.specialRegions.first { $0.kind == .frontMatter })
+        let maskedSource = maskedFrontMatterSource(
+            source,
+            region: blockDocument.specialRegions.first { $0.kind == .frontMatter }
+        )
+        let parsingSource = preserveMathDelimiters(
+            in: maskedSource,
+            regions: blockDocument.specialRegions
+        )
         let document = Document(parsing: parsingSource)
         var renderer = SafeMarkdownHTMLRenderer(
             baseURL: directoryBaseURL,
@@ -75,6 +82,47 @@ public struct SwiftMarkdownAdapter: MarkdownAdapter {
             if bytes[index] != 10 && bytes[index] != 13 { bytes[index] = 32 }
         }
         return String(decoding: bytes, as: UTF8.self)
+    }
+
+    private func preserveMathDelimiters(
+        in source: String,
+        regions: [MarkdownSpecialRegion]
+    ) -> String {
+        var bytes = Array(source.utf8)
+
+        for region in regions where region.kind == .math {
+            let trimmedSource = region.source.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedSource.hasPrefix("\\["), trimmedSource.hasSuffix("\\]") {
+                replaceDelimiter("\\[", with: "$$", in: region.sourceRange, bytes: &bytes, useLast: false)
+                replaceDelimiter("\\]", with: "$$", in: region.sourceRange, bytes: &bytes, useLast: true)
+            } else if trimmedSource.hasPrefix("\\("), trimmedSource.hasSuffix("\\)") {
+                replaceDelimiter("\\(", with: "@@", in: region.sourceRange, bytes: &bytes, useLast: false)
+                replaceDelimiter("\\)", with: "@@", in: region.sourceRange, bytes: &bytes, useLast: true)
+            }
+        }
+
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    private func replaceDelimiter(
+        _ delimiter: String,
+        with replacement: String,
+        in range: MarkdownSourceRange,
+        bytes: inout [UInt8],
+        useLast: Bool
+    ) {
+        let delimiterBytes = Array(delimiter.utf8)
+        let upperBound = min(range.endOffset, bytes.count) - delimiterBytes.count
+        guard range.startOffset <= upperBound else { return }
+
+        let matches = (range.startOffset...upperBound).filter { offset in
+            bytes[offset..<(offset + delimiterBytes.count)].elementsEqual(delimiterBytes)
+        }
+        guard let offset = useLast ? matches.last : matches.first else { return }
+        bytes.replaceSubrange(
+            offset..<(offset + delimiterBytes.count),
+            with: replacement.utf8
+        )
     }
 }
 
@@ -203,6 +251,26 @@ private struct MarkdownHTMLDocument {
               border-left: 1px solid color-mix(in srgb, currentColor 20%, transparent);
             }
             .bp-special-placeholder { cursor: pointer; border: 1px dashed color-mix(in srgb, currentColor 28%, transparent); border-radius: 6px; padding: 10px; color: -apple-system-secondary-label; white-space: pre-wrap; }
+            .math-inline {
+              display: inline-block;
+              max-width: 100%;
+              vertical-align: -0.08em;
+              padding: 0.04em 0.18em;
+              border-radius: 4px;
+              background: color-mix(in srgb, -apple-system-blue 7%, transparent);
+            }
+            .math-block {
+              box-sizing: border-box;
+              display: block;
+              max-width: 100%;
+              overflow-x: auto;
+              margin: 1em 0;
+              padding: 0.5em 0.75em;
+              border-radius: 6px;
+              background: color-mix(in srgb, currentColor 5%, transparent);
+              text-align: center;
+            }
+            .math-block math { max-width: 100%; }
           </style>
         </head>
         <body>
@@ -547,7 +615,7 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
     }
 
     private func renderTextWithMath(_ value: String, sourceOffset: Int) -> String {
-        let pattern = #"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+)\$"#
+        let pattern = #"\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+)\$|@@([\s\S]+?)@@"#
         guard let expression = try? NSRegularExpression(pattern: pattern) else {
             return escapeText(value)
         }
@@ -565,14 +633,23 @@ private struct SafeMarkdownHTMLRenderer: MarkupWalker {
             }
 
             let displayMode = match.range(at: 1).location != NSNotFound || match.range(at: 2).location != NSNotFound
-            let captureIndex = displayMode ? (match.range(at: 1).location != NSNotFound ? 1 : 2) : (match.range(at: 3).location != NSNotFound ? 3 : 4)
+            let captureIndex: Int
+            if displayMode {
+                captureIndex = match.range(at: 1).location != NSNotFound ? 1 : 2
+            } else if match.range(at: 3).location != NSNotFound {
+                captureIndex = 3
+            } else if match.range(at: 4).location != NSNotFound {
+                captureIndex = 4
+            } else {
+                captureIndex = 5
+            }
             let source = nsValue.substring(with: match.range(at: captureIndex))
             let relativePrefix = nsValue.substring(to: matchRange.location)
             let matchOffset = sourceOffset + relativePrefix.utf8.count
             let attribute = specialRegions.first(where: {
                 $0.kind == .math && $0.sourceRange.startOffset == matchOffset
             }).map(specialAttribute(for:)) ?? ""
-            result += "<span class=\"math-inline bp-special-placeholder\"\(attribute)>\(mathRenderer.render(source, displayMode: displayMode))</span>"
+            result += "<span class=\"math-inline\"\(attribute)>\(mathRenderer.render(source, displayMode: displayMode))</span>"
             cursor = matchRange.location + matchRange.length
         }
 

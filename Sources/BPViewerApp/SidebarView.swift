@@ -73,17 +73,29 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: BPTokens.Spacing.xs) {
-                Toggle(isOn: Binding(
-                    get: { model.compatibleOnly },
-                    set: { model.updateCompatibleOnly($0) }
-                )) {
-                    Text("Supported files only")
-                        .padding(.leading, BPTokens.Spacing.xxs)
+                Menu {
+                    Toggle(isOn: Binding(
+                        get: { model.compatibleOnly },
+                        set: { model.updateCompatibleOnly($0) }
+                    )) {
+                        Text("Supported files only")
+                    }
+
+                    Toggle(isOn: Binding(
+                        get: { model.showHiddenFiles },
+                        set: { model.updateShowHiddenFiles($0) }
+                    )) {
+                        Text("Show hidden files")
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: 22, height: 22)
+                        .iconButtonHitArea()
                 }
-                .font(BPTokens.Typography.caption)
-                .toggleStyle(.checkbox)
-                .controlSize(.mini)
-                .tint(BPTokens.Color.muted)
+                .menuStyle(.borderlessButton)
+                .focusable(false)
+                .help("Sidebar options")
+                .accessibilityLabel("Sidebar options")
 
                 Spacer(minLength: 0)
 

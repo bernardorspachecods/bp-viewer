@@ -480,6 +480,7 @@ public struct WorkspaceState: Codable, Sendable {
     public var expandedPaths: [String] = []
     public var treeScrollOffset = 0.0
     public var compatibleOnly = true
+    public var showHiddenFiles = false
     public var latexRootSelections: [String: String] = [:]
     public var latexExternalGrants: [String: [String]] = [:]
     public var securityScopedBookmark: Data?
@@ -487,7 +488,7 @@ public struct WorkspaceState: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case tabPaths, activeTabPath, tabContexts, expandedPaths, treeScrollOffset
-        case compatibleOnly, latexRootSelections, latexExternalGrants, securityScopedBookmark, snapshots
+        case compatibleOnly, showHiddenFiles, latexRootSelections, latexExternalGrants, securityScopedBookmark, snapshots
     }
 
     public init() {}
@@ -500,6 +501,7 @@ public struct WorkspaceState: Codable, Sendable {
         expandedPaths = try container.decodeIfPresent([String].self, forKey: .expandedPaths) ?? []
         treeScrollOffset = try container.decodeIfPresent(Double.self, forKey: .treeScrollOffset) ?? 0
         compatibleOnly = try container.decodeIfPresent(Bool.self, forKey: .compatibleOnly) ?? true
+        showHiddenFiles = try container.decodeIfPresent(Bool.self, forKey: .showHiddenFiles) ?? false
         latexRootSelections = try container.decodeIfPresent([String: String].self, forKey: .latexRootSelections) ?? [:]
         latexExternalGrants = try container.decodeIfPresent([String: [String]].self, forKey: .latexExternalGrants) ?? [:]
         securityScopedBookmark = try container.decodeIfPresent(Data.self, forKey: .securityScopedBookmark)

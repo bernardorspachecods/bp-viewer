@@ -335,6 +335,16 @@ struct SidebarResizeHandle: View {
 
 struct TopBarView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isWorkspaceTitleHovered = false
+    @State private var isWorkspacePathHovered = false
+
+    private var workspaceTitle: String {
+        model.rootURL?.lastPathComponent ?? "Viewer"
+    }
+
+    private var workspacePath: String {
+        model.rootURL?.path ?? "No Folder Open"
+    }
 
     var body: some View {
         HStack(spacing: BPTokens.Spacing.sm) {
@@ -349,13 +359,43 @@ struct TopBarView: View {
                 model.openFolder()
             }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.rootURL?.lastPathComponent ?? "Viewer")
-                    .font(BPTokens.Typography.title)
-                Text(model.rootURL?.path ?? "No Folder Open")
-                    .font(BPTokens.Typography.caption)
-                    .foregroundStyle(BPTokens.Color.muted)
-                    .lineLimit(1)
+            HStack(alignment: .firstTextBaseline, spacing: BPTokens.Spacing.xs) {
+                HStack(spacing: BPTokens.Spacing.xxs) {
+                    Text(workspaceTitle)
+                        .font(BPTokens.Typography.title)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .textSelection(.enabled)
+                        .contextMenu {
+                            Button("Copy Title") { model.copyText(workspaceTitle) }
+                        }
+                    CopyTextButton(text: workspaceTitle, isVisible: isWorkspaceTitleHovered) {
+                        model.copyText($0)
+                    }
+                }
+                .onHover { isWorkspaceTitleHovered = $0 }
+
+                HStack(spacing: BPTokens.Spacing.xxs) {
+                    Text(workspacePath)
+                        .font(BPTokens.Typography.caption)
+                        .foregroundStyle(BPTokens.Color.muted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                        .textSelection(.enabled)
+                        .contextMenu {
+                            if model.rootURL != nil {
+                                Button("Copy Path") { model.copyText(workspacePath) }
+                            }
+                        }
+                    CopyTextButton(
+                        text: workspacePath,
+                        isVisible: isWorkspacePathHovered && model.rootURL != nil,
+                        helpText: "Copy Path"
+                    ) {
+                        model.copyText($0)
+                    }
+                }
+                .onHover { isWorkspacePathHovered = $0 }
             }
 
             Spacer()
