@@ -170,12 +170,19 @@ final class CodexReplyCaptureController {
         isCapturing = true
         let terminalProcessID = terminal.processIdentifier
         Task { @MainActor [weak self] in
+            var didSelectClaudeCopyOption = false
             for _ in 0..<30 {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard let self else { return }
                 guard NSWorkspace.shared.frontmostApplication?.processIdentifier == terminalProcessID else {
                     self.isCapturing = false
                     return
+                }
+
+                if client == .claudeCode,
+                   !didSelectClaudeCopyOption,
+                   self.isClaudeCopyPickerVisible(in: terminalProcessID) {
+                    didSelectClaudeCopyOption = self.sendReturnKey()
                 }
 
                 let clipboard = NSPasteboard.general
@@ -250,6 +257,48 @@ final class CodexReplyCaptureController {
             if let value = accessibilityText(in: child) { return value }
         }
         return nil
+    }
+
+    private func isClaudeCopyPickerVisible(in processIdentifier: pid_t) -> Bool {
+        let application = AXUIElementCreateApplication(processIdentifier)
+        var focusedWindow: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            application,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindow
+        ) == .success, let focusedWindow else { return false }
+
+        let window = unsafeDowncast(focusedWindow, to: AXUIElement.self)
+        guard let text = accessibilityText(in: window),
+              let promptRange = text.range(of: "Select content to copy:", options: .caseInsensitive) else {
+            return false
+        }
+
+        let pickerText = text[promptRange.lowerBound...]
+        return pickerText.range(of: "Full response", options: .caseInsensitive) != nil
+            && pickerText.range(of: "Enter to copy", options: .caseInsensitive) != nil
+    }
+
+    private func sendReturnKey() -> Bool {
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let keyDown = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_Return),
+                keyDown: true
+              ),
+              let keyUp = CGEvent(
+                keyboardEventSource: source,
+                virtualKey: CGKeyCode(kVK_Return),
+                keyDown: false
+              ) else {
+            return false
+        }
+
+        keyDown.flags = []
+        keyUp.flags = []
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+        return true
     }
 
     private func sendClaudeCopyCommand() -> Bool {
