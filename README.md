@@ -22,6 +22,13 @@ document close at hand.
 - Edit Markdown and LaTeX in source or split view with a live preview.
 - Follow supported links between files and search within the active document.
 
+With Viewer running, press `⇧⌘E` in Terminal, iTerm2, Ghostty, WezTerm,
+Alacritty, Kitty, or Warp to capture the latest completed Codex or Claude Code
+reply. Viewer saves it as Markdown under `~/Downloads/Codex Responses` or
+`~/Downloads/Claude Code Responses` and opens it in a tab. Claude Code may show
+its `/copy` picker for replies containing code blocks. The shortcut requires
+macOS Accessibility permission.
+
 ## Run Viewer from source
 
 Viewer is shared as source code. Clone the repository and start it with Swift

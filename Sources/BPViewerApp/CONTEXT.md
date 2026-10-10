@@ -7,7 +7,7 @@ Markdown/JSON/PDF/DOCX/image previews, settings, and snapshots.
 
 - `AppModel.swift` and `Models.swift` — published state, intents, and UI-specific extensions; session and persistence logic lives in `BPViewerCore`.
 - `ActiveDocumentWatcher.swift` — AppKit/Darwin adapter for changes to active files and dependencies.
-- `CodexReplyCaptureController.swift` — global shortcut to capture a completed Codex CLI response, save it in `Downloads/Codex Responses` (creating the folder when needed), and open a Markdown preview.
+- `CodexReplyCaptureController.swift` — global shortcut to capture a completed Codex or Claude Code CLI response, save it in the matching Downloads folder, and open a Markdown preview.
 - `WorkspaceTreeSession.swift`, `DocumentRenderCoordinator.swift`,
   `DocumentEditCoordinator.swift`, and `DocumentDiffCoordinator.swift` —
   filesystem, rendering, editing, baseline, and saving seams used by the

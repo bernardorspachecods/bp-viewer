@@ -181,11 +181,13 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
 - The `+` button at the end of the bar creates a new in-memory Markdown tab
   without a default path; the first `Save` opens a panel to choose the `.md` file.
 - The global `⇧⌘E` shortcut, when a Terminal, iTerm2, Ghostty, WezTerm,
-  Alacritty, Kitty, or Warp window is active, sends `Ctrl+O` to the Codex CLI.
-  After confirming a new response in the clipboard, Viewer saves it as Markdown
-  in `~/Downloads/Codex Responses` and opens the saved document in a tab. The
-  folder is created if needed. Files are named `Codex Reply.md` and receive a
-  numeric suffix when that name already exists.
+  Alacritty, Kitty, or Warp window is active, requests the latest reply from the
+  active CLI: it sends `Ctrl+O` to Codex or `/copy` to Claude Code. After
+  confirming a new response in the clipboard, Viewer saves it as Markdown and
+  opens it in a tab. Codex replies go in `~/Downloads/Codex Responses`; Claude
+  Code replies go in `~/Downloads/Claude Code Responses`. Each folder is created
+  if needed. Files are named for the CLI and receive a numeric suffix when
+  that name already exists.
   The shortcut opens the saved file in the last focused Viewer window when that
   window is open. If it is minimized, Viewer opens a standalone capture window
   for the file with its sidebar hidden and leaves the workspace minimized.

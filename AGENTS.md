@@ -1,6 +1,7 @@
 # Repository-specific instructions
 
-## End of a work round
+## End of a work round that affects app use 
+(doesn’t apply for commits, or documentation changes that dont touch the code)
 
 Do not run this in the middle of a round of changes. Run it only after you have finished working:
 
