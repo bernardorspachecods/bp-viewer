@@ -68,7 +68,6 @@ struct SidebarView: View {
     @State private var highlightedRevealNodeID: String?
     @State private var loadingPaths: Set<String> = []
     @State private var loadingIndicatorTasks: [String: Task<Void, Never>] = [:]
-    @State private var isRootDropTarget = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -201,13 +200,6 @@ struct SidebarView: View {
                             revealTreeTarget(using: proxy)
                         }
                     }
-
-                    HStack(spacing: 0) {
-                        rootDropZone
-                        Spacer(minLength: 0)
-                        rootDropZone
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -318,29 +310,6 @@ struct SidebarView: View {
             }
         }
     }
-
-    private var rootDropZone: some View {
-        Color.accentColor.opacity(isRootDropTarget ? 0.16 : 0)
-            .frame(width: 14)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .dropDestination(for: String.self) { items, _ in
-                guard let rootURL = model.rootURL else {
-                    isRootDropTarget = false
-                    return false
-                }
-                let didMove = model.moveFiles(
-                    at: items.map { URL(fileURLWithPath: $0) },
-                    to: rootURL
-                )
-                isRootDropTarget = false
-                return didMove
-            } isTargeted: { isTargeted in
-                withAnimation(.easeInOut(duration: 0.14)) {
-                    isRootDropTarget = isTargeted
-                }
-            }
-    }
 }
 
 struct FileTreeRow: View {
@@ -348,46 +317,10 @@ struct FileTreeRow: View {
     let node: FileNode
     let level: Int
     let highlightedNodeIDs: Set<String>
-    @State private var isDropTarget = false
     @State private var isHovering = false
 
     var body: some View {
-        rowButton
-    }
-
-    @ViewBuilder
-    private var rowButton: some View {
-        if node.isDirectory {
-            baseRow
-                .draggable(node.url.path) {
-                    Label(node.title, systemImage: iconName)
-                        .padding(.horizontal, BPTokens.Spacing.sm)
-                        .padding(.vertical, BPTokens.Spacing.xs)
-                        .background(BPTokens.Color.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
-                }
-                .dropDestination(for: String.self) { items, _ in
-                    let didMove = model.moveFiles(
-                        at: items.map { URL(fileURLWithPath: $0) },
-                        to: node.url
-                    )
-                    isDropTarget = false
-                    return didMove
-                } isTargeted: { isTargeted in
-                    withAnimation(.easeInOut(duration: 0.14)) {
-                        isDropTarget = isTargeted
-                    }
-                }
-        } else {
-            baseRow
-                .draggable(node.url.path) {
-                    Label(node.title, systemImage: iconName)
-                        .padding(.horizontal, BPTokens.Spacing.sm)
-                        .padding(.vertical, BPTokens.Spacing.xs)
-                        .background(BPTokens.Color.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: BPTokens.Radius.sm))
-                }
-        }
+        baseRow
     }
 
     private var baseRow: some View {
@@ -408,8 +341,14 @@ struct FileTreeRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onHover { isHovering = $0 }
+        .modifier(RowHoverModifier(isEnabled: tracksHover, isHovering: $isHovering))
         .modifier(WorkspaceContextMenuModifier(target: .file(node)))
+    }
+
+    /// Hover only drives the "Close folder" button of expanded top-level
+    /// folders. Every other row skips the per-row tracking area.
+    private var tracksHover: Bool {
+        node.isDirectory && level == 0 && model.expandedPaths.contains(node.id)
     }
 
     private var rowLabel: some View {
@@ -431,11 +370,9 @@ struct FileTreeRow: View {
         )
         .frame(minHeight: BPTokens.Size.row)
         .background(
-            isDropTarget
-                ? Color.accentColor.opacity(0.2)
-                : highlightedNodeIDs.contains(node.id)
-                    ? BPTokens.Color.selection
-                    : .clear
+            highlightedNodeIDs.contains(node.id)
+                ? BPTokens.Color.selection
+                : .clear
         )
         .contentShape(Rectangle())
         .overlay(alignment: .leading) {
@@ -476,6 +413,20 @@ struct FileTreeRow: View {
         case .pdf: .red
         case .image: .green
         case .other: BPTokens.Color.muted
+        }
+    }
+}
+
+private struct RowHoverModifier: ViewModifier {
+    let isEnabled: Bool
+    @Binding var isHovering: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.onHover { isHovering = $0 }
+        } else {
+            content.onAppear { isHovering = false }
         }
     }
 }

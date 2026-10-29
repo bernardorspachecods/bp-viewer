@@ -85,10 +85,10 @@ appears on hover and clears only that folder's branch.
 
 The context menu uses `WorkspaceFileOperations` to rename folders/files,
 duplicate items, and move items to the Trash while keeping open tabs synced with
-their new paths. Files are draggable by path, and folders accept
-`dropDestination`, which moves items only within the workspace root. Two drop
-zones at the sides of the list also represent the open root, allowing a file to
-be moved back to the root without relying on empty space at the end of the tree.
+their new paths. Tree rows deliberately have no `draggable` or
+`dropDestination`: per-row drag support created platform views that made
+scrolling slow with hidden files shown. Per-row hover is also limited to
+expanded top-level folders for the same reason.
 
 ### Tabs
 

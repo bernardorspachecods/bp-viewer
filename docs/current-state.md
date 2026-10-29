@@ -11,12 +11,10 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   and ignores hidden files.
 - Right-clicking a folder lets you copy its path, rename it, or move it to the
   Trash. The file menu also lets you rename, duplicate, or move a file to the
-  Trash. Files and folders can be moved by dragging them to a folder in the tree;
-  the app asks for confirmation before moving them. Open tabs follow renames and
-  moves; items with unsaved changes cannot be moved to the Trash.
-- The tree loads the first level and expands folders on demand. Dragging files
-  to the sides of the list moves them to the open root, even when there is no
-  empty space below the items. Name or path search looks only for folders
+  Trash. Open tabs follow renames; items with unsaved changes cannot be moved to
+  the Trash. Rows in the tree cannot be dragged: per-row drag support made
+  scrolling slow in large trees.
+- The tree loads the first level and expands folders on demand. Name or path search looks only for folders
   directly inside the root, scrolls automatically to the first match, and
   highlights it without filtering the tree or searching descendants.
 - The header can collapse all folders and clear expansion records; the same
