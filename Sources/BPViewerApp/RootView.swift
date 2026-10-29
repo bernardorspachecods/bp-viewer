@@ -7,8 +7,10 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TopBarView()
-            Divider()
+            if !model.isReaderWindow {
+                TopBarView()
+                Divider()
+            }
             HStack(spacing: 0) {
                 if model.sidebarVisible {
                     ResizableSidebarView()

@@ -37,7 +37,7 @@ baseline requests are handled by `DocumentRenderCoordinator`,
 `DocumentEditCoordinator`, and `DocumentDiffCoordinator`, respectively; they
 return events or values that `AppModel` applies.
 
-`CodexReplyCaptureController` registers `⇧⌘E` as a global shortcut, sends
+`CodexReplyCaptureController` registers `⇧⌘E` (standalone window) and `⌥⌘E` (tab in the current workspace window) as global shortcuts, sends
 `Ctrl+O` to the Codex CLI in the active terminal window, confirms a clipboard
 change, saves the response as a Markdown file in `~/Downloads/Codex Responses`,
 creating the folder if needed, then opens that saved document in a tab.
@@ -46,7 +46,7 @@ overwriting earlier captures. Sending keystrokes requires macOS
 Accessibility permission, as does Terminal automation in Prompt Wiz. macOS
 uses the last focused Viewer window when it is open. If that window is minimized,
 the capture opens in a standalone Viewer window while the workspace stays
-minimized, with the sidebar hidden in the capture window. That window does not
+minimized (`⇧⌘E` always uses a standalone window), with the sidebar hidden in the capture window. That window does not
 change the saved sidebar preference for regular workspaces. Closing the last
 window leaves the app running so the global shortcut remains registered;
 quitting the app ends shortcut handling. macOS presents the permission prompt at

@@ -171,8 +171,10 @@ struct DocumentWorkspaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TabBarView()
-            Divider()
+            if !model.isReaderWindow {
+                TabBarView()
+                Divider()
+            }
             DocumentSurfaceView()
         }
         .background(BPTokens.Color.canvas)
@@ -458,8 +460,11 @@ struct PreviewPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            previewHeader
-            Divider()
+            // Keep the header in reader windows only to surface errors.
+            if !model.isReaderWindow || tab.errorMessage != nil {
+                previewHeader
+                Divider()
+            }
             if model.isFindBarVisible {
                 PreviewFindBar()
             }

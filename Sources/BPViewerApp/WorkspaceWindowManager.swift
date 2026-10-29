@@ -184,16 +184,24 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
             snapshotWindow.performClose(nil)
             return
         }
-        models[ObjectIdentifier(keyWindow)]?.closeActiveTab()
+        guard let model = models[ObjectIdentifier(keyWindow)] else { return }
+        // A reader window holds a single reply; closing its tab would leave an
+        // empty window, so close the window (the unsaved-changes guard still runs).
+        if model.isReaderWindow, model.tabs.count <= 1 {
+            keyWindow.performClose(nil)
+            return
+        }
+        model.closeActiveTab()
     }
 
     func modelForActiveWindow(fallback: AppModel? = nil) -> AppModel? {
         keyWindowModel() ?? activeModel ?? fallback
     }
 
-    /// Uses the last focused Viewer window, unless it is minimized. In that
-    /// case, a standalone capture window keeps the minimized workspace intact.
-    func presentForCapturedReply() -> AppModel? {
+    /// Uses the last focused Viewer window, unless it is minimized or the caller
+    /// asks for an independent window. In both cases, a standalone capture
+    /// window keeps the existing workspace window intact.
+    func presentForCapturedReply(inIndependentWindow: Bool = false) -> AppModel? {
         // The shortcut arrives while Terminal is frontmost. `activeModel` is
         // the Viewer window that was focused before the app switch; AppKit's
         // keyWindow may still point at another transient or stale window.
@@ -203,13 +211,14 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         let existingWindow = window(for: model)
             ?? (lastKnownModel === model ? lastKnownWindow : nil)
 
-        if let existingWindow, existingWindow.isMiniaturized {
+        if inIndependentWindow || existingWindow?.isMiniaturized == true {
             let captureModel = AppModel(
                 workspaceSession: session,
                 restoresLastWorkspace: false,
                 persistsSharedConfiguration: false
             )
             captureModel.sidebarVisible = false
+            captureModel.isReaderWindow = inIndependentWindow
             let captureWindow = makeWindow(for: captureModel, isCaptureWindow: true)
             register(model: captureModel, window: captureWindow)
             bringForward(captureWindow, model: captureModel)

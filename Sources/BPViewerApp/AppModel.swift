@@ -39,6 +39,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var treeRevealTargetID: String?
     @Published var treeScrollOffset: Double = 0
     @Published var sidebarVisible = true
+    /// Standalone reply window: shows only the document body, without the top
+    /// bar, tab bar, or document header.
+    @Published var isReaderWindow = false
     @Published var sidebarWidth: Double = 280
     @Published var previewZoom: Double = 1.0
     @Published var defaultMarkdownZoom: Double = 1.0
@@ -514,6 +517,7 @@ final class AppModel: ObservableObject {
 
     func createNewMarkdownDocument(source: String = "") {
         var tab = DocumentTab.untitledMarkdown()
+        tab.previewZoom = defaultZoom(for: .markdown)
         let transition = documentEditCoordinator.beginMarkdown(source: source)
         var editSession = transition.session
         editSession.saveState = .unsaved

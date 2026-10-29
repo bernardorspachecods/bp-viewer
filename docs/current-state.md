@@ -184,13 +184,19 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   Alacritty, Kitty, or Warp window is active, requests the latest reply from the
   active CLI: it sends `Ctrl+O` to Codex or `/copy` to Claude Code. After
   confirming a new response in the clipboard, Viewer saves it as Markdown and
-  opens it in a tab. Codex replies go in `~/Downloads/Codex Responses`; Claude
+  opens it in a standalone Viewer window (`⇧⌘E`) or as a tab of the last
+  focused workspace window (`⌥⌘E`). Codex replies go in `~/Downloads/Codex Responses`; Claude
   Code replies go in `~/Downloads/Claude Code Responses`. Each folder is created
   if needed. Files are named for the CLI and receive a numeric suffix when
   that name already exists.
-  The shortcut opens the saved file in the last focused Viewer window when that
-  window is open. If it is minimized, Viewer opens a standalone capture window
-  for the file with its sidebar hidden and leaves the workspace minimized.
+  `⇧⌘E` always opens a standalone reader window for the file, leaving
+  workspace windows untouched. It shows only the rendered reply: no sidebar,
+  top bar, tab bar, or document header (the header returns if the file has an
+  error, and the editing toolbar appears while editing). `⌘W` closes that
+  window instead of its tab while it holds a single tab. `⌥⌘E` opens the saved file in
+  the last focused Viewer window when that window is open; if it is minimized,
+  Viewer uses a standalone capture window instead. Captured replies open at the
+  default Markdown zoom.
   Closing the last window leaves Viewer running so its global shortcut stays
   available; quitting Viewer ends the shortcut until the app is launched again.
   Sending keystrokes requires macOS Accessibility permission; after granting it,

@@ -5,7 +5,34 @@ import CoreGraphics
 import Foundation
 
 private let codexReplyHotKeySignature = OSType(0x42505652) // BPVR
-private let codexReplyHotKeyID = UInt32(1)
+
+/// Where a captured reply opens: `⇧⌘E` uses a separate Viewer window, `⌥⌘E`
+/// adds a tab to the workspace window in use.
+private enum ReplyDestination: UInt32, CaseIterable {
+    case independentWindow = 1
+    case currentWorkspace = 2
+
+    var modifiers: NSEvent.ModifierFlags {
+        switch self {
+        case .independentWindow: [.command, .shift]
+        case .currentWorkspace: [.command, .option]
+        }
+    }
+
+    var carbonModifiers: UInt32 {
+        switch self {
+        case .independentWindow: UInt32(cmdKey | shiftKey)
+        case .currentWorkspace: UInt32(cmdKey | optionKey)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .independentWindow: "⇧⌘E"
+        case .currentWorkspace: "⌥⌘E"
+        }
+    }
+}
 
 private enum ReplyCaptureClient: Equatable {
     case codex
@@ -45,7 +72,7 @@ final class CodexReplyCaptureController {
         "dev.warp.Warp-Stable"
     ]
 
-    private var hotKey: EventHotKeyRef?
+    private var hotKeys: [EventHotKeyRef] = []
     private var eventHandler: EventHandlerRef?
     private var globalKeyMonitor: Any?
     private var isCapturing = false
@@ -73,7 +100,7 @@ final class CodexReplyCaptureController {
                 )
                 guard parameterStatus == noErr,
                       pressedHotKey.signature == codexReplyHotKeySignature,
-                      pressedHotKey.id == codexReplyHotKeyID else {
+                      let destination = ReplyDestination(rawValue: pressedHotKey.id) else {
                     return OSStatus(eventNotHandledErr)
                 }
 
@@ -81,7 +108,7 @@ final class CodexReplyCaptureController {
                     .fromOpaque(userData)
                     .takeUnretainedValue()
                 Task { @MainActor in
-                    controller.handleShortcutPress()
+                    controller.handleShortcutPress(destination)
                 }
                 return noErr
             },
@@ -95,35 +122,46 @@ final class CodexReplyCaptureController {
             return
         }
 
-        let identifier = EventHotKeyID(signature: codexReplyHotKeySignature, id: codexReplyHotKeyID)
-        let registrationStatus = RegisterEventHotKey(
-            UInt32(kVK_ANSI_E),
-            UInt32(cmdKey | shiftKey),
-            identifier,
-            GetApplicationEventTarget(),
-            0,
-            &hotKey
-        )
-        if registrationStatus != noErr {
-            NSLog("BP Viewer could not register ⇧⌘E: %d", registrationStatus)
+        for destination in ReplyDestination.allCases {
+            let identifier = EventHotKeyID(
+                signature: codexReplyHotKeySignature,
+                id: destination.rawValue
+            )
+            var hotKey: EventHotKeyRef?
+            let registrationStatus = RegisterEventHotKey(
+                UInt32(kVK_ANSI_E),
+                destination.carbonModifiers,
+                identifier,
+                GetApplicationEventTarget(),
+                0,
+                &hotKey
+            )
+            if registrationStatus == noErr, let hotKey {
+                hotKeys.append(hotKey)
+            } else {
+                NSLog("BP Viewer could not register %@: %d", destination.label, registrationStatus)
+            }
         }
 
         // Carbon hotkeys can fail to register when another app has claimed the
         // same combination. Keep a global event monitor as a fallback.
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
-            guard event.keyCode == UInt16(kVK_ANSI_E), flags == [.command, .shift] else { return }
+            guard event.keyCode == UInt16(kVK_ANSI_E),
+                  let destination = ReplyDestination.allCases.first(where: { $0.modifiers == flags }) else {
+                return
+            }
             Task { @MainActor [weak self] in
-                self?.handleShortcutPress()
+                self?.handleShortcutPress(destination)
             }
         }
     }
 
     func unregisterGlobalShortcut() {
-        if let hotKey {
+        for hotKey in hotKeys {
             UnregisterEventHotKey(hotKey)
-            self.hotKey = nil
         }
+        hotKeys.removeAll()
         if let eventHandler {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
@@ -134,21 +172,25 @@ final class CodexReplyCaptureController {
         }
     }
 
-    private func handleShortcutPress() {
+    private func handleShortcutPress(_ destination: ReplyDestination) {
         let now = ProcessInfo.processInfo.systemUptime
         guard now - lastShortcutHandledAt > 0.4 else { return }
         lastShortcutHandledAt = now
-        captureLatestReply()
+        captureLatestReply(destination: destination)
     }
 
     func captureLatestReply() {
+        captureLatestReply(destination: .independentWindow)
+    }
+
+    private func captureLatestReply(destination: ReplyDestination) {
         guard !isCapturing else { return }
         guard let terminal = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = terminal.bundleIdentifier,
               Self.terminalBundleIdentifiers.contains(bundleIdentifier) else {
             showAlert(
                 title: "Open Codex or Claude Code in a Terminal",
-                message: "Focus the terminal running Codex or Claude Code CLI, then press ⇧⌘E."
+                message: "Focus the terminal running Codex or Claude Code CLI, then press ⇧⌘E (new window) or ⌥⌘E (current workspace)."
             )
             return
         }
@@ -193,7 +235,7 @@ final class CodexReplyCaptureController {
                 }
 
                 self.isCapturing = false
-                self.openResponseInViewer(response, from: client)
+                self.openResponseInViewer(response, from: client, destination: destination)
                 return
             }
 
@@ -391,10 +433,16 @@ final class CodexReplyCaptureController {
         return true
     }
 
-    private func openResponseInViewer(_ response: String, from client: ReplyCaptureClient) {
+    private func openResponseInViewer(
+        _ response: String,
+        from client: ReplyCaptureClient,
+        destination: ReplyDestination
+    ) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let model = WorkspaceWindowManager.shared.presentForCapturedReply() else {
+            guard let model = WorkspaceWindowManager.shared.presentForCapturedReply(
+                inIndependentWindow: destination == .independentWindow
+            ) else {
                 showAlert(
                     title: "BP Viewer Has No Active Workspace",
                     message: "BP Viewer could not restore its window. Open the app and try the shortcut again."

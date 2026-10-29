@@ -8,6 +8,7 @@ private enum MarkdownOutlineLayout {
 
 struct MarkdownPreviewView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var model: AppModel
     let html: String
     let baseURL: URL
     let documentID: String
@@ -63,21 +64,25 @@ struct MarkdownPreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DocumentInteractionToolbar(
-                isOutlineAvailable: !outlineItems.isEmpty,
-                isOutlineVisible: isOutlineVisible,
-                onToggleOutline: { isOutlineVisible.toggle() },
-                editingSession: editingSession,
-                presentationMode: presentationMode,
-                supportsSplitView: true,
-                onToggleSplitView: onToggleSplitView,
-                diffSession: diffSession,
-                onToggleDiff: onToggleDiff,
-                onUndo: onUndo,
-                onRedo: onRedo,
-                onDiscardEditing: onDiscardMarkdownEditing,
-                onSave: onEndMarkdownEditing
-            )
+            // Reader windows keep the toolbar only while editing, so changes
+            // can still be saved or discarded.
+            if !model.isReaderWindow || editingSession != nil {
+                DocumentInteractionToolbar(
+                    isOutlineAvailable: !outlineItems.isEmpty,
+                    isOutlineVisible: isOutlineVisible,
+                    onToggleOutline: { isOutlineVisible.toggle() },
+                    editingSession: editingSession,
+                    presentationMode: presentationMode,
+                    supportsSplitView: true,
+                    onToggleSplitView: onToggleSplitView,
+                    diffSession: diffSession,
+                    onToggleDiff: onToggleDiff,
+                    onUndo: onUndo,
+                    onRedo: onRedo,
+                    onDiscardEditing: onDiscardMarkdownEditing,
+                    onSave: onEndMarkdownEditing
+                )
+            }
 
             if let editingSession, let conflict = editingSession.conflict {
                 MarkdownConflictView(
