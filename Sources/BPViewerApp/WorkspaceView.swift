@@ -504,8 +504,11 @@ struct PreviewPane: View {
                                         _ = model.undoMarkdownEdit()
                                     case .redo:
                                         _ = model.redoMarkdownEdit()
+                                    case .inlineChange:
+                                        break
                                     }
                                 },
+                                isQuickEditEnabled: false,
                                 onUndo: {
                                     _ = model.undoMarkdownEdit()
                                 },

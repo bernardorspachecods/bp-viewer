@@ -20,6 +20,7 @@ struct MarkdownPreviewView: View {
     let onNavigate: (URL) -> Void
     let onMarkdownTextChanged: @MainActor @Sendable (String) -> Void
     let onMarkdownEditEvent: (MarkdownWebEditEvent) -> Void
+    let isQuickEditEnabled: Bool
     let onUndo: () -> Void
     let onRedo: () -> Void
     let onToggleSplitView: () -> Void
@@ -221,7 +222,9 @@ struct MarkdownPreviewView: View {
                 requestedHeadingID: selectedHeadingID,
                 outlineRequestID: outlineRequestID,
                 readingPosition: readingPosition,
-                onReadingPositionChanged: onReadingPositionChanged
+                onReadingPositionChanged: onReadingPositionChanged,
+                isQuickEditEnabled: isQuickEditEnabled,
+                quickEditFocus: nil
             )
             if isSnapshotCaptureActive {
                 SnapshotSelectionOverlay(
@@ -250,12 +253,15 @@ struct MarkdownWebEditEvent {
         case end
         case undo
         case redo
+        case inlineChange
     }
 
     let kind: Kind
     let text: String
     let blockID: String?
     let renderedTextOffset: Int?
+    let unitIndex: Int?
+    let originalText: String?
 }
 
 private struct MarkdownSourceEditor: View {
