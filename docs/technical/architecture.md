@@ -98,6 +98,11 @@ UI action
 text and attributes, controls URL schemes, embeds local images, collects
 dependencies, and creates an outline and editable blocks.
 
+Local images are embedded as `data:` URLs because WebKit did not reliably load
+relative local resources from the in-memory HTML document used by
+`WKWebView.loadHTMLString`; their filesystem paths remain dependencies for the
+watcher.
+
 `LocalLatexAdapter` resolves the root, prepares a temporary workspace (or an
 overlay when there is a contextual draft), runs the compiler through
 `ProcessRunner`, collects dependencies, validates the generated PDF, and returns
@@ -131,3 +136,27 @@ passed to the native surface. The preview does not alter the original file.
 - Dependencies outside the root require explicit approval and are watched after
   authorization.
 - `shell escape` is disabled by default and is an explicit app preference.
+
+## Known limits
+
+- Although `ProcessRunner` checks cancellation and sends termination signals,
+  long compilations may still require reliable process cancellation.
+- Draft overlays must handle complex relative paths, `\\input`, `\\include`,
+  `\\graphicspath`, and bibliography correctly.
+- Some engines or distributions may not provide SyncTeX or may produce
+  incomplete maps.
+- Large projects and external dependencies may make live preview expensive.
+- The following areas were recorded as untested at the first foundation-test
+  round and have not been re-verified: SwiftUI rendering and AppKit event
+  delivery; `AppModel` asynchronous tasks, `UserDefaults` isolation, watcher
+  callbacks, and render-generation cancellation; actual `Task` scheduling and
+  generation guards in `AppModel`; permission-denied directories, symlink
+  policy, concurrent renames, and large filesystem performance; and keyboard
+  shortcuts, tab clicks, `WKWebView`, lazy expansion, and external file refresh.
+- The standard `swift test` target was also recorded as unavailable in that
+  environment because the toolchain lacked the Swift `Testing` module; it has
+  not been re-verified.
+- Markdown math coverage is limited to the common renderer surface currently
+  implemented: `frac`, `sqrt`, subscript, superscript, Greek symbols, and basic
+  operators. It does not validate arbitrary LaTeX macros, environments,
+  alignment, labels/references, or custom commands.

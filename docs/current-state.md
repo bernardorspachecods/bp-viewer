@@ -228,6 +228,12 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
 - Snapshots are saved as PNG files in Application Support and remain available
   across restarts until closed by the user.
 
+## Not supported
+
+- Editing multiple files in one LaTeX editing session.
+- Autosave.
+- Compilation on every keystroke without a debounce.
+
 ## Main code entry points
 
 - [`Sources/BPViewerApp/CONTEXT.md`](../Sources/BPViewerApp/CONTEXT.md) — window
