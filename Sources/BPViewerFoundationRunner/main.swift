@@ -767,6 +767,11 @@ private struct Runner {
             edit("Use `code` now", from: "Use code now", to: "Use coXde now") == nil,
             "inline insertion rejects the inside of a code span"
         )
+
+        let defaultSession = SourceEditSession(baseSource: "# A", currentSource: "# A")
+        expect(defaultSession.isPreviewInline == false, "source edit session defaults to the raw editor")
+        let splitSession = SourceEditSession(mode: .split, baseSource: "# A", currentSource: "# A")
+        expect(splitSession.isPreviewInline == false, "split source edit session is not Quick Edit")
     }
 
     private mutating func expect(_ condition: @autoclosure () -> Bool, _ name: String) {

@@ -491,7 +491,7 @@ struct PreviewPane: View {
                                 onMarkdownEditEvent: { event in
                                     switch event.kind {
                                     case .begin:
-                                        model.beginMarkdownEditing(tabID: tab.id)
+                                        model.beginMarkdownQuickEdit(tabID: tab.id)
                                     case .change:
                                         model.updateMarkdownEditing(
                                             tabID: tab.id,
@@ -505,10 +505,21 @@ struct PreviewPane: View {
                                     case .redo:
                                         _ = model.redoMarkdownEdit()
                                     case .inlineChange:
-                                        break
+                                        if let blockID = event.blockID, let original = event.originalText {
+                                            model.applyInlineMarkdownEdit(
+                                                tabID: tab.id,
+                                                blockID: blockID,
+                                                unitIndex: event.unitIndex,
+                                                original: original,
+                                                edited: event.text
+                                            )
+                                        }
                                     }
                                 },
-                                isQuickEditEnabled: false,
+                                isQuickEditEnabled: tab.markdownEditSession?.isPreviewInline == true,
+                                onSetRawMarkdownEditing: { raw in
+                                    model.setMarkdownRawEditing(tabID: tab.id, raw: raw)
+                                },
                                 onUndo: {
                                     _ = model.undoMarkdownEdit()
                                 },

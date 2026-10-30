@@ -9,7 +9,7 @@ private enum MarkdownEditingJavaScript {
       const handler = () => window.webkit?.messageHandlers?.bpViewerMarkdownEdit;
       const unitSelector = '[data-bp-block-id][data-bp-editable="true"]';
       const blockedSelector = 'img, math, [data-bp-special-kind]';
-      const commitDelay = 350;
+      const commitDelay = 120;
       const styleID = 'bp-inline-style';
       const styleSource = `
         [contenteditable="plaintext-only"] {
@@ -232,6 +232,7 @@ struct MarkdownWebView: NSViewRepresentable {
     let onReadingPositionChanged: (MarkdownReadingPosition) -> Void
     let isQuickEditEnabled: Bool
     let quickEditFocus: (blockID: String, offset: Int, requestID: Int)?
+    let onQuickEditFocusApplied: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -267,6 +268,7 @@ struct MarkdownWebView: NSViewRepresentable {
         context.coordinator.onNavigate = onNavigate
         context.coordinator.onMarkdownEditEvent = onMarkdownEditEvent
         context.coordinator.onReadingPositionChanged = onReadingPositionChanged
+        context.coordinator.onQuickEditFocusApplied = onQuickEditFocusApplied
         context.coordinator.canBeginEditing = canBeginEditing
         context.coordinator.onFindMatchCount = onFindMatchCount
         (webView as? FindTrackingWKWebView)?.onFindFocus = onFindFocus
@@ -329,9 +331,8 @@ struct MarkdownWebView: NSViewRepresentable {
             context.coordinator.isQuickEditEnabled = isQuickEditEnabled
             context.coordinator.applyQuickEditState(in: webView)
         }
+        // Focus is applied in didFinish, once the web view created for Quick Edit has loaded.
         context.coordinator.quickEditFocus = quickEditFocus
-        context.coordinator.applyQuickEditFocus(in: webView)
-
     }
 
     private func configureScrollView(of webView: WKWebView) {
@@ -362,6 +363,7 @@ struct MarkdownWebView: NSViewRepresentable {
         var canBeginEditing = true
         var isQuickEditEnabled = false
         var quickEditFocus: (blockID: String, offset: Int, requestID: Int)?
+        var onQuickEditFocusApplied: () -> Void = {}
         private var handledQuickEditRequestID: Int?
         private var scrollObserver: ObserverToken?
         private var captureTask: Task<Void, Never>?
@@ -547,6 +549,7 @@ struct MarkdownWebView: NSViewRepresentable {
                 "window.bpInline?.focusAt(\(encodedID), \(quickEditFocus.offset))",
                 completionHandler: nil
             )
+            onQuickEditFocusApplied()
         }
 
         func restoreReadingPosition(_ position: MarkdownReadingPosition, in webView: WKWebView) {

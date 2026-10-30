@@ -1263,6 +1263,9 @@ final class AppModel: ObservableObject {
             tabs[index].markdownEditSession?.saveState = .saved
             tabs[index].markdownEditSession?.conflict = nil
             tabs[index].markdownEditSession?.isEditing = keepEditing
+            if !keepEditing {
+                tabs[index].markdownEditSession?.isPreviewInline = false
+            }
             tabs[index].errorMessage = nil
             renderMarkdown(tabID: tab.id)
         } else if let session = tabs[index].jsonEditSession {
@@ -1583,6 +1586,40 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Split view and diffs are their own modes, so Quick Edit and the raw editor stay out of them.
+    private func isMarkdownQuickEditAvailable(at index: Int) -> Bool {
+        tabs[index].presentationMode != .split && tabs[index].diffSession == nil
+    }
+
+    func beginMarkdownQuickEdit(tabID: String) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .markdown,
+              isMarkdownQuickEditAvailable(at: index) else { return }
+        guard tabs[index].markdownEditSession?.isEditing == true else {
+            // The displayed HTML already matches the source, so nothing is re-rendered here.
+            beginMarkdownEditing(tabID: tabID)
+            tabs[index].markdownEditSession?.isPreviewInline = true
+            return
+        }
+        guard tabs[index].markdownEditSession?.isPreviewInline != true,
+              let session = tabs[index].markdownEditSession else { return }
+        tabs[index].markdownEditSession?.isPreviewInline = true
+        renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
+    }
+
+    func setMarkdownRawEditing(tabID: String, raw: Bool) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              tabs[index].kind == .markdown,
+              isMarkdownQuickEditAvailable(at: index) else { return }
+        if !raw {
+            beginMarkdownQuickEdit(tabID: tabID)
+        } else if tabs[index].markdownEditSession?.isEditing == true {
+            tabs[index].markdownEditSession?.isPreviewInline = false
+        } else {
+            beginMarkdownEditing(tabID: tabID)
+        }
+    }
+
     func toggleDocumentDiff(mode: DocumentDiffMode, tabID: String) {
         guard let initialIndex = tabs.firstIndex(where: { $0.id == tabID }) else { return }
         if tabs[initialIndex].presentationMode == .diff(mode) {
@@ -1678,6 +1715,7 @@ final class AppModel: ObservableObject {
         }
         if session.currentSource == session.baseSource {
             tabs[index].markdownEditSession?.isEditing = false
+            tabs[index].markdownEditSession?.isPreviewInline = false
             tabs[index].diffSession = nil
             renderMarkdown(tabID: tabID)
         } else {
@@ -1686,6 +1724,35 @@ final class AppModel: ObservableObject {
                 _ = await self?.saveMarkdownEdit(tabID: tabID, finishEditing: true)
             }
         }
+    }
+
+    /// Applies one edit made directly in the Quick Edit preview. The HTML is not
+    /// re-rendered: the DOM already shows the typed text. A rejected edit re-renders
+    /// from the session source when Quick Edit is showing, which drops the DOM change.
+    /// The guard is on `isEditing` so a change posted just before a mode switch still lands.
+    func applyInlineMarkdownEdit(
+        tabID: String,
+        blockID: String,
+        unitIndex: Int?,
+        original: String,
+        edited: String
+    ) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
+              let session = tabs[index].markdownEditSession,
+              session.isEditing else { return }
+        let updatedSource = MarkdownBlockDocument(source: session.currentSource).applyingInlineTextEdit(
+            blockID: blockID,
+            unitIndex: unitIndex,
+            originalText: original,
+            editedText: edited
+        )
+        guard let updatedSource else {
+            if session.isPreviewInline {
+                renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
+            }
+            return
+        }
+        updateMarkdownEditing(tabID: tabID, text: updatedSource, rebuildBlocks: true)
     }
 
     @discardableResult
@@ -2476,6 +2543,7 @@ final class AppModel: ObservableObject {
 
         let returnMode = tabs[index].markdownEditSession?.splitReturnMode ?? .source
         tabs[index].markdownEditSession?.splitReturnMode = returnMode
+        tabs[index].markdownEditSession?.isPreviewInline = false
         tabs[index].selectPresentationMode(.split)
         if let session = tabs[index].markdownEditSession {
             renderMarkdown(tabID: tabID, sourceOverride: session.currentSource)
@@ -2493,6 +2561,8 @@ final class AppModel: ObservableObject {
         applyMarkdownTransition(transition, at: index)
         if transition.session.mode == .split {
             scheduleMarkdownRender(tabID: tabID)
+        } else if transition.session.isPreviewInline {
+            renderMarkdown(tabID: tabID, sourceOverride: transition.session.currentSource)
         }
         return true
     }
@@ -2508,6 +2578,8 @@ final class AppModel: ObservableObject {
         applyMarkdownTransition(transition, at: index)
         if transition.session.mode == .split {
             scheduleMarkdownRender(tabID: tabID)
+        } else if transition.session.isPreviewInline {
+            renderMarkdown(tabID: tabID, sourceOverride: transition.session.currentSource)
         }
         return true
     }
@@ -2553,6 +2625,7 @@ final class AppModel: ObservableObject {
         guard session.currentSource != session.baseSource else {
             if finishEditing {
                 tabs[index].markdownEditSession?.isEditing = false
+                tabs[index].markdownEditSession?.isPreviewInline = false
                 tabs[index].diffSession = nil
                 renderMarkdown(tabID: tabID)
             }
@@ -2653,6 +2726,7 @@ final class AppModel: ObservableObject {
         tabs[index].markdownEditSession?.conflict = nil
         tabs[index].markdownEditSession?.isEditing = !finishEditing
         if finishEditing {
+            tabs[index].markdownEditSession?.isPreviewInline = false
             tabs[index].diffSession = nil
         }
         if activeTabID == oldID {
@@ -2721,6 +2795,7 @@ final class AppModel: ObservableObject {
             tabs[index].errorMessage = nil
             if finishEditing {
                 tabs[index].markdownEditSession?.isEditing = false
+                tabs[index].markdownEditSession?.isPreviewInline = false
                 tabs[index].diffSession = nil
             }
             if renderWhenNotEditing && tabs[index].markdownEditSession?.isEditing != true {

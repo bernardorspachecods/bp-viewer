@@ -21,6 +21,16 @@ Markdown/JSON/PDF/DOCX/image previews, settings, and snapshots.
   `ImagePreviewView.swift`, and `DocxPreviewView.swift` — preview surfaces,
   shared editor, and WebKit/PDFKit integration. `SourceEditorView` also
   provides the reusable line gutter and Git-like diff decorations.
+- Quick Edit: a double-click on a Markdown preview unit sets
+  `SourceEditSession.isPreviewInline`. The script in `MarkdownWebPreview.swift`
+  posts each committed change as `inlineChange`, and `AppModel` applies it
+  through `MarkdownBlockDocument.applyingInlineTextEdit` in Core without
+  re-rendering. A rejected change re-renders the preview from the draft. The
+  `Raw Markdown` toolbar button, in `DocumentOutlineView.swift`, switches to the
+  raw source editor and back; it is hidden in split view and during a diff.
+  Quick Edit does not autosave. Saving, Esc, and the conflict view use the same
+  `MarkdownEditSession` as the source editor, and Discard keeps the current
+  mode.
 - `FindSupport.swift` — focus adapters that direct common search to the focused
   preview or source editor.
 - `WindowCloseGuard.swift` — intercepts window closing to protect sessions

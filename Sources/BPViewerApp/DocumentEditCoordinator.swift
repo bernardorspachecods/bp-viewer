@@ -210,6 +210,7 @@ final class DocumentEditCoordinator {
         updated.saveState = .saved
         updated.conflict = nil
         updated.isEditing = false
+        updated.isPreviewInline = false
         return transition(
             session: updated,
             source: externalSource,
