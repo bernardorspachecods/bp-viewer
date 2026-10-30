@@ -4,6 +4,8 @@ description: "Agent rules for this repository: the `scripts/restart-app.sh` step
 tags: [agents, workflow]
 ---
 
+[Repository map](/MAP.md)
+
 # Repository-specific instructions
 
 ## End of a work round that affects app use 

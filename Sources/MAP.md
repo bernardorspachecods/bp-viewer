@@ -1,5 +1,5 @@
 ---
-description: "Swift targets of the Viewer package: the shared core, macOS app, executable contract runners, and two tab prototypes; runners and prototypes exercise core seams rather than copy app logic."
+description: "Swift targets of the Viewer package: the shared core, macOS app, executable contract runners, and isolated tab prototypes; runners and prototypes exercise core seams rather than copy app logic."
 ---
 
 # Swift package targets
@@ -12,7 +12,14 @@ description: "Swift targets of the Viewer package: the shared core, macOS app, e
 
 ## Runner guidance
 
-The executable runners provide deterministic validation. Tests should not duplicate runner logic. The runners exist because the local toolchain lacks the `Testing` module.
+`BPViewerContractRunner` covers the Markdown adapter and the LaTeX/process
+pipeline. `BPViewerFoundationRunner` covers filesystem, tree, tabs, persistence,
+and editing and merge foundations. They provide deterministic validation;
+tests should not duplicate runner logic. The runners exist because the local
+toolchain lacks the `Testing` module.
+
+`BPViewerTabPrototype` and `BPViewerWindowTabPrototype` are isolated tab
+prototypes. They exercise tab behavior independently of the app target.
 
 ## Member inventory
 

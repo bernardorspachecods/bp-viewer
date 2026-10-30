@@ -22,7 +22,7 @@ description: "Entry map for the Viewer repository: the macOS app source, current
 | --- | --- |
 | Agent rules for this repository: the `scripts/restart-app.sh` step that ends a work round changing app use, and nothing beyond it. | [AGENTS.md](/AGENTS.md) |
 | Manual validation fixtures for Markdown, link, and LaTeX previews: small input files, a local SVG, and a LaTeX project; these corpora contain no personal documents. | [MAP.md](/Fixtures/MAP.md) |
-| Swift targets of the Viewer package: the shared core, macOS app, executable contract runners, and two tab prototypes; runners and prototypes exercise core seams rather than copy app logic. | [MAP.md](/Sources/MAP.md) |
+| Swift targets of the Viewer package: the shared core, macOS app, executable contract runners, and isolated tab prototypes; runners and prototypes exercise core seams rather than copy app logic. | [MAP.md](/Sources/MAP.md) |
 | Current and historical Viewer documentation: observable app behavior and technical architecture, plus the research archive under docs/reference/, which is not a source for current behavior. | [MAP.md](/docs/MAP.md) |
 <!-- BKF:GENERATED-MEMBER-INVENTORY:END -->
 

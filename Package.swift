@@ -21,12 +21,12 @@ let package = Package(
             dependencies: [
                 .product(name: "Markdown", package: "swift-markdown")
             ],
-            exclude: ["CONTEXT.md", "MAP.md"]
+            exclude: ["MAP.md"]
         ),
         .executableTarget(
             name: "BPViewerApp",
             dependencies: ["BPViewerCore"],
-            exclude: ["CONTEXT.md", "MAP.md"]
+            exclude: ["MAP.md"]
         ),
         .testTarget(
             name: "BPViewerAppTests",

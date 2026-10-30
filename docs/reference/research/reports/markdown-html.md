@@ -7,7 +7,7 @@ tags: [research, markdown, preview]
 # Research report: Markdown → HTML
 
 Research date: 2026-09-09  
-Repository context: [research archive](/docs/reference/research/CONTEXT.md), [Markdown brief](/docs/reference/research/markdown-html.md), and [current state](/docs/current-state.md).
+Research archive: [map](/docs/reference/research/MAP.md); current behavior: [current state](/docs/current-state.md).
 
 ## 1. Executive summary
 

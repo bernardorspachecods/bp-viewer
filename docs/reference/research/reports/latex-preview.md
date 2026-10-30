@@ -7,7 +7,7 @@ tags: [research, latex, preview]
 # Research report: LaTeX → preview
 
 Access date: 2026-09-09.  
-Repository context: [research archive](/docs/reference/research/CONTEXT.md), [LaTeX brief](/docs/reference/research/latex-preview.md), and [current state](/docs/current-state.md).
+Research archive: [map](/docs/reference/research/MAP.md); current behavior: [current state](/docs/current-state.md).
 
 No files were changed. The working tree was clean.
 

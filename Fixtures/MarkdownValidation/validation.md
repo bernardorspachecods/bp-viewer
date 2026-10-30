@@ -16,4 +16,4 @@ This fixture covers rendering a local SVG image, common TeX notation, and a remo
 - Open [`02-remote-image.md`](/Fixtures/MarkdownValidation/02-remote-image.md) and, with internet available, confirm the remote placeholder image appears. If offline or the service is unavailable, record the missing image but confirm the Markdown text still renders.
 - If desired, edit or replace [`local-diagram.svg`](/Fixtures/MarkdownValidation/images/local-diagram.svg) externally and confirm the open preview refreshes; this checks the local image dependency.
 
-The history, test coverage limits, and previously observed results for this fixture are in [`markdown-fixtures.md`](/docs/reference/markdown-fixtures.md).
+Local images are embedded because WebKit did not reliably read relative resources from the in-memory document. The math fixture covers fractions, roots, subscripts, superscripts, Greek letters, and basic operators; it does not cover arbitrary macros, environments, alignment, labels, references, or custom commands.

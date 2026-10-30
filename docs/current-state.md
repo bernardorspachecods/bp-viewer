@@ -57,6 +57,8 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   `WKWebView`.
 - The preview shows headings with an outline, lists, tables, code blocks, links,
   images, and common TeX mathematics converted to MathML.
+- Markdown mathematics coverage is limited to the common TeX surface handled by
+  the current renderer; it does not support every TeX math command or package.
 - Existing local images are embedded in the HTML and remain monitored as
   dependencies.
 - Markdown links to Markdown and LaTeX open or focus tabs; links to other files
