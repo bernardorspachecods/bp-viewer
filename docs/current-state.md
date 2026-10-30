@@ -46,24 +46,42 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   use macOS; external links open in the browser.
 - The preview keeps the last result if an update fails and displays the
   diagnostic.
-- Double-clicking the preview opens the Markdown source editor. The editor has
-  syntax highlighting adapted to light and dark themes, explicit saving,
-  undo/redo, `⌘B`, `⌘I`, and `⌘K` shortcuts, external change detection, and
-  conflict resolution. The editor enables macOS spell correction. For inline
-  word completion, it uses the on-device Apple Foundation model when available
-  for the current language. Otherwise, for languages without native macOS
-  inline predictions, it uses completions from the local dictionary. The
-  suggestion appears in gray; `Space` accepts the word followed by a space,
-  while `Tab` accepts only the word. For languages with native predictions,
-  macOS continues to provide them. In list lines with `-`, `*`, or `+` markers,
-  Return continues the list; in ordered lists with `.` or `)`, it increments the
-  number. Return on an empty line removes the marker and ends the list.
-- The editor can fill the whole surface or use split view, with Markdown source
-  on the left and a live preview on the right.
+- Double-clicking anywhere in the preview starts Quick Edit. The caret goes to
+  the paragraph, heading, or list item under the pointer when that unit is
+  editable; otherwise Quick Edit starts with no caret. Typing updates the draft
+  without reloading the preview. `Save` and `Esc` save and exit editing, as in
+  the source editor. Quick Edit does not autosave.
+- Inline markup such as bold and links is kept where the Markdown source can be
+  mapped safely. An edit that cannot be mapped is rejected, and the preview
+  re-renders from the draft, which drops that change.
+- Paragraphs, headings, and list items are editable in Quick Edit. A paragraph,
+  heading, or list that contains an image, display math, or `<` is read-only as
+  a whole, and so are thematic breaks and front matter. Code blocks, tables, and
+  quotes accept typing, but every edit to them is rejected, so the text reverts.
+- The preview commits a typed change after 120 ms. A change typed in the moment
+  before `Save` or `Esc` can miss the draft, because a change that arrives after
+  editing has ended is ignored.
+- The `Raw Markdown` toolbar button switches between Quick Edit and the Markdown
+  source editor, keeping the draft. The button is hidden in split view and while
+  a diff is open. The source editor has syntax highlighting adapted to light and
+  dark themes, explicit saving, undo/redo, `⌘B`, `⌘I`, and `⌘K` shortcuts,
+  external change detection, and conflict resolution. The editor enables macOS
+  spell correction. For inline word completion, it uses the on-device Apple
+  Foundation model when available for the current language. Otherwise, for
+  languages without native macOS inline predictions, it uses completions from
+  the local dictionary. The suggestion appears in gray; `Space` accepts the word
+  followed by a space, while `Tab` accepts only the word. For languages with
+  native predictions, macOS continues to provide them. In list lines with `-`,
+  `*`, or `+` markers, Return continues the list; in ordered lists with `.` or
+  `)`, it increments the number. Return on an empty line removes the marker and
+  ends the list.
+- The source editor can fill the whole surface or use split view, with Markdown
+  source on the left and a live preview on the right.
 - Markdown changes remain in the draft while the editor is open. `Save` and
   `Esc` explicitly save and exit editing, while `Discard Changes` restores the
-  saved version and keeps the editor open. External changes during editing open
-  the conflict panel without saving automatically.
+  saved version and keeps editing in the same mode, Quick Edit or source.
+  External changes during editing open the conflict panel without saving
+  automatically.
 - In the shared action bar, a saved document does not show the `Saved` state or
   `Discard Changes`; the `Save` button stays visible but disabled.
 - During editing, the toolbar provides a diff with two modes: `Version saved on

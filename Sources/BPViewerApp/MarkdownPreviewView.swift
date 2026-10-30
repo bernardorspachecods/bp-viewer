@@ -21,6 +21,8 @@ struct MarkdownPreviewView: View {
     let onNavigate: (URL) -> Void
     let onMarkdownTextChanged: @MainActor @Sendable (String) -> Void
     let onMarkdownEditEvent: (MarkdownWebEditEvent) -> Void
+    let isQuickEditEnabled: Bool
+    let onSetRawMarkdownEditing: (Bool) -> Void
     let onUndo: () -> Void
     let onRedo: () -> Void
     let onToggleSplitView: () -> Void
@@ -50,6 +52,7 @@ struct MarkdownPreviewView: View {
     @State private var selectedHeadingID: String?
     @State private var outlineRequestID = 0
     @State private var pendingCursorUTF8Offset: Int?
+    @State private var quickEditFocus: (blockID: String, offset: Int, requestID: Int)?
 
     private var outlineItems: [DocumentOutlineItem] {
         outline.map {
@@ -77,6 +80,10 @@ struct MarkdownPreviewView: View {
                     onToggleSplitView: onToggleSplitView,
                     diffSession: diffSession,
                     onToggleDiff: onToggleDiff,
+                    onToggleRawMarkdown: presentationMode == .split || diffSession != nil
+                        ? nil
+                        : { onSetRawMarkdownEditing(!isRawMarkdownActive) },
+                    isRawMarkdownActive: isRawMarkdownActive,
                     onUndo: onUndo,
                     onRedo: onRedo,
                     onDiscardEditing: onDiscardMarkdownEditing,
@@ -100,6 +107,11 @@ struct MarkdownPreviewView: View {
         }
         .id(documentID)
         .onExitCommand(perform: exitEditing)
+    }
+
+    private var isRawMarkdownActive: Bool {
+        guard let editingSession else { return false }
+        return !editingSession.isPreviewInline && presentationMode != .split
     }
 
     private var exitEditing: () -> Void {
@@ -162,7 +174,9 @@ struct MarkdownPreviewView: View {
                     onDiscardGitChanges: onDiscardGitChanges
                 )
             } else {
-                if editingSession.mode == .split {
+                if editingSession.isPreviewInline {
+                    previewSurface
+                } else if editingSession.mode == .split {
                     ResizableSplitView {
                         markdownSourceEditor(editingSession: editingSession)
                     } trailing: {
@@ -213,6 +227,9 @@ struct MarkdownPreviewView: View {
                 onMarkdownEditEvent: { event in
                     if event.kind == .begin {
                         pendingCursorUTF8Offset = cursorUTF8Offset(for: event)
+                        if let blockID = event.blockID, let offset = event.renderedTextOffset {
+                            quickEditFocus = (blockID, offset, (quickEditFocus?.requestID ?? 0) + 1)
+                        }
                     }
                     onMarkdownEditEvent(event)
                 },
@@ -226,7 +243,10 @@ struct MarkdownPreviewView: View {
                 requestedHeadingID: selectedHeadingID,
                 outlineRequestID: outlineRequestID,
                 readingPosition: readingPosition,
-                onReadingPositionChanged: onReadingPositionChanged
+                onReadingPositionChanged: onReadingPositionChanged,
+                isQuickEditEnabled: isQuickEditEnabled,
+                quickEditFocus: quickEditFocus,
+                onQuickEditFocusApplied: { quickEditFocus = nil }
             )
             if isSnapshotCaptureActive {
                 SnapshotSelectionOverlay(
@@ -255,12 +275,15 @@ struct MarkdownWebEditEvent {
         case end
         case undo
         case redo
+        case inlineChange
     }
 
     let kind: Kind
     let text: String
     let blockID: String?
     let renderedTextOffset: Int?
+    let unitIndex: Int?
+    let originalText: String?
 }
 
 private struct MarkdownSourceEditor: View {

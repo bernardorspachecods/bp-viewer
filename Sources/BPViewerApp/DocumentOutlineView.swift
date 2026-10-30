@@ -40,6 +40,8 @@ struct DocumentInteractionToolbar: View {
     let onToggleSplitView: (() -> Void)?
     let diffSession: DocumentDiffSession?
     let onToggleDiff: (DocumentDiffMode) -> Void
+    var onToggleRawMarkdown: (() -> Void)? = nil
+    var isRawMarkdownActive: Bool = false
     let onUndo: () -> Void
     let onRedo: () -> Void
     let onDiscardEditing: () -> Void
@@ -85,6 +87,15 @@ struct DocumentInteractionToolbar: View {
                     isActive: presentationMode == .diff(.gitHead),
                     action: { onToggleDiff(.gitHead) }
                 )
+
+                if let onToggleRawMarkdown {
+                    DocumentEditModeButton(
+                        title: "Raw Markdown",
+                        systemImage: "chevron.left.forwardslash.chevron.right",
+                        isActive: isRawMarkdownActive,
+                        action: onToggleRawMarkdown
+                    )
+                }
             }
 
             Spacer()

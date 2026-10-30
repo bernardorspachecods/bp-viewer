@@ -105,11 +105,14 @@ and errors. The shared search bar lives on the tab surface and follows focus
 between the source editor and preview in split view. `MarkdownWebPreview`
 contains the `WKWebView`, JavaScript, navigation, and reading position.
 `SourceEditorView` contains the AppKit editor shared by Markdown and JSON.
-Double-clicking opens the Markdown source editor, whose syntax highlighting uses
-a palette for light and dark themes. The toolbar switches between the full
-editor and split view, which keeps the source on the left and live preview on
-the right. The outline is resizable per file and restores that document's saved
-width.
+Double-clicking a preview unit starts Quick Edit in place. Typing does not
+reload the preview. Each committed change reaches `AppModel` as an
+`inlineChange` event and is applied to the source by `MarkdownInlineTextEdit` in
+Core. The `Raw Markdown` toolbar button switches between Quick Edit and the
+source editor, whose syntax highlighting uses a palette for light and dark
+themes. The toolbar switches between the full editor and split view, which keeps
+the source on the left and live preview on the right. The outline is resizable
+per file and restores that document's saved width.
 
 The toolbar opens `DocumentDiffView`, which keeps the read-only reference on the
 left and the actual editor on the right. It can compare against disk or `HEAD`;

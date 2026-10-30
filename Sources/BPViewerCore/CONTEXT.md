@@ -25,6 +25,11 @@ Main areas:
 - `MarkdownAdapter.swift`, `MarkdownEditing.swift`, `MarkdownMerge.swift`,
   `MarkdownPreviewLink.swift`, and `MathMLRenderer.swift` — rendering,
   editing/merge, and Markdown link resolution.
+- `MarkdownInlineTextEdit.swift` — maps a Quick Edit change to one paragraph,
+  heading, or list item back onto the Markdown source. Inline markup such as
+  bold and links is kept where the mapping is safe; any other edit returns nil.
+  Rejected edits re-render the preview from the session source, which drops the
+  change.
 - `LatexAdapter.swift`, `LatexRootDiscovery.swift`, `LatexRenderCache.swift`, and
   `LatexTabContextPersistence.swift` — root discovery, execution/cache,
   context persistence, and LaTeX/PDF previews.

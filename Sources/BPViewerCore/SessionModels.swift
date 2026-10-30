@@ -65,6 +65,8 @@ public struct SourceEditSession: Hashable, Sendable {
     public var undoSources: [String]
     public var redoSources: [String]
     public var conflict: MarkdownConflict?
+    /// True while the preview itself is editable (Quick Edit) instead of the raw source editor.
+    public var isPreviewInline: Bool
 
     public init(
         mode: SourceEditingMode = .markdown,
@@ -75,7 +77,8 @@ public struct SourceEditSession: Hashable, Sendable {
         saveState: MarkdownSaveState = .saved,
         undoSources: [String] = [],
         redoSources: [String] = [],
-        conflict: MarkdownConflict? = nil
+        conflict: MarkdownConflict? = nil,
+        isPreviewInline: Bool = false
     ) {
         self.mode = mode
         self.splitReturnMode = splitReturnMode
@@ -86,6 +89,7 @@ public struct SourceEditSession: Hashable, Sendable {
         self.undoSources = undoSources
         self.redoSources = redoSources
         self.conflict = conflict
+        self.isPreviewInline = isPreviewInline
     }
 }
 
@@ -309,6 +313,7 @@ public struct DocumentTab: Identifiable, Hashable, Sendable {
         case .preview:
             diffSession = nil
             markdownEditSession?.isEditing = false
+            markdownEditSession?.isPreviewInline = false
             jsonEditSession?.isEditing = false
             latexEditSession?.isEditing = false
         case .source, .diff:
