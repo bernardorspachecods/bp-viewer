@@ -426,6 +426,7 @@ func clearsFolderExpansionRecords() {
         expandedPaths: ["chapters", "chapters/part-one", "assets"],
         treeScrollOffset: 0,
         compatibleOnly: true,
+        showHiddenFiles: false,
         automaticSingleChildExpansion: true
     )
 
@@ -1850,7 +1851,8 @@ func forwardsSourceEditsImmediatelyWhileSplitAndDiffEditingStaysActive() {
             receivedSources.append(source)
         },
         onEndEditing: { _ in },
-        onFindMatchCount: { _ in }
+        onFindMatchCount: { _ in },
+        defersSourceChangeUpdates: false
     )
     let textView = NSTextView()
     textView.string = "# After"

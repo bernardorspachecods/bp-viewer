@@ -21,7 +21,9 @@ struct BPViewerApp: App {
             RootView()
                 .environmentObject(model)
         }
+        .restorationBehavior(.disabled)
         .commands {
+            MainWindowCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Markdown File") {
                     windowManager.modelForActiveWindow(fallback: model)?.createNewMarkdownDocument()
@@ -110,6 +112,21 @@ struct BPViewerApp: App {
     }
 }
 
+/// Hands the delegate a way to open the main window, which SwiftUI does not
+/// create when the app is launched only to open files.
+struct MainWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        let _ = WorkspaceWindowManager.shared.openMainWindow = { openWindow(id: "main") }
+        CommandGroup(after: .windowArrangement) {
+            Button("Show Workspace Window") {
+                openWindow(id: "main")
+            }
+        }
+    }
+}
+
 @MainActor
 final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     private var localKeyMonitor: Any?
@@ -122,6 +139,30 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // SwiftUI's own handler closes the main Window scene on every open
+        // event. Handle the event here so reader windows leave it untouched.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleOpenDocuments(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEOpenDocuments)
+        )
+    }
+
+    @objc private func handleOpenDocuments(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent reply: NSAppleEventDescriptor
+    ) {
+        guard let direct = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)) else { return }
+        let items = direct.numberOfItems > 0 ? (1...direct.numberOfItems).compactMap { direct.atIndex($0) } : [direct]
+        let urls = items.compactMap { item -> URL? in
+            guard let data = item.coerce(toDescriptorType: DescType(typeFileURL))?.data else { return nil }
+            return URL(dataRepresentation: data, relativeTo: nil)
+        }
+        routeOpenedFiles(urls)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -143,6 +184,9 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSWindow.allowsAutomaticWindowTabbing = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            WorkspaceWindowManager.shared.ensureWorkspaceWindow()
+        }
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)

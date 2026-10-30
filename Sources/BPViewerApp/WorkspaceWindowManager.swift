@@ -16,6 +16,7 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
     )
 
     let session: WorkspaceSessionCoordinator
+    var openMainWindow: (() -> Void)?
     @Published private(set) var activeModel: AppModel?
 
     private var models: [ObjectIdentifier: AppModel] = [:]
@@ -269,6 +270,19 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
                 readerWindow?.title = title
             }
             bringForward(readerWindow, model: readerModel)
+        }
+    }
+
+    /// Opens the main workspace window when the app started without one, as
+    /// happens when it is launched by opening a file. Reader windows stay in front.
+    func ensureWorkspaceWindow() {
+        guard !windows.values.contains(where: { $0.identifier != Self.captureWindowIdentifier }) else { return }
+        openMainWindow?()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self else { return }
+            for window in windows.values where window.identifier == Self.captureWindowIdentifier {
+                window.orderFrontRegardless()
+            }
         }
     }
 

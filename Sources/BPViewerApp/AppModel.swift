@@ -305,6 +305,11 @@ final class AppModel: ObservableObject {
                 restoreTabs()
             }
         }
+
+        // A general window with no workspace opens the home folder by default.
+        if initialRootURL == nil, restoresLastWorkspace, rootURL == nil {
+            openRoot(FileManager.default.homeDirectoryForCurrentUser)
+        }
     }
 
     var shouldHandleWindowEvents: Bool {
