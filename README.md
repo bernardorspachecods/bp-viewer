@@ -45,6 +45,12 @@ For development, `./scripts/dev-run.sh` watches `Sources/` and rebuilds when
 code changes. `./scripts/build-app.sh` creates a local `.app` bundle in `.build/`.
 No prebuilt app download is included.
 
+To install Viewer on your Mac, run `./scripts/install-app.sh`. It builds a
+release bundle and copies it to `/Applications`. Then, in Finder, choose
+Get Info on a `.md` file, set Open with to Viewer, and click Change All. After
+that, Markdown files opened from Finder or `open` appear in their own minimal
+Viewer window, like the `⇧⌘E` capture; other file types open in the workspace.
+
 ## What you need
 
 - macOS 26 or later;

@@ -1,3 +1,4 @@
+import BPViewerCore
 import AppKit
 import SwiftUI
 
@@ -157,12 +158,25 @@ final class BPViewerAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, openFiles filenames: [String]) {
-        let urls = filenames.map { URL(fileURLWithPath: $0) }
-        NotificationCenter.default.post(name: .bpViewerOpenFiles, object: urls)
+        routeOpenedFiles(filenames.map { URL(fileURLWithPath: $0) })
         application.reply(toOpenOrPrint: .success)
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        NotificationCenter.default.post(name: .bpViewerOpenFiles, object: urls)
+        routeOpenedFiles(urls)
+    }
+
+    /// Markdown files opened from outside the app (Finder, `open`) get their own
+    /// reader window, like the captured-reply shortcut. Other kinds keep opening
+    /// in the focused workspace.
+    private func routeOpenedFiles(_ urls: [URL]) {
+        let markdown = urls.filter { $0.isFileURL && DocumentKind(url: $0) == .markdown }
+        let others = urls.filter { !markdown.contains($0) }
+        if !markdown.isEmpty {
+            WorkspaceWindowManager.shared.openReaderWindows(for: markdown)
+        }
+        if !others.isEmpty {
+            NotificationCenter.default.post(name: .bpViewerOpenFiles, object: others)
+        }
     }
 }

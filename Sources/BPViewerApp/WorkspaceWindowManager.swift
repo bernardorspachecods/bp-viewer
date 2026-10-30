@@ -239,6 +239,39 @@ final class WorkspaceWindowManager: NSObject, ObservableObject {
         return model
     }
 
+    /// Opens each file in its own reader window (no sidebar or top bar), or
+    /// focuses the reader window that already shows it.
+    func openReaderWindows(for urls: [URL]) {
+        for url in urls {
+            let file = url.resolvingSymlinksInPath().standardizedFileURL
+            if let existing = models.first(where: { _, model in
+                model.isReaderWindow && model.tabs.contains { $0.url.standardizedFileURL == file }
+            }), let window = windows[existing.key] {
+                bringForward(window, model: existing.value)
+                continue
+            }
+
+            let readerModel = AppModel(
+                workspaceSession: session,
+                restoresLastWorkspace: false,
+                persistsSharedConfiguration: false
+            )
+            readerModel.sidebarVisible = false
+            readerModel.isReaderWindow = true
+            let readerWindow = makeWindow(for: readerModel, isCaptureWindow: true)
+            register(model: readerModel, window: readerWindow)
+            _ = readerModel.openDocument(url: file)
+            // The hosting view resets the title after its first layout, so set it
+            // again on the next run loop turn.
+            let title = "Viewer — \(file.lastPathComponent)"
+            readerWindow.title = title
+            DispatchQueue.main.async { [weak readerWindow] in
+                readerWindow?.title = title
+            }
+            bringForward(readerWindow, model: readerModel)
+        }
+    }
+
     func synchronizeGlobalPreferences(from source: AppModel) {
         for model in models.values where model !== source {
             model.applySharedPreferences(from: source)

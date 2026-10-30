@@ -144,47 +144,46 @@ struct MarkdownPreviewView: View {
         )
     }
 
+    // The preview must stay in one `if` branch for every state that shows it
+    // (reading and inline editing). Separate branches would give the web view
+    // a new identity, so entering inline edit would rebuild and reload it.
     @ViewBuilder
     private var documentSurface: some View {
-        if let editingSession {
-            if let diffSession {
-                DocumentDiffView(
-                    baseline: diffSession.baseline,
-                    unavailableMessage: diffSession.unavailableMessage,
-                    editedSource: editingSession.currentSource,
-                    cursorUTF8Offset: pendingCursorUTF8Offset,
-                    cursorRequestID: outlineRequestID,
-                    zoom: zoom,
-                    syntaxHighlighting: .markdown(
-                        MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
-                    ),
-                    monospaced: false,
-                    markdownShortcutsEnabled: true,
-                    findQuery: findQuery,
-                    findRequestID: findRequestID,
-                    findBackwards: findBackwards,
-                    isFindTarget: findTarget == .source,
-                    onFindFocus: { onFindTargetChanged(.source) },
-                    onFindMatchCount: onFindMatchCount,
-                    onSourceChanged: onMarkdownTextChanged,
-                    onEndEditing: { text in
-                        onMarkdownTextChanged(text)
-                        exitEditing()
-                    },
-                    onDiscardGitChanges: onDiscardGitChanges
-                )
-            } else {
-                if editingSession.isPreviewInline {
-                    previewSurface
-                } else if editingSession.mode == .split {
-                    ResizableSplitView {
-                        markdownSourceEditor(editingSession: editingSession)
-                    } trailing: {
-                        previewSurface
-                    }
-                } else {
+        if let editingSession, let diffSession {
+            DocumentDiffView(
+                baseline: diffSession.baseline,
+                unavailableMessage: diffSession.unavailableMessage,
+                editedSource: editingSession.currentSource,
+                cursorUTF8Offset: pendingCursorUTF8Offset,
+                cursorRequestID: outlineRequestID,
+                zoom: zoom,
+                syntaxHighlighting: .markdown(
+                    MarkdownSyntaxColorPalette(isDark: colorScheme == .dark)
+                ),
+                monospaced: false,
+                markdownShortcutsEnabled: true,
+                findQuery: findQuery,
+                findRequestID: findRequestID,
+                findBackwards: findBackwards,
+                isFindTarget: findTarget == .source,
+                onFindFocus: { onFindTargetChanged(.source) },
+                onFindMatchCount: onFindMatchCount,
+                onSourceChanged: onMarkdownTextChanged,
+                onEndEditing: { text in
+                    onMarkdownTextChanged(text)
+                    exitEditing()
+                },
+                onDiscardGitChanges: onDiscardGitChanges
+            )
+        } else if let editingSession, !editingSession.isPreviewInline {
+            if editingSession.mode == .split {
+                ResizableSplitView {
                     markdownSourceEditor(editingSession: editingSession)
+                } trailing: {
+                    previewSurface
                 }
+            } else {
+                markdownSourceEditor(editingSession: editingSession)
             }
         } else {
             previewSurface
