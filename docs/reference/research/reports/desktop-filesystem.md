@@ -1,3 +1,9 @@
+---
+bkf: document
+description: "Evidence and conditional recommendation, dated 2026-09-09, on macOS shell options, folder permissions, file watching, and process supervision; it compares the shells and is not the record of the shell in use."
+tags: [research, macos, filesystem]
+---
+
 # Research report: desktop and filesystem
 
 Access date: 2026-09-09  

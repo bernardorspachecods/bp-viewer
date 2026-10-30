@@ -1,7 +1,13 @@
+---
+bkf: document
+description: "Evidence and conditional recommendation, dated 2026-09-09, on WebKit and PDFKit containment, shell escape, App Sandbox and distribution, with the threat model and the risks accepted or deferred; the controls in the code are in `architecture.md`."
+tags: [research, security, distribution]
+---
+
 # Research report: preview, security, and distribution
 
 Web access date: 2026-09-09  
-Repository context: [research archive](../CONTEXT.md), [preview brief](../preview-security-distribution.md), and [current state](../../../current-state.md)
+Repository context: [research archive](/docs/reference/research/CONTEXT.md), [preview brief](/docs/reference/research/preview-security-distribution.md), and [current state](/docs/current-state.md)
 Repository state during research: no changes.
 
 ## 1. Executive summary

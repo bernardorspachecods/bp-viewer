@@ -1,7 +1,24 @@
+---
+bkf: document
+description: "Observable behavior of the current Viewer app from the user's side (windows and tabs, file types, editing, LaTeX and PDF, shortcuts, persisted settings); module boundaries and view composition are in the technical documents."
+tags: [current-state, app-behavior]
+---
+
 # Current app state
 
 `bp-viewer` is a native macOS app for opening a local folder, browsing Markdown,
 LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
+
+## Navigation map
+
+| Topic | Section |
+| --- | --- |
+| Window, tabs, and file navigation | [Window and navigation](/docs/current-state.md#window-and-navigation) |
+| Markdown preview and editing | [Markdown](/docs/current-state.md#markdown) |
+| LaTeX editing and PDF preview | [LaTeX and PDF](/docs/current-state.md#latex-and-pdf) |
+| JSON and CSV previews | [JSON](/docs/current-state.md#json), [CSV](/docs/current-state.md#csv) |
+| Preferences and unsupported behavior | [Tabs, preferences, and snapshots](/docs/current-state.md#tabs-preferences-and-snapshots), [Not supported](/docs/current-state.md#not-supported) |
+| Implementation details | [Technical architecture](/docs/current-state.md#technical-architecture), [architecture](/docs/technical/architecture.md), [UI architecture](/docs/technical/ui-architecture.md) |
 
 ## Window and navigation
 

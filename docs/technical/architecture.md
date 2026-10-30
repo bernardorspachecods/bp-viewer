@@ -1,3 +1,9 @@
+---
+bkf: document
+description: "Current technical architecture of the Swift code: module boundaries, coordinators, rendering, filesystem updates, persistence, and security controls; it does not describe user-visible behavior or window composition."
+tags: [architecture, swift]
+---
+
 # Current technical architecture
 
 ## Module organization

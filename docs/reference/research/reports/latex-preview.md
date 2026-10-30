@@ -1,7 +1,13 @@
+---
+bkf: document
+description: "Evidence and conditional recommendation, dated 2026-09-09, on LaTeX-to-preview toolchains, bibliography, multi-file projects and temporary artifacts; it is not the record of the engines the app runs."
+tags: [research, latex, preview]
+---
+
 # Research report: LaTeX → preview
 
 Access date: 2026-09-09.  
-Repository context: [research archive](../CONTEXT.md), [LaTeX brief](../latex-preview.md), and [current state](../../../current-state.md).
+Repository context: [research archive](/docs/reference/research/CONTEXT.md), [LaTeX brief](/docs/reference/research/latex-preview.md), and [current state](/docs/current-state.md).
 
 No files were changed. The working tree was clean.
 

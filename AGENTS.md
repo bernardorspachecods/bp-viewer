@@ -1,3 +1,9 @@
+---
+bkf: document
+description: "Agent rules for this repository: the `scripts/restart-app.sh` step that ends a work round changing app use, and nothing beyond it."
+tags: [agents, workflow]
+---
+
 # Repository-specific instructions
 
 ## End of a work round that affects app use 

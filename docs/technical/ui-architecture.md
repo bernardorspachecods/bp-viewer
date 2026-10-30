@@ -1,3 +1,9 @@
+---
+bkf: document
+description: "Current UI architecture: window composition, the state `AppModel` publishes, and what each document surface presents; module and rendering boundaries are in `architecture.md`."
+tags: [architecture, ui]
+---
+
 # Current UI architecture
 
 ## Window composition

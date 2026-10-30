@@ -1,7 +1,13 @@
+---
+bkf: document
+description: "Evidence and conditional recommendation, dated 2026-09-09, on Markdown parsers and pipelines, mathematics, links and sanitization; it is not the record of the parser in use."
+tags: [research, markdown, preview]
+---
+
 # Research report: Markdown → HTML
 
 Research date: 2026-09-09  
-Repository context: [research archive](../CONTEXT.md), [Markdown brief](../markdown-html.md), and [current state](../../../current-state.md).
+Repository context: [research archive](/docs/reference/research/CONTEXT.md), [Markdown brief](/docs/reference/research/markdown-html.md), and [current state](/docs/current-state.md).
 
 ## 1. Executive summary
 
