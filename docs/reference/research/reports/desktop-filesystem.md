@@ -10,6 +10,29 @@ Access date: 2026-09-09
 Scope: macOS desktop shell, local access, change watching, processes, contracts, and tests.  
 No changes were made to the repository, code, or prototype.
 
+## Navigation map
+
+| Topic | Section |
+| --- | --- |
+| Executive summary | [1. Executive summary](#1-executive-summary) |
+| Question and supported decision | [2. Question and supported decision](#2-question-and-supported-decision) |
+| Scope and assumptions | [3. Scope and assumptions](#3-scope-and-assumptions) |
+| Evaluation criteria | [4. Evaluation criteria](#4-evaluation-criteria) |
+| Claim matrix | [5. Claim matrix](#5-claim-matrix) |
+| Investigated alternatives | [6. Investigated alternatives](#6-investigated-alternatives) |
+| Evidence-based comparison | [7. Evidence-based comparison](#7-evidence-based-comparison) |
+| Evidence | [8. Evidence](#8-evidence) |
+| Contracts between components | [9. Contracts between components](#9-contracts-between-components) |
+| Debounce, queues, and race conditions | [10. Debounce, queues, and race conditions](#10-debounce-queues-and-race-conditions) |
+| Conflicts and refutations | [11. Conflicts and refutations](#11-conflicts-and-refutations) |
+| Conditional recommendation | [12. Conditional recommendation](#12-conditional-recommendation) |
+| Implications for the MVP | [13. Implications for the MVP](#13-implications-for-the-mvp) |
+| Filesystem tests before finalizing the architecture | [14. Filesystem tests before finalizing the architecture](#14-filesystem-tests-before-finalizing-the-architecture) |
+| Gaps and next tests | [15. Gaps and next tests](#15-gaps-and-next-tests) |
+| Source ledger | [16. Source ledger](#16-source-ledger) |
+| Research log | [17. Research log](#17-research-log) |
+| Reason for stopping | [18. Reason for stopping](#18-reason-for-stopping) |
+
 ## 1. Executive summary
 
 The minimum viable architecture should clearly separate:

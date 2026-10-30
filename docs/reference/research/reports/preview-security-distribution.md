@@ -10,6 +10,27 @@ Web access date: 2026-09-09
 Research archive: [map](/docs/reference/research/MAP.md); current behavior: [current state](/docs/current-state.md)
 Repository state during research: no changes.
 
+## Navigation map
+
+| Topic | Section |
+| --- | --- |
+| Executive summary | [1. Executive summary](#1-executive-summary) |
+| Question and supported decision | [2. Question and supported decision](#2-question-and-supported-decision) |
+| Scope and assumptions | [3. Scope and assumptions](#3-scope-and-assumptions) |
+| Evaluation criteria | [4. Evaluation criteria](#4-evaluation-criteria) |
+| Claim matrix | [5. Claim matrix](#5-claim-matrix) |
+| Alternatives investigated | [6. Alternatives investigated](#6-alternatives-investigated) |
+| Evidence-based comparison | [7. Evidence-based comparison](#7-evidence-based-comparison) |
+| Evidence | [8. Evidence](#8-evidence) |
+| Conflicts and counterarguments | [9. Conflicts and counterarguments](#9-conflicts-and-counterarguments) |
+| Conditional recommendation | [10. Conditional recommendation](#10-conditional-recommendation) |
+| MVP implications | [11. MVP implications](#11-mvp-implications) |
+| Error messages and recovery | [12. Error messages and recovery](#12-error-messages-and-recovery) |
+| Gaps and next tests | [13. Gaps and next tests](#13-gaps-and-next-tests) |
+| Source ledger | [14. Source ledger](#14-source-ledger) |
+| Research log | [15. Research log](#15-research-log) |
+| Reason for stopping the research | [Reason for stopping the research](#reason-for-stopping-the-research) |
+
 ## 1. Executive summary
 
 The combination with the best balance of control, native integration, and bounded risk is:

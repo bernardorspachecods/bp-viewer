@@ -9,6 +9,25 @@ tags: [research, markdown, preview]
 Research date: 2026-09-09  
 Research archive: [map](/docs/reference/research/MAP.md); current behavior: [current state](/docs/current-state.md).
 
+## Navigation map
+
+| Topic | Section |
+| --- | --- |
+| Executive summary | [1. Executive summary](#1-executive-summary) |
+| Question and supported decision | [2. Question and supported decision](#2-question-and-supported-decision) |
+| Scope and assumptions | [3. Scope and assumptions](#3-scope-and-assumptions) |
+| Evaluation criteria | [4. Evaluation criteria](#4-evaluation-criteria) |
+| Claim matrix | [5. Claim matrix](#5-claim-matrix) |
+| Investigated alternatives | [6. Investigated alternatives](#6-investigated-alternatives) |
+| Evidence-based comparison | [7. Evidence-based comparison](#7-evidence-based-comparison) |
+| Evidence | [8. Evidence](#8-evidence) |
+| Conflicts and attempted refutations | [9. Conflicts and attempted refutations](#9-conflicts-and-attempted-refutations) |
+| Conditional recommendation | [10. Conditional recommendation](#10-conditional-recommendation) |
+| Implications for the MVP | [11. Implications for the MVP](#11-implications-for-the-mvp) |
+| Gaps and suggested local tests | [12. Gaps and suggested local tests](#12-gaps-and-suggested-local-tests) |
+| Source ledger | [13. Source ledger](#13-source-ledger) |
+| Research log | [14. Research log](#14-research-log) |
+
 ## 1. Executive summary
 
 The best option depends on the desktop runtime, which has not yet been chosen:

@@ -11,6 +11,34 @@ Research archive: [map](/docs/reference/research/MAP.md); current behavior: [cur
 
 No files were changed. The working tree was clean.
 
+## Navigation map
+
+| Topic | Section |
+| --- | --- |
+| Executive summary | [1. Executive summary](#1-executive-summary) |
+| Question and supported decision | [2. Question and supported decision](#2-question-and-supported-decision) |
+| Scope and assumptions | [3. Scope and assumptions](#3-scope-and-assumptions) |
+| Evaluation criteria | [4. Evaluation criteria](#4-evaluation-criteria) |
+| Claim matrix | [5. Claim matrix](#5-claim-matrix) |
+| Alternatives investigated | [6. Alternatives investigated](#6-alternatives-investigated) |
+| Evidence-based comparison | [7. Evidence-based comparison](#7-evidence-based-comparison) |
+| Dependencies and compilation | [8. Dependencies and compilation](#8-dependencies-and-compilation) |
+| Multi-file documents | [9. Multi-file documents](#9-multi-file-documents) |
+| Bibliography and references | [10. Bibliography and references](#10-bibliography-and-references) |
+| Temporary artifacts | [11. Temporary artifacts](#11-temporary-artifacts) |
+| Updates and concurrency | [12. Updates and concurrency](#12-updates-and-concurrency) |
+| Errors, warnings, and hangs | [13. Errors, warnings, and hangs](#13-errors-warnings-and-hangs) |
+| Security, permissions, and distribution | [14. Security, permissions, and distribution](#14-security-permissions-and-distribution) |
+| Fidelity, accessibility, and search | [15. Fidelity, accessibility, and search](#15-fidelity-accessibility-and-search) |
+| Conditional recommendation | [16. Conditional recommendation](#16-conditional-recommendation) |
+| MVP implications | [17. MVP implications](#17-mvp-implications) |
+| Gaps and next local tests | [18. Gaps and next local tests](#18-gaps-and-next-local-tests) |
+| Evidence | [19. Evidence](#19-evidence) |
+| Conflicts and counterarguments | [20. Conflicts and counterarguments](#20-conflicts-and-counterarguments) |
+| Source ledger | [21. Source ledger](#21-source-ledger) |
+| Search log | [22. Search log](#22-search-log) |
+| Reason for stopping | [23. Reason for stopping](#23-reason-for-stopping) |
+
 ## 1. Executive summary
 
 For real LaTeX theses, a PDF produced by the LaTeX engine itself is the strategy most likely to preserve visual fidelity, classes, packages, images, bibliography, and cross-references.
