@@ -18,17 +18,12 @@ document close at hand.
 
 - Organize workspaces by local project folder and open files in document tabs.
 - Move between workspaces and files while keeping their tabs and view state.
-- Read PDFs and preview Markdown, LaTeX, JSON, CSV, Word documents, and images.
+- Read project documents in the workspace and preview their rendered or formatted contents.
 - Edit Markdown and LaTeX in source or split view with a live preview.
 - Follow supported links between files and search within the active document.
 
-With Viewer running, press `⇧⌘E` in Terminal, iTerm2, Ghostty, WezTerm,
-Alacritty, Kitty, or Warp to capture the latest completed Codex or Claude Code
-reply. Viewer saves it as Markdown under `~/Downloads/Codex Responses` or
-`~/Downloads/Claude Code Responses` and opens it in a separate, minimal Viewer window that shows only the reply. Use `⌥⌘E`
-instead to open it as a tab in the workspace window you are using. Claude Code
-may show its `/copy` picker for replies containing code blocks. The shortcuts
-require macOS Accessibility permission.
+Viewer can capture completed Codex or Claude Code replies from supported
+terminal apps; see [the current app behavior](docs/current-state.md#tabs-preferences-and-snapshots).
 
 ## Run Viewer from source
 
@@ -43,7 +38,8 @@ swift run BPViewer
 
 For development, `./scripts/dev-run.sh` watches `Sources/` and rebuilds when
 code changes. `./scripts/build-app.sh` creates a local `.app` bundle in `.build/`.
-No prebuilt app download is included.
+It uses the existing Apple Development identity in Keychain and does not create
+certificates. No prebuilt app download is included.
 
 To install Viewer on your Mac, run `./scripts/install-app.sh`. It builds a
 release bundle and copies it to `/Applications`. Then, in Finder, choose

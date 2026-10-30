@@ -37,23 +37,8 @@ baseline requests are handled by `DocumentRenderCoordinator`,
 `DocumentEditCoordinator`, and `DocumentDiffCoordinator`, respectively; they
 return events or values that `AppModel` applies.
 
-`CodexReplyCaptureController` registers `⇧⌘E` (standalone window) and `⌥⌘E` (tab in the current workspace window) as global shortcuts, sends
-`Ctrl+O` to the Codex CLI in the active terminal window, confirms a clipboard
-change, saves the response as a Markdown file in `~/Downloads/Codex Responses`,
-creating the folder if needed, then opens that saved document in a tab.
-Filenames start at `Codex Reply.md` and gain a numeric suffix to avoid
-overwriting earlier captures. Sending keystrokes requires macOS
-Accessibility permission, as does Terminal automation in Prompt Wiz. macOS
-uses the last focused Viewer window when it is open. If that window is minimized,
-the capture opens in a standalone Viewer window while the workspace stays
-minimized (`⇧⌘E` always uses a standalone window), with the sidebar hidden in the capture window. That window does not
-change the saved sidebar preference for regular workspaces. Closing the last
-window leaves the app running so the global shortcut remains registered;
-quitting the app ends shortcut handling. macOS presents the permission prompt at
-most once per session if permission is not already active.
-`scripts/build-app.sh` uses the existing Apple Development
-identity in the Keychain to preserve the signing identity across rebuilds; it
-does not create certificates.
+`CodexReplyCaptureController` coordinates reply capture; the user-visible
+shortcuts and capture behavior are described in [current app state](/docs/current-state.md#tabs-preferences-and-snapshots).
 
 The main models are:
 
@@ -105,10 +90,9 @@ and errors. The shared search bar lives on the tab surface and follows focus
 between the source editor and preview in split view. `MarkdownWebPreview`
 contains the `WKWebView`, JavaScript, navigation, and reading position.
 `SourceEditorView` contains the AppKit editor shared by Markdown and JSON.
-Double-clicking a preview unit starts Quick Edit in place. Typing does not
-reload the preview. Each committed change reaches `AppModel` as an
-`inlineChange` event and is applied to the source by `MarkdownInlineTextEdit` in
-Core. The `Raw Markdown` toolbar button switches between Quick Edit and the
+Each committed Quick Edit change reaches `AppModel` as an `inlineChange`
+event and is applied to the source by `MarkdownInlineTextEdit` in Core. The
+`Raw Markdown` toolbar button switches between Quick Edit and the
 source editor, whose syntax highlighting uses a palette for light and dark
 themes. The toolbar switches between the full editor and split view, which keeps
 the source on the left and live preview on the right. The outline is resizable
@@ -136,9 +120,8 @@ active file trigger a new read through `DocumentRenderCoordinator`.
 ### LaTeX
 
 `LatexPreviewView` composes the editing toolbar, `NSTextView` editor, diff, and
-`PDFPreviewView` in split view. Double-clicking the PDF sends the page and
-coordinates to `LatexSyncTeXLookup`, which resolves the file and line and moves
-the cursor. Source editing remains available when SyncTeX is missing. When
+`PDFPreviewView` in split view. `LatexSyncTeXLookup` resolves PDF coordinates
+to source locations. When
 SyncTeX returns a line from the generated `.bbl`, `AppModel` uses the saved `.bbl`
 contents to find the entry key and open the `.bib` file.
 

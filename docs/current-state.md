@@ -113,7 +113,7 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
 - Compilation runs in a temporary workspace and produces PDF bytes for the
   `PDFView` surface.
 - Dependencies outside the workspace require authorization. `shell escape`
-  mode is configurable and disabled by default.
+  mode is configurable.
 - The preview displays compilation errors, lets you expand and copy the
   diagnostic, and preserves the previous PDF when the current compilation fails.
 - The PDF supports an outline, search, copy, printing, app-handled links, zoom,
@@ -225,8 +225,7 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
   no longer exist.
 - You can select an area of the preview, including content loaded through
   autoscroll, and open the selection in a floating window.
-- Snapshots are saved as PNG files in Application Support and remain available
-  across restarts until closed by the user.
+- Snapshots remain available across restarts until closed by the user.
 
 ## Not supported
 
@@ -234,13 +233,7 @@ LaTeX, JSON, CSV, and PDF files, and displaying rendered or formatted results.
 - Autosave.
 - Compilation on every keystroke without a debounce.
 
-## Main code entry points
+## Technical architecture
 
-- [`Sources/BPViewerApp/CONTEXT.md`](../Sources/BPViewerApp/CONTEXT.md) — window
-  composition and session coordination.
-- [`Sources/BPViewerCore/CONTEXT.md`](../Sources/BPViewerCore/CONTEXT.md) —
-  shared filesystem, Markdown, LaTeX, tabs, and editing logic.
-- [`docs/technical/architecture.md`](technical/architecture.md) — implemented
-  technical boundaries.
-- [`docs/technical/ui-architecture.md`](technical/ui-architecture.md) — current
-  UI composition and state.
+- [Implemented module boundaries and technical flows](/docs/technical/architecture.md).
+- [Window composition and published UI state](/docs/technical/ui-architecture.md).
