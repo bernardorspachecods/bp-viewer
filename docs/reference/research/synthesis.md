@@ -43,12 +43,16 @@ Tectonic, `remark`, or another candidate.
 
 | Topic | Section |
 | --- | --- |
-| Findings, inferences, and limits | [Current state](/docs/reference/research/synthesis.md#2-current-state-what-the-four-reports-do-and-do-not-establish) |
-| Contracts and invariants | [Actionable decisions](/docs/reference/research/synthesis.md#3-actionable-decisions-without-personal-preference-contracts-invariants-tests-and-guardrails-for-the-mvp) |
-| Comparison of open choices | [Technical decision matrix](/docs/reference/research/synthesis.md#4-technical-decision-matrix) |
-| Product questions and conflicts | [User decisions](/docs/reference/research/synthesis.md#5-decisions-that-depend-on-bernardos-preferences-and-personal-use), [Conflicts](/docs/reference/research/synthesis.md#6-conflicts-and-incompatibilities-among-reports) |
-| Validation sequence and open questions | [Validation order](/docs/reference/research/synthesis.md#7-proposed-validationprototyping-order-prioritized-by-risk), [Open questions](/docs/reference/research/synthesis.md#8-open-questions-for-continued-product-discussion) |
-| Local validation gaps and source reports | [Claims to validate](/docs/reference/research/synthesis.md#9-claims-that-still-require-local-validation), [Source map](/docs/reference/research/synthesis.md#10-source-map) |
+| Executive summary | [1. Executive summary](#1-executive-summary) |
+| Current state and limits of the reports | [2. Current state: what the four reports do and do not establish](#2-current-state-what-the-four-reports-do-and-do-not-establish) |
+| Contracts, invariants, and guardrails | [3. Actionable decisions without personal preference: contracts, invariants, tests, and guardrails for the MVP](#3-actionable-decisions-without-personal-preference-contracts-invariants-tests-and-guardrails-for-the-mvp) |
+| Technical decision matrix | [4. Technical decision matrix](#4-technical-decision-matrix) |
+| Decisions requiring personal preference | [5. Decisions that depend on Bernardo's preferences and personal use](#5-decisions-that-depend-on-bernardos-preferences-and-personal-use) |
+| Conflicts and incompatibilities | [6. Conflicts and incompatibilities among reports](#6-conflicts-and-incompatibilities-among-reports) |
+| Proposed validation and prototyping order | [7. Proposed validation/prototyping order, prioritized by risk](#7-proposed-validationprototyping-order-prioritized-by-risk) |
+| Open questions | [8. Open questions for continued product discussion](#8-open-questions-for-continued-product-discussion) |
+| Claims requiring local validation | [9. Claims that still require local validation](#9-claims-that-still-require-local-validation) |
+| Source map | [10. Source map](#10-source-map) |
 
 ## 2. Current state: what the four reports do and do not establish
 
